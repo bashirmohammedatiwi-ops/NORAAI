@@ -7,9 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.core.minio_client import upload_bytes
-from app.models import Dataset, DatasetVersion, Image, ImageQualityScore, IngestionRecord, IngestionSourceType, User
+from app.models import ClassLabel, Dataset, DatasetVersion, Image, ImageQualityScore, IngestionRecord, IngestionSourceType, User
 from app.schemas import (
     AddImagesToDatasetRequest,
+    DatasetBuilderStatsResponse,
     DatasetCreate,
     DatasetDiffResponse,
     DatasetSummaryResponse,
@@ -17,6 +18,7 @@ from app.schemas import (
     DatasetVersionCreate,
     ImageResponse,
 )
+from app.services.datasets.builder_stats import get_builder_stats
 from app.services.datasets.dataset_images import (
     append_images_to_dataset,
     ensure_default_dataset,
@@ -120,11 +122,20 @@ async def add_images_to_dataset(
     }
 
 
+@router.get("/{dataset_id}/builder-stats", response_model=DatasetBuilderStatsResponse)
+async def dataset_builder_stats(dataset_id: UUID, db: AsyncSession = Depends(get_db)):
+    stats = await get_builder_stats(db, dataset_id)
+    if not stats:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return DatasetBuilderStatsResponse(**stats)
+
+
 @router.post("/{dataset_id}/upload", response_model=DatasetUploadResponse)
 async def upload_to_dataset(
     dataset_id: UUID,
     files: list[UploadFile] = File(...),
     source_type: str = Form("manual_upload"),
+    class_id: UUID | None = Form(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -132,15 +143,24 @@ async def upload_to_dataset(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
+    if class_id:
+        cls = await db.get(ClassLabel, class_id)
+        if not cls or cls.project_id != dataset.project_id:
+            raise HTTPException(status_code=400, detail="Invalid class for this project")
+
     record_ids = []
     for file in files:
         content = await file.read()
+        metadata: dict = {"dataset_id": str(dataset_id)}
+        if class_id:
+            metadata["class_id"] = str(class_id)
+
         record = IngestionRecord(
             project_id=dataset.project_id,
             source_type=IngestionSourceType(source_type),
             source_id=str(user.id),
             status="processing",
-            extra_metadata={"dataset_id": str(dataset_id)},
+            extra_metadata=metadata,
         )
         db.add(record)
         await db.flush()
@@ -150,11 +170,17 @@ async def upload_to_dataset(
         process_image.delay(str(record.id), minio_key=minio_key)
         record_ids.append(record.id)
 
+    cls_note = ""
+    if class_id:
+        cls = await db.get(ClassLabel, class_id)
+        cls_note = f" with auto-label '{cls.name}'" if cls else ""
+
     return DatasetUploadResponse(
         dataset_id=dataset_id,
         record_ids=record_ids,
         status="processing",
-        message=f"Uploading {len(record_ids)} image(s) to dataset '{dataset.name}'",
+        class_id=class_id,
+        message=f"Uploading {len(record_ids)} image(s) to '{dataset.name}'{cls_note}",
     )
 
 

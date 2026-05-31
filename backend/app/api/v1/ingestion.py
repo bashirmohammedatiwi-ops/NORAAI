@@ -41,6 +41,7 @@ async def upload_images(
     project_id: UUID = Form(...),
     source_type: str = Form("manual_upload"),
     dataset_id: UUID | None = Form(None),
+    class_id: UUID | None = Form(None),
     files: list[UploadFile] = File(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -52,15 +53,24 @@ async def upload_images(
         default_ds = await ensure_default_dataset(db, project_id)
         target_dataset_id = default_ds.id
 
+    if class_id:
+        cls = await db.get(ClassLabel, class_id)
+        if not cls or cls.project_id != project_id:
+            raise HTTPException(status_code=400, detail="Invalid class for this project")
+
     results = []
     for file in files:
         content = await file.read()
+        metadata: dict = {"dataset_id": str(target_dataset_id)}
+        if class_id:
+            metadata["class_id"] = str(class_id)
+
         record = IngestionRecord(
             project_id=project_id,
             source_type=IngestionSourceType(source_type),
             source_id=str(user.id),
             status="processing",
-            extra_metadata={"dataset_id": str(target_dataset_id)},
+            extra_metadata=metadata,
         )
         db.add(record)
         await db.flush()

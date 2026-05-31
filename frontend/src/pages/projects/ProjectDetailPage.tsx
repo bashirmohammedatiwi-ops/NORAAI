@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 const tabs = [
-  { key: 'data', label: 'Data Hub', path: 'data' },
+  { key: 'data', label: 'Dataset Builder', path: 'data' },
   { key: '', label: 'Overview', path: '' },
   { key: 'datasets', label: 'Datasets', path: 'datasets' },
   { key: 'annotation', label: 'Annotation', path: 'annotation' },
@@ -74,7 +74,7 @@ export default function ProjectDetailPage() {
           <CardHeader><CardTitle>Quick Actions</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             <Link to={`/projects/${id}/data`} className="block p-2 rounded hover:bg-accent font-medium text-primary">
-              Upload & Train (Data Hub) →
+              Dataset Builder (upload + class + train) →
             </Link>
             <Link to={`/projects/${id}/training`} className="block p-2 rounded hover:bg-accent">Start Training →</Link>
             <Link to={`/projects/${id}/datasets`} className="block p-2 rounded hover:bg-accent">Manage Datasets →</Link>

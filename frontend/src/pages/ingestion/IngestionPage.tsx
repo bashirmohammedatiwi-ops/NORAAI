@@ -19,17 +19,17 @@ export default function IngestionPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database className="h-5 w-5 text-primary" />
-            Use Data Hub inside each project
+            Dataset Builder
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground text-sm">
-            Upload is now linked directly to a dataset. Open a project and use <strong>Data Hub</strong> to upload images and start training in one flow.
+            Open a project and use <strong>Dataset Builder</strong>: pick a class, upload images (auto-labeled), then train.
           </p>
           <div className="space-y-2">
             {projects.map((p) => (
               <Link key={p.id} to={`/projects/${p.id}/data`}>
-                <Button variant="outline" className="w-full justify-start">{p.name} → Data Hub</Button>
+                <Button variant="outline" className="w-full justify-start">{p.name} → Dataset Builder</Button>
               </Link>
             ))}
             {projects.length === 0 && (

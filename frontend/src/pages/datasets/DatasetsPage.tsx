@@ -45,7 +45,7 @@ export default function DatasetsPage() {
         <h1 className="text-3xl font-bold">Datasets</h1>
         {projectId && (
           <Link to={`/projects/${projectId}/data`}>
-            <Button><Database className="h-4 w-4 mr-2" /> Open Data Hub (upload & train)</Button>
+            <Button><Database className="h-4 w-4 mr-2" /> Open Dataset Builder</Button>
           </Link>
         )}
       </div>

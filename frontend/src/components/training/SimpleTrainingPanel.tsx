@@ -53,12 +53,12 @@ export function SimpleTrainingPanel({ projectId, datasetVersionId, imageCount }:
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Rocket className="h-5 w-5 text-primary" />
-          3. Quick Train
+          4. Quick Train
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Train on <strong>{imageCount}</strong> images from the current dataset version.
+          Train on <strong>{imageCount}</strong> labeled images (auto full-image boxes).
         </p>
         <div className="flex flex-wrap gap-4 items-end">
           <div>

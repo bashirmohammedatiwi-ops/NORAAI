@@ -144,6 +144,17 @@ class DatasetUploadResponse(BaseModel):
     record_ids: list[UUID]
     status: str
     message: str
+    class_id: UUID | None = None
+
+
+class DatasetBuilderStatsResponse(BaseModel):
+    dataset_id: UUID
+    dataset_name: str
+    head_version_id: UUID | None = None
+    image_count: int = 0
+    annotated_count: int = 0
+    ready_for_training: bool = False
+    per_class: list[dict] = Field(default_factory=list)
 
 
 class DatasetVersionCreate(BaseModel):
