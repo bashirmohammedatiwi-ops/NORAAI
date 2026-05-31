@@ -44,7 +44,7 @@ export default function ProjectsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {projects.map((p) => (
-          <Link key={p.id} to={`/projects/${p.id}`}>
+          <Link key={p.id} to={`/projects/${p.id}/data`}>
             <Card className="hover:border-primary transition-colors cursor-pointer h-full">
               <CardHeader>
                 <CardTitle className="text-lg">{p.name}</CardTitle>

@@ -17,6 +17,7 @@ from app.models import (
     IngestionSourceType,
 )
 from ml.quality.scorer import assess_image_quality, extract_gps_from_exif
+from app.services.datasets.dataset_images import append_images_to_dataset_sync
 from workers.celery_app import celery_app
 
 settings = get_settings()
@@ -39,11 +40,15 @@ def process_image(record_id: str, image_bytes_b64: str | None = None, minio_key:
             image_bytes = base64.b64decode(image_bytes_b64)
 
         content_hash = hashlib.sha256(image_bytes).hexdigest()
+        dataset_id_raw = (record.extra_metadata or {}).get("dataset_id")
+
         existing = session.query(Image).filter_by(content_hash=content_hash, project_id=record.project_id).first()
         if existing:
             record.status = "duplicate"
             record.image_id = existing.id
             record.error_message = "Duplicate image detected"
+            if dataset_id_raw:
+                append_images_to_dataset_sync(session, uuid.UUID(dataset_id_raw), [existing.id])
             session.commit()
             return {"status": "duplicate", "image_id": str(existing.id)}
 
@@ -96,6 +101,10 @@ def process_image(record_id: str, image_bytes_b64: str | None = None, minio_key:
 
         record.status = "completed"
         record.image_id = image.id
+
+        if dataset_id_raw:
+            append_images_to_dataset_sync(session, uuid.UUID(dataset_id_raw), [image.id])
+
         session.commit()
 
         return {

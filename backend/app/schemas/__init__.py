@@ -126,6 +126,26 @@ class DatasetCreate(BaseModel):
     description: str | None = None
 
 
+class DatasetSummaryResponse(BaseModel):
+    id: UUID
+    name: str
+    description: str | None = None
+    head_version_id: UUID | None = None
+    version_tag: str | None = None
+    image_count: int = 0
+
+
+class AddImagesToDatasetRequest(BaseModel):
+    image_ids: list[UUID]
+
+
+class DatasetUploadResponse(BaseModel):
+    dataset_id: UUID
+    record_ids: list[UUID]
+    status: str
+    message: str
+
+
 class DatasetVersionCreate(BaseModel):
     version_tag: str
     image_ids: list[UUID] = Field(default_factory=list)

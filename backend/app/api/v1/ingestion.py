@@ -40,10 +40,18 @@ router = APIRouter(tags=["ingestion", "classes", "fleet"])
 async def upload_images(
     project_id: UUID = Form(...),
     source_type: str = Form("manual_upload"),
+    dataset_id: UUID | None = Form(None),
     files: list[UploadFile] = File(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.datasets.dataset_images import ensure_default_dataset
+
+    target_dataset_id = dataset_id
+    if not target_dataset_id:
+        default_ds = await ensure_default_dataset(db, project_id)
+        target_dataset_id = default_ds.id
+
     results = []
     for file in files:
         content = await file.read()
@@ -52,6 +60,7 @@ async def upload_images(
             source_type=IngestionSourceType(source_type),
             source_id=str(user.id),
             status="processing",
+            extra_metadata={"dataset_id": str(target_dataset_id)},
         )
         db.add(record)
         await db.flush()

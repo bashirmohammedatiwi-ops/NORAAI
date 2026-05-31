@@ -1,22 +1,24 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 const tabs = [
-  { key: '', label: 'Overview' },
-  { key: 'datasets', label: 'Datasets' },
-  { key: 'annotation', label: 'Annotation' },
-  { key: 'classes', label: 'Classes' },
-  { key: 'training', label: 'Training' },
-  { key: 'models', label: 'Models' },
-  { key: 'deployments', label: 'Deployments' },
-  { key: 'monitoring', label: 'Monitoring' },
+  { key: 'data', label: 'Data Hub', path: 'data' },
+  { key: '', label: 'Overview', path: '' },
+  { key: 'datasets', label: 'Datasets', path: 'datasets' },
+  { key: 'annotation', label: 'Annotation', path: 'annotation' },
+  { key: 'classes', label: 'Classes', path: 'classes' },
+  { key: 'training', label: 'Training', path: 'training' },
+  { key: 'models', label: 'Models', path: 'models' },
+  { key: 'deployments', label: 'Deployments', path: 'deployments' },
+  { key: 'monitoring', label: 'Monitoring', path: 'monitoring' },
 ];
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
+  const location = useLocation();
   const [project, setProject] = useState<{ id: string; name: string; description: string } | null>(null);
   const [models, setModels] = useState<{ id: string; name: string; task_type: string }[]>([]);
 
@@ -36,18 +38,22 @@ export default function ProjectDetailPage() {
       </div>
 
       <div className="flex gap-2 flex-wrap border-b border-border pb-2">
-        {tabs.map(({ key, label }) => (
-          <Link
-            key={key}
-            to={key ? `/projects/${id}/${key}` : `/projects/${id}`}
-            className={cn(
-              'px-3 py-1.5 rounded-md text-sm transition-colors hover:bg-accent',
-              !key && location.pathname === `/projects/${id}` ? 'bg-primary/10 text-primary' : ''
-            )}
-          >
-            {label}
-          </Link>
-        ))}
+        {tabs.map(({ key, label, path }) => {
+          const href = path ? `/projects/${id}/${path}` : `/projects/${id}`;
+          const active = location.pathname === href;
+          return (
+            <Link
+              key={key || 'overview'}
+              to={href}
+              className={cn(
+                'px-3 py-1.5 rounded-md text-sm transition-colors hover:bg-accent',
+                active ? 'bg-primary/10 text-primary' : ''
+              )}
+            >
+              {label}
+            </Link>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -67,6 +73,9 @@ export default function ProjectDetailPage() {
         <Card>
           <CardHeader><CardTitle>Quick Actions</CardTitle></CardHeader>
           <CardContent className="space-y-2">
+            <Link to={`/projects/${id}/data`} className="block p-2 rounded hover:bg-accent font-medium text-primary">
+              Upload & Train (Data Hub) →
+            </Link>
             <Link to={`/projects/${id}/training`} className="block p-2 rounded hover:bg-accent">Start Training →</Link>
             <Link to={`/projects/${id}/datasets`} className="block p-2 rounded hover:bg-accent">Manage Datasets →</Link>
             <Link to={`/projects/${id}/annotation`} className="block p-2 rounded hover:bg-accent">Review Annotations →</Link>

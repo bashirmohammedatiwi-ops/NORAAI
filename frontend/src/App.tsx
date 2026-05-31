@@ -5,6 +5,7 @@ import LoginPage from '@/pages/LoginPage';
 import DashboardPage from '@/pages/DashboardPage';
 import ProjectsPage from '@/pages/projects/ProjectsPage';
 import ProjectDetailPage from '@/pages/projects/ProjectDetailPage';
+import DataHubPage from '@/pages/data/DataHubPage';
 import DatasetsPage from '@/pages/datasets/DatasetsPage';
 import AnnotationPage from '@/pages/annotation/AnnotationPage';
 import ClassesPage from '@/pages/classes/ClassesPage';
@@ -36,6 +37,7 @@ export default function App() {
             <Route index element={<DashboardPage />} />
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="projects/:id" element={<ProjectDetailPage />} />
+            <Route path="projects/:id/data" element={<DataHubPage />} />
             <Route path="projects/:id/datasets" element={<DatasetsPage />} />
             <Route path="projects/:id/annotation" element={<AnnotationPage />} />
             <Route path="projects/:id/classes" element={<ClassesPage />} />

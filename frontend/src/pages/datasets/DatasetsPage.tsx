@@ -1,49 +1,54 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Database, ExternalLink } from 'lucide-react';
+
+interface DatasetSummary {
+  id: string;
+  name: string;
+  head_version_id: string | null;
+  image_count: number;
+}
 
 export default function DatasetsPage() {
-  const { id } = useParams();
-  const [datasets, setDatasets] = useState<{ id: string; name: string; head_version_id: string | null }[]>([]);
+  const { id: projectId } = useParams();
+  const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [versions, setVersions] = useState<{ id: string; version_tag: string; image_count: number }[]>([]);
-  const [diff, setDiff] = useState<{ added_images: string[]; removed_images: string[] } | null>(null);
+  const [images, setImages] = useState<{ id: string; filename: string; status: string }[]>([]);
   const [newName, setNewName] = useState('');
 
   useEffect(() => {
-    if (!id) return;
-    api.get<typeof datasets>(`/api/v1/datasets/project/${id}`).then(setDatasets).catch(() => {});
-  }, [id]);
+    if (!projectId) return;
+    api.get<DatasetSummary[]>(`/api/v1/datasets/project/${projectId}`).then(setDatasets).catch(() => {});
+  }, [projectId]);
 
-  const loadVersions = async (datasetId: string) => {
+  const loadImages = async (datasetId: string) => {
     setSelected(datasetId);
-    const v = await api.get<typeof versions>(`/api/v1/datasets/${datasetId}/versions`);
-    setVersions(v);
+    const imgs = await api.get<typeof images>(`/api/v1/datasets/${datasetId}/images`).catch(() => []);
+    setImages(imgs);
   };
 
   const createDataset = async () => {
-    await api.post(`/api/v1/datasets/project/${id}`, { name: newName });
+    if (!projectId || !newName.trim()) return;
+    await api.post(`/api/v1/datasets/project/${projectId}`, { name: newName.trim() });
     setNewName('');
-    const d = await api.get<typeof datasets>(`/api/v1/datasets/project/${id}`);
+    const d = await api.get<typeof datasets>(`/api/v1/datasets/project/${projectId}`);
     setDatasets(d);
-  };
-
-  const createVersion = async (datasetId: string, tag: string) => {
-    await api.post(`/api/v1/datasets/${datasetId}/versions`, { version_tag: tag, image_ids: [] });
-    loadVersions(datasetId);
-  };
-
-  const compareVersions = async (fromId: string, toId: string) => {
-    const d = await api.get<typeof diff>(`/api/v1/datasets/versions/compare?from_version_id=${fromId}&to_version_id=${toId}`);
-    setDiff(d);
   };
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Smart Dataset Manager</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-3xl font-bold">Datasets</h1>
+        {projectId && (
+          <Link to={`/projects/${projectId}/data`}>
+            <Button><Database className="h-4 w-4 mr-2" /> Open Data Hub (upload & train)</Button>
+          </Link>
+        )}
+      </div>
 
       <Card>
         <CardHeader><CardTitle>Create Dataset</CardTitle></CardHeader>
@@ -55,43 +60,50 @@ export default function DatasetsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
-          <CardHeader><CardTitle>Datasets</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Your Datasets</CardTitle></CardHeader>
           <CardContent className="space-y-2">
+            {datasets.length === 0 && (
+              <p className="text-sm text-muted-foreground">No datasets yet. Use Data Hub to upload images.</p>
+            )}
             {datasets.map((d) => (
-              <div key={d.id} className="p-3 rounded border border-border">
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => loadImages(d.id)}
+                className={`w-full text-left p-3 rounded border border-border hover:border-primary/50 ${selected === d.id ? 'bg-primary/5 border-primary/30' : ''}`}
+              >
                 <div className="flex justify-between items-center">
-                  <button onClick={() => loadVersions(d.id)} className="font-medium hover:text-primary">{d.name}</button>
-                  <Button size="sm" variant="outline" onClick={() => createVersion(d.id, `v${versions.length + 1}`)}>New Version</Button>
+                  <span className="font-medium">{d.name}</span>
+                  <span className="text-sm text-muted-foreground">{d.image_count} images</span>
                 </div>
-              </div>
+              </button>
             ))}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Version Timeline</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Images in Dataset</CardTitle></CardHeader>
           <CardContent>
-            {versions.map((v, i) => (
-              <div key={v.id} className="flex justify-between p-2 border-b border-border">
-                <span>{v.version_tag}</span>
-                <span className="text-sm text-muted-foreground">{v.image_count} images</span>
-                {i > 0 && (
-                  <Button size="sm" variant="ghost" onClick={() => compareVersions(versions[i-1].id, v.id)}>Compare</Button>
-                )}
-              </div>
-            ))}
+            {!selected && <p className="text-sm text-muted-foreground">Select a dataset to view images.</p>}
+            {selected && images.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No images.{' '}
+                <Link to={`/projects/${projectId}/data`} className="text-primary underline inline-flex items-center gap-1">
+                  Upload in Data Hub <ExternalLink className="h-3 w-3" />
+                </Link>
+              </p>
+            )}
+            <div className="space-y-1 max-h-80 overflow-auto">
+              {images.map((img) => (
+                <div key={img.id} className="flex justify-between text-sm p-2 border-b border-border">
+                  <span className="truncate">{img.filename}</span>
+                  <span className="text-muted-foreground">{img.status}</span>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
-
-      {diff && (
-        <Card>
-          <CardHeader><CardTitle>Version Diff</CardTitle></CardHeader>
-          <CardContent>
-            <p>Added: {diff.added_images.length} | Removed: {diff.removed_images.length}</p>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
