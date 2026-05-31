@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Brain } from 'lucide-react';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('admin@aiops.local');
+  const [email, setEmail] = useState('admin@aiops.com');
   const [password, setPassword] = useState('admin123');
   const [error, setError] = useState('');
   const navigate = useNavigate();

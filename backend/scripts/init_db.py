@@ -34,19 +34,33 @@ async def init_db():
             db.add(org)
             await db.flush()
 
-        user_result = await db.execute(select(User).where(User.email == settings.admin_email))
-        admin = user_result.scalar_one_or_none()
+        target_email = (
+            "admin@aiops.com"
+            if settings.admin_email == "admin@aiops.local"
+            else settings.admin_email
+        )
+
+        legacy_result = await db.execute(select(User).where(User.email == "admin@aiops.local"))
+        admin = legacy_result.scalar_one_or_none()
+        if admin and admin.email != target_email:
+            admin.email = target_email
+            print(f"Migrated admin email to {target_email}")
+
+        if not admin:
+            user_result = await db.execute(select(User).where(User.email == target_email))
+            admin = user_result.scalar_one_or_none()
+
         if not admin:
             admin = User(
                 organization_id=org.id,
-                email=settings.admin_email,
+                email=target_email,
                 hashed_password=hash_password(settings.admin_password),
                 full_name="System Administrator",
                 role=UserRole.ADMIN,
             )
             db.add(admin)
             await db.flush()
-            print(f"Created admin user: {settings.admin_email}")
+            print(f"Created admin user: {target_email}")
 
         project_result = await db.execute(
             select(Project).where(Project.name == ROAD_PROJECT["name"])

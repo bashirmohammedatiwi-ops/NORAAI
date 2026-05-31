@@ -38,7 +38,7 @@ docker compose exec api python scripts/init_db.py
 | API | http://localhost:8000 |
 | API Docs | http://localhost:8000/docs |
 
-**Login:** `admin@aiops.local` / `admin123`
+**Login:** `admin@aiops.com` / `admin123`
 
 ## Features
 

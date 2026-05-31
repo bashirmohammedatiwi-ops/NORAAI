@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     prometheus_enabled: bool = True
 
-    admin_email: str = "admin@aiops.local"
+    admin_email: str = "admin@aiops.com"
     admin_password: str = "admin123"
 
 

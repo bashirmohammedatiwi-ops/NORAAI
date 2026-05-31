@@ -81,7 +81,7 @@ sudo iptables -A INPUT -p tcp --dport 6001:6005 -j ACCEPT
 | Grafana | `http://YOUR_VPS_IP:6004` |
 | MinIO | `http://YOUR_VPS_IP:6003` |
 
-**تسجيل الدخول:** `admin@aiops.local` / كلمة المرور من `ADMIN_PASSWORD`
+**تسجيل الدخول:** `admin@aiops.com` / كلمة المرور من `ADMIN_PASSWORD`
 
 ## أوامر مفيدة
 
