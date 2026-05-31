@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 # AI Operations Center — VPS Deployment Script
-# Ports: 6000 App | 6001 API | 6002 MinIO | 6003 MinIO UI | 6004 Grafana | 6005 Prometheus
+# Ports: 8080 App | 6001 API | 6002 MinIO | 6003 MinIO UI | 6004 Grafana | 6005 Prometheus
 # =============================================================================
 set -euo pipefail
 

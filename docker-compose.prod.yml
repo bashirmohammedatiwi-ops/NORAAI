@@ -1,7 +1,7 @@
-# AI Operations Center — Production (VPS ports 6000-6010)
+# AI Operations Center — Production (VPS)
 #
 # Port map:
-#   6000  Main App (UI + API + WebSocket via gateway nginx)
+#   8080  Main App (UI + API + WebSocket via gateway nginx) — NOT 6000 (Chrome blocks it)
 #   6001  API direct (Swagger / debugging)
 #   6002  MinIO S3 API
 #   6003  MinIO Console
@@ -196,7 +196,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
-      GF_SERVER_ROOT_URL: ${PUBLIC_URL:-http://localhost:6000}
+      GF_SERVER_ROOT_URL: ${PUBLIC_URL:-http://localhost:8080}
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana_data:/var/lib/grafana
@@ -216,7 +216,7 @@ services:
         VITE_WS_URL: ""
     restart: always
     ports:
-      - "${PORT_APP:-6000}:80"
+      - "${PORT_APP:-8080}:80"
     depends_on:
       api:
         condition: service_healthy

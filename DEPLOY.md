@@ -5,13 +5,15 @@
 - Ubuntu 22.04+ (أو أي Linux مع Docker)
 - 4 GB RAM على الأقل (8 GB موصى به)
 - 20 GB مساحة تخزين
-- المنافذ المتاحة: **6000 – 6010**
+- المنافذ المتاحة: **8080** (التطبيق) + **6001–6005** (خدمات أخرى)
+
+> **مهم:** لا تستخدم المنفذ **6000** للتطبيق — متصفح Chrome يحجبه (`ERR_UNSAFE_PORT`) لأنه مخصص لـ X11.
 
 ## خريطة المنافذ
 
 | المنفذ | الخدمة | الوصف |
 |--------|--------|-------|
-| **6000** | Gateway | التطبيق الرئيسي (واجهة + API + WebSocket) |
+| **8080** | Gateway | التطبيق الرئيسي (واجهة + API + WebSocket) |
 | **6001** | API | الوصول المباشر للـ API و Swagger |
 | **6002** | MinIO | تخزين S3 للصور والنماذج |
 | **6003** | MinIO Console | لوحة إدارة MinIO |
@@ -48,7 +50,7 @@ nano .env   # غيّر كلمات المرور و SECRET_KEY
 - `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`
 - `ADMIN_PASSWORD`
 - `GRAFANA_PASSWORD`
-- `PUBLIC_URL=http://YOUR_VPS_IP:6000`
+- `PUBLIC_URL=http://YOUR_VPS_IP:8080`
 
 ### 3. تشغيل النشر
 
@@ -61,19 +63,21 @@ chmod +x scripts/deploy_vps.sh
 
 ```bash
 # UFW
-sudo ufw allow 6000:6005/tcp
+sudo ufw allow 8080/tcp
+sudo ufw allow 6001:6005/tcp
 sudo ufw reload
 
 # أو iptables
-sudo iptables -A INPUT -p tcp --dport 6000:6005 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 8080 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 6001:6005 -j ACCEPT
 ```
 
 ## الوصول بعد النشر
 
 | الخدمة | الرابط |
 |--------|--------|
-| التطبيق | `http://YOUR_VPS_IP:6000` |
-| API Docs | `http://YOUR_VPS_IP:6000/docs` |
+| التطبيق | `http://YOUR_VPS_IP:8080` |
+| API Docs | `http://YOUR_VPS_IP:8080/docs` |
 | Grafana | `http://YOUR_VPS_IP:6004` |
 | MinIO | `http://YOUR_VPS_IP:6003` |
 

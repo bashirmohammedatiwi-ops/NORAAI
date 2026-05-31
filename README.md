@@ -2,7 +2,9 @@
 
 Enterprise MLOps and Computer Vision Operations Center for Smart Road Infrastructure and Traffic Monitoring.
 
-## VPS Deployment (Ports 6000–6010)
+## VPS Deployment (Port 8080 + 6001–6005)
+
+> Chrome blocks port **6000** (`ERR_UNSAFE_PORT`). Use **8080** for the main app.
 
 ```bash
 cp .env.production.example .env
@@ -13,7 +15,7 @@ chmod +x scripts/deploy_vps.sh
 
 | Port | Service |
 |------|---------|
-| 6000 | Main App (UI + API + WebSocket) |
+| 8080 | Main App (UI + API + WebSocket) |
 | 6001 | API Direct / Swagger |
 | 6002 | MinIO S3 |
 | 6003 | MinIO Console |
@@ -59,6 +61,6 @@ FastAPI · PostgreSQL/PostGIS · Redis · Celery · MinIO · PyTorch/Ultralytics
 ├── infra/                nginx, prometheus, grafana
 ├── Dockerfile.gateway    Production build (frontend + nginx)
 ├── docker-compose.yml    Local dev
-├── docker-compose.prod.yml  VPS production (ports 6000-6010)
+├── docker-compose.prod.yml  VPS production (port 8080 + 6001-6005)
 └── scripts/deploy_vps.sh
 ```
