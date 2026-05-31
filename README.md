@@ -1,0 +1,64 @@
+# AI Operations Center
+
+Enterprise MLOps and Computer Vision Operations Center for Smart Road Infrastructure and Traffic Monitoring.
+
+## VPS Deployment (Ports 6000–6010)
+
+```bash
+cp .env.production.example .env
+# Edit .env — change all passwords and PUBLIC_URL
+chmod +x scripts/deploy_vps.sh
+./scripts/deploy_vps.sh
+```
+
+| Port | Service |
+|------|---------|
+| 6000 | Main App (UI + API + WebSocket) |
+| 6001 | API Direct / Swagger |
+| 6002 | MinIO S3 |
+| 6003 | MinIO Console |
+| 6004 | Grafana |
+| 6005 | Prometheus |
+
+See [DEPLOY.md](DEPLOY.md) for full Arabic/English deployment guide.
+
+## Local Development
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+docker compose exec api python scripts/init_db.py
+```
+
+| Service | URL |
+|---------|-----|
+| Web UI | http://localhost:5173 |
+| API | http://localhost:8000 |
+| API Docs | http://localhost:8000/docs |
+
+**Login:** `admin@aiops.local` / `admin123`
+
+## Features
+
+- AI Project Module, Data Ingestion (6 sources), Dataset Versioning
+- Auto Labeling, Active Learning, Class Management
+- Training Center (YOLO11, YOLOv10, RT-DETR, Faster R-CNN, EfficientDet)
+- Optuna HPO, Live WebSocket metrics, Model Registry & Comparison
+- Deployment Center, Model Monitoring, Road Intelligence GIS
+- Fleet Management, PDF/Excel Reports
+
+## Tech Stack
+
+FastAPI · PostgreSQL/PostGIS · Redis · Celery · MinIO · PyTorch/Ultralytics · React/TypeScript · Docker
+
+## Structure
+
+```
+├── backend/              FastAPI + Celery + ML
+├── frontend/             React SPA
+├── infra/                nginx, prometheus, grafana
+├── Dockerfile.gateway    Production build (frontend + nginx)
+├── docker-compose.yml    Local dev
+├── docker-compose.prod.yml  VPS production (ports 6000-6010)
+└── scripts/deploy_vps.sh
+```

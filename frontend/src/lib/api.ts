@@ -1,0 +1,65 @@
+const API_URL = import.meta.env.VITE_API_URL ?? '';
+
+function wsBaseUrl(): string {
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${window.location.host}`;
+}
+
+class ApiClient {
+  private token: string | null = localStorage.getItem('token');
+
+  setToken(token: string) {
+    this.token = token;
+    localStorage.setItem('token', token);
+  }
+
+  clearToken() {
+    this.token = null;
+    localStorage.removeItem('token');
+  }
+
+  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string>),
+    };
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+
+    const url = API_URL ? `${API_URL}${path}` : path;
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      this.clearToken();
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Request failed');
+    }
+    if (res.status === 204) return {} as T;
+    return res.json();
+  }
+
+  get<T>(path: string) { return this.request<T>(path); }
+
+  post<T>(path: string, body?: unknown) {
+    return this.request<T>(path, {
+      method: 'POST',
+      body: body instanceof FormData ? body : JSON.stringify(body),
+    });
+  }
+
+  patch<T>(path: string, body?: unknown) {
+    return this.request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined });
+  }
+
+  delete<T>(path: string) { return this.request<T>(path, { method: 'DELETE' }); }
+
+  getDownloadUrl(path: string): string {
+    return API_URL ? `${API_URL}${path}` : path;
+  }
+}
+
+export const api = new ApiClient();
+export { API_URL, wsBaseUrl };

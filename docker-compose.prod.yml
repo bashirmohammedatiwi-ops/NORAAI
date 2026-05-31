@@ -1,0 +1,241 @@
+# AI Operations Center — Production (VPS ports 6000-6010)
+#
+# Port map:
+#   6000  Main App (UI + API + WebSocket via gateway nginx)
+#   6001  API direct (Swagger / debugging)
+#   6002  MinIO S3 API
+#   6003  MinIO Console
+#   6004  Grafana
+#   6005  Prometheus
+#   6006-6010  Reserved (internal only)
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aiops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aiops_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-aiops}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aiops}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - aiops
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - aiops
+
+  minio:
+    image: minio/minio:latest
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "${PORT_MINIO_API:-6002}:9000"
+      - "${PORT_MINIO_CONSOLE:-6003}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aiops
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    env_file: .env
+    ports:
+      - "${PORT_API:-6001}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - aiops
+
+  worker-ingestion:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    command: celery -A workers.celery_app worker -Q ingestion -c 2 --loglevel=info
+    env_file: .env
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - aiops
+
+  worker-labeling:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    command: celery -A workers.celery_app worker -Q labeling -c 1 --loglevel=info
+    env_file: .env
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - aiops
+
+  worker-training:
+    build:
+      context: ./backend
+      dockerfile: ${TRAINING_DOCKERFILE:-Dockerfile}
+    restart: always
+    command: celery -A workers.celery_app worker -Q training -c 1 --loglevel=info
+    env_file: .env
+    volumes:
+      - training_data:/tmp/training
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - aiops
+
+  worker-deploy:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    command: celery -A workers.celery_app worker -Q deploy -c 1 --loglevel=info
+    env_file: .env
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - aiops
+
+  worker-monitor:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    command: celery -A workers.celery_app worker -Q monitor -c 1 --loglevel=info
+    env_file: .env
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - aiops
+
+  worker-reports:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    command: celery -A workers.celery_app worker -Q reports -c 1 --loglevel=info
+    env_file: .env
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - aiops
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    command: celery -A workers.celery_app beat --loglevel=info
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - aiops
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    restart: always
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PORT_PROMETHEUS:-6005}:9090"
+    networks:
+      - aiops
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: always
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_SERVER_ROOT_URL: ${PUBLIC_URL:-http://localhost:6000}
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${PORT_GRAFANA:-6004}:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - aiops
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+      args:
+        VITE_API_URL: ""
+        VITE_WS_URL: ""
+    restart: always
+    ports:
+      - "${PORT_APP:-6000}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - aiops
+
+networks:
+  aiops:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+  training_data:

@@ -1,0 +1,34 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" } } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "API Requests",
+      "type": "timeseries",
+      "targets": [{ "expr": "aiops_requests_total", "legendFormat": "requests" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "title": "Service Health",
+      "type": "stat",
+      "targets": [{ "expr": "up", "legendFormat": "{{job}}" }]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["aiops"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "AI Operations Center",
+  "uid": "aiops-main",
+  "version": 1
+}
