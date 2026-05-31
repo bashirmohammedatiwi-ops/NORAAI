@@ -20,7 +20,7 @@ def export_yolo_dataset_sync(
     if not version:
         raise ValueError("Dataset version not found")
 
-    image_ids = [UUID(i) for i in version.manifest.get("image_ids", [])]
+    image_ids = [uuid.UUID(i) for i in version.manifest.get("image_ids", [])]
     if not image_ids:
         result = session.execute(
             select(DatasetImage.image_id).where(DatasetImage.version_id == dataset_version_id)
