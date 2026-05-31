@@ -24,7 +24,7 @@ class FleetDevice(Base):
     latitude: Mapped[float | None] = mapped_column(Float)
     longitude: Mapped[float | None] = mapped_column(Float)
     last_communication: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    extra_metadata: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     project = relationship("Project", back_populates="fleet_devices")
@@ -41,7 +41,7 @@ class DeviceTelemetry(Base):
     gps_status: Mapped[str | None] = mapped_column(String(50))
     camera_status: Mapped[str | None] = mapped_column(String(50))
     speed: Mapped[float | None] = mapped_column(Float)
-    metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    extra_metadata: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     device = relationship("FleetDevice", back_populates="telemetry")
@@ -69,7 +69,7 @@ class RoadEvent(Base):
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    extra_metadata: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
