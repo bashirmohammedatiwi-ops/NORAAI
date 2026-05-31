@@ -9,7 +9,7 @@ docker compose -f docker-compose.prod.yml logs --tail=30 api
 echo ""
 echo "=== Health Checks ==="
 curl -sf "http://localhost:${PORT_API:-6001}/health" && echo " API: OK" || echo " API: FAILED"
-curl -sf "http://localhost:${PORT_APP:-6000}/health" && echo " Gateway: OK" || echo " Gateway: FAILED"
+curl -sf "http://localhost:${PORT_APP:-8080}/health" && echo " Gateway: OK" || echo " Gateway: FAILED"
 
 echo ""
 echo "=== .env DATABASE check ==="
