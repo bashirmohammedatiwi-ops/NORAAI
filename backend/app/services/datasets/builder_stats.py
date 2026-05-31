@@ -31,17 +31,23 @@ async def get_builder_stats(db: AsyncSession, dataset_id: uuid.UUID) -> dict | N
         image_count = len(image_ids)
 
     per_class: list[dict] = []
+    unlabeled_count = 0
     if image_ids:
         uuids = [uuid.UUID(i) for i in image_ids]
         ann_result = await db.execute(
-            select(Annotation.class_id, func.count(Annotation.id))
+            select(
+                Annotation.class_id,
+                func.count(func.distinct(Annotation.image_id)),
+                func.count(Annotation.id),
+            )
             .where(
                 Annotation.image_id.in_(uuids),
                 Annotation.status.in_([AnnotationStatus.APPROVED, AnnotationStatus.EDITED]),
             )
             .group_by(Annotation.class_id)
         )
-        class_counts = {str(row[0]): row[1] for row in ann_result.all()}
+        class_image_counts = {str(row[0]): row[1] for row in ann_result.all()}
+        class_ann_counts = {str(row[0]): row[2] for row in ann_result.all()}
 
         classes_result = await db.execute(
             select(ClassLabel).where(
@@ -50,9 +56,16 @@ async def get_builder_stats(db: AsyncSession, dataset_id: uuid.UUID) -> dict | N
             )
         )
         for cls in classes_result.scalars().all():
-            count = class_counts.get(str(cls.id), 0)
-            if count:
-                per_class.append({"class_id": str(cls.id), "name": cls.name, "color": cls.color, "count": count})
+            cid = str(cls.id)
+            per_class.append(
+                {
+                    "class_id": cid,
+                    "name": cls.name,
+                    "color": cls.color,
+                    "count": class_ann_counts.get(cid, 0),
+                    "image_count": class_image_counts.get(cid, 0),
+                }
+            )
 
         img_with_ann = await db.execute(
             select(func.count(func.distinct(Annotation.image_id))).where(
@@ -61,6 +74,7 @@ async def get_builder_stats(db: AsyncSession, dataset_id: uuid.UUID) -> dict | N
             )
         )
         annotated_count = img_with_ann.scalar() or 0
+        unlabeled_count = max(0, len(uuids) - annotated_count)
 
     return {
         "dataset_id": str(dataset.id),
@@ -69,5 +83,6 @@ async def get_builder_stats(db: AsyncSession, dataset_id: uuid.UUID) -> dict | N
         "image_count": image_count,
         "annotated_count": annotated_count,
         "ready_for_training": image_count > 0 and annotated_count > 0,
+        "unlabeled_count": unlabeled_count,
         "per_class": per_class,
     }

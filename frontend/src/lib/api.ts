@@ -80,6 +80,24 @@ class ApiClient {
   getDownloadUrl(path: string): string {
     return API_URL ? `${API_URL}${path}` : path;
   }
+
+  imageContentPath(imageId: string): string {
+    return `/api/v1/ingestion/images/${imageId}/content`;
+  }
+
+  async fetchBlob(path: string): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    const url = API_URL ? `${API_URL}${path}` : path;
+    const res = await fetch(url, { headers });
+    if (res.status === 401) {
+      this.clearToken();
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    if (!res.ok) throw new Error('Failed to load image');
+    return res.blob();
+  }
 }
 
 export const api = new ApiClient();

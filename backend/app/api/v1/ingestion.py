@@ -2,12 +2,13 @@ import secrets
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
-from app.core.minio_client import upload_bytes
+from app.core.minio_client import download_bytes, upload_bytes
 from app.models import (
     ClassAuditLog,
     ClassLabel,
@@ -175,6 +176,33 @@ async def list_images(project_id: UUID, db: AsyncSession = Depends(get_db)):
             )
         )
     return responses
+
+
+def _guess_content_type(filename: str) -> str:
+    lower = filename.lower()
+    if lower.endswith(".png"):
+        return "image/png"
+    if lower.endswith(".webp"):
+        return "image/webp"
+    if lower.endswith(".gif"):
+        return "image/gif"
+    return "image/jpeg"
+
+
+@router.get("/ingestion/images/{image_id}/content")
+async def get_image_content(
+    image_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    image = await db.get(Image, image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+    try:
+        data = download_bytes(image.minio_key)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Image file not found") from exc
+    return Response(content=data, media_type=_guess_content_type(image.filename))
 
 
 @router.get("/projects/{project_id}/classes", response_model=list[ClassResponse])

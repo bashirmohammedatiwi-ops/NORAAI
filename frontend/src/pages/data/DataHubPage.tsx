@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { SimpleTrainingPanel } from '@/components/training/SimpleTrainingPanel';
+import { DatasetGallery } from '@/components/datasets/DatasetGallery';
 import {
-  CheckCircle2, Database, ImagePlus, Plus, RefreshCw, Tag, Upload, AlertCircle,
+  CheckCircle2, Database, Eye, ImagePlus, Plus, RefreshCw, Tag, Upload, AlertCircle,
 } from 'lucide-react';
 
 interface DatasetSummary {
@@ -139,9 +140,16 @@ export default function DataHubPage() {
             Upload images with a class — auto full-image labels — then train.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={refreshAll}>
-          <RefreshCw className="h-4 w-4 mr-1" /> Refresh
-        </Button>
+        <div className="flex gap-2">
+          {selectedId && projectId && stats && stats.image_count > 0 && (
+            <Link to={`/projects/${projectId}/datasets/${selectedId}`}>
+              <Button variant="outline" size="sm"><Eye className="h-4 w-4 mr-1" /> Browse images</Button>
+            </Link>
+          )}
+          <Button variant="outline" size="sm" onClick={refreshAll}>
+            <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Step 1: Dataset */}
@@ -287,6 +295,20 @@ export default function DataHubPage() {
           datasetVersionId={stats.head_version_id}
           imageCount={stats.image_count}
         />
+      )}
+
+      {selectedId && stats && stats.image_count > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Uploaded images preview</CardTitle>
+            <Link to={`/projects/${projectId}/datasets/${selectedId}`}>
+              <Button variant="link" size="sm">View full gallery</Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <DatasetGallery datasetId={selectedId} projectId={projectId} pageSize={12} showHeader={false} />
+          </CardContent>
+        </Card>
       )}
 
       <p className="text-xs text-muted-foreground text-center">

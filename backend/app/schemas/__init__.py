@@ -154,7 +154,57 @@ class DatasetBuilderStatsResponse(BaseModel):
     image_count: int = 0
     annotated_count: int = 0
     ready_for_training: bool = False
+    unlabeled_count: int = 0
     per_class: list[dict] = Field(default_factory=list)
+
+
+class ClassOnImageResponse(BaseModel):
+    class_id: UUID
+    name: str
+    color: str
+
+
+class AnnotationOnImageResponse(BaseModel):
+    id: UUID
+    class_id: UUID
+    class_name: str
+    class_color: str
+    x_center: float
+    y_center: float
+    width: float
+    height: float
+    confidence: float | None = None
+    status: str
+    source: str
+
+
+class DatasetImageDetailResponse(BaseModel):
+    id: UUID
+    filename: str
+    status: str
+    source_type: str
+    quality_score: float | None = None
+    width: int | None = None
+    height: int | None = None
+    created_at: datetime
+    classes: list[ClassOnImageResponse] = Field(default_factory=list)
+    annotations: list[AnnotationOnImageResponse] = Field(default_factory=list)
+    is_annotated: bool = False
+
+
+class DatasetGalleryResponse(BaseModel):
+    dataset_id: UUID
+    dataset_name: str
+    description: str | None = None
+    head_version_id: UUID | None = None
+    total: int = 0
+    limit: int = 48
+    offset: int = 0
+    class_filter: UUID | None = None
+    unlabeled_only: bool = False
+    unlabeled_count: int = 0
+    per_class: list[dict] = Field(default_factory=list)
+    items: list[DatasetImageDetailResponse] = Field(default_factory=list)
 
 
 class DatasetVersionCreate(BaseModel):

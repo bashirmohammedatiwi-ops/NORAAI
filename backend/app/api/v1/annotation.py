@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,6 +43,43 @@ async def pending_annotations(project_id: UUID, db: AsyncSession = Depends(get_d
             "status": a.status.value,
         }
         for a in result.scalars().all()
+    ]
+
+
+@router.get("/image/{image_id}")
+async def list_image_annotations(image_id: UUID, db: AsyncSession = Depends(get_db)):
+    from app.models import ClassLabel, Image
+
+    image = await db.get(Image, image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    result = await db.execute(
+        select(Annotation, ClassLabel)
+        .join(ClassLabel, ClassLabel.id == Annotation.class_id)
+        .where(
+            Annotation.image_id == image_id,
+            Annotation.status.in_(
+                [AnnotationStatus.APPROVED, AnnotationStatus.EDITED, AnnotationStatus.PENDING_REVIEW]
+            ),
+        )
+    )
+    return [
+        {
+            "id": str(a.id),
+            "image_id": str(a.image_id),
+            "class_id": str(a.class_id),
+            "class_name": cls.name,
+            "class_color": cls.color,
+            "x_center": a.x_center,
+            "y_center": a.y_center,
+            "width": a.width,
+            "height": a.height,
+            "confidence": a.confidence,
+            "status": a.status.value,
+            "source": a.source,
+        }
+        for a, cls in result.all()
     ]
 
 

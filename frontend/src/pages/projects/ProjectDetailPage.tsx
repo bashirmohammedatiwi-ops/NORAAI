@@ -9,7 +9,7 @@ import { Database } from 'lucide-react';
 const tabs = [
   { key: 'data', label: 'Dataset Builder', path: 'data' },
   { key: '', label: 'Overview', path: '' },
-  { key: 'datasets', label: 'Datasets', path: 'datasets' },
+  { key: 'datasets', label: 'Browse Datasets', path: 'datasets' },
   { key: 'annotation', label: 'Annotation', path: 'annotation' },
   { key: 'classes', label: 'Classes', path: 'classes' },
   { key: 'training', label: 'Training', path: 'training' },

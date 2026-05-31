@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from app.schemas import (
     DatasetBuilderStatsResponse,
     DatasetCreate,
     DatasetDiffResponse,
+    DatasetGalleryResponse,
     DatasetSummaryResponse,
     DatasetUploadResponse,
     DatasetVersionCreate,
@@ -24,6 +25,7 @@ from app.services.datasets.dataset_images import (
     ensure_default_dataset,
     get_dataset_summary,
 )
+from app.services.datasets.gallery import get_dataset_gallery
 from app.services.datasets.versioning import compare_versions, create_dataset, create_version, rollback_dataset
 from workers.ingestion.tasks import process_image
 
@@ -62,6 +64,23 @@ async def dataset_summary(dataset_id: UUID, db: AsyncSession = Depends(get_db)):
     if not summary:
         raise HTTPException(status_code=404, detail="Dataset not found")
     return DatasetSummaryResponse(**summary)
+
+
+@router.get("/{dataset_id}/gallery", response_model=DatasetGalleryResponse)
+async def dataset_gallery(
+    dataset_id: UUID,
+    class_id: UUID | None = Query(None),
+    unlabeled_only: bool = Query(False),
+    limit: int = Query(48, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    gallery = await get_dataset_gallery(
+        db, dataset_id, class_id=class_id, unlabeled_only=unlabeled_only, limit=limit, offset=offset
+    )
+    if not gallery:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return DatasetGalleryResponse(**gallery)
 
 
 @router.get("/{dataset_id}/images", response_model=list[ImageResponse])

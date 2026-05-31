@@ -8,6 +8,7 @@ import ProjectDetailPage from '@/pages/projects/ProjectDetailPage';
 import DataHubPage from '@/pages/data/DataHubPage';
 import DatasetBuilderLandingPage from '@/pages/data/DatasetBuilderLandingPage';
 import DatasetsPage from '@/pages/datasets/DatasetsPage';
+import DatasetDetailPage from '@/pages/datasets/DatasetDetailPage';
 import AnnotationPage from '@/pages/annotation/AnnotationPage';
 import ClassesPage from '@/pages/classes/ClassesPage';
 import TrainingPage from '@/pages/training/TrainingPage';
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="projects/:id" element={<ProjectDetailPage />} />
             <Route path="projects/:id/data" element={<DataHubPage />} />
             <Route path="projects/:id/datasets" element={<DatasetsPage />} />
+            <Route path="projects/:id/datasets/:datasetId" element={<DatasetDetailPage />} />
             <Route path="projects/:id/annotation" element={<AnnotationPage />} />
             <Route path="projects/:id/classes" element={<ClassesPage />} />
             <Route path="projects/:id/training" element={<TrainingPage />} />
