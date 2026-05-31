@@ -6,6 +6,27 @@ function wsBaseUrl(): string {
   return `${proto}//${window.location.host}`;
 }
 
+function formatApiError(detail: unknown, fallback = 'Request failed'): string {
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) {
+          return String((item as { msg: unknown }).msg);
+        }
+        return JSON.stringify(item);
+      })
+      .join('; ');
+  }
+  if (detail && typeof detail === 'object') {
+    if ('msg' in detail) return String((detail as { msg: unknown }).msg);
+    if ('message' in detail) return String((detail as { message: unknown }).message);
+    return JSON.stringify(detail);
+  }
+  return fallback;
+}
+
 class ApiClient {
   private token: string | null = localStorage.getItem('token');
 
@@ -35,7 +56,7 @@ class ApiClient {
     }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || 'Request failed');
+      throw new Error(formatApiError(err.detail, res.statusText || 'Request failed'));
     }
     if (res.status === 204) return {} as T;
     return res.json();
