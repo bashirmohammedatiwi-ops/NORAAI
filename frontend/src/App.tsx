@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { ProjectLayout } from '@/components/layout/ProjectLayout';
 import LoginPage from '@/pages/LoginPage';
 import DashboardPage from '@/pages/DashboardPage';
 import ProjectsPage from '@/pages/projects/ProjectsPage';
@@ -39,16 +40,18 @@ export default function App() {
             <Route index element={<DashboardPage />} />
             <Route path="builder" element={<DatasetBuilderLandingPage />} />
             <Route path="projects" element={<ProjectsPage />} />
-            <Route path="projects/:id" element={<ProjectDetailPage />} />
-            <Route path="projects/:id/data" element={<DataHubPage />} />
-            <Route path="projects/:id/datasets" element={<DatasetsPage />} />
-            <Route path="projects/:id/datasets/:datasetId" element={<DatasetDetailPage />} />
-            <Route path="projects/:id/annotation" element={<AnnotationPage />} />
-            <Route path="projects/:id/classes" element={<ClassesPage />} />
-            <Route path="projects/:id/training" element={<TrainingPage />} />
-            <Route path="projects/:id/models" element={<ModelsPage />} />
-            <Route path="projects/:id/deployments" element={<DeploymentsPage />} />
-            <Route path="projects/:id/monitoring" element={<MonitoringPage />} />
+            <Route path="projects/:id" element={<ProjectLayout />}>
+              <Route index element={<ProjectDetailPage />} />
+              <Route path="data" element={<DataHubPage />} />
+              <Route path="datasets" element={<DatasetsPage />} />
+              <Route path="datasets/:datasetId" element={<DatasetDetailPage />} />
+              <Route path="annotation" element={<AnnotationPage />} />
+              <Route path="classes" element={<ClassesPage />} />
+              <Route path="training" element={<TrainingPage />} />
+              <Route path="models" element={<ModelsPage />} />
+              <Route path="deployments" element={<DeploymentsPage />} />
+              <Route path="monitoring" element={<MonitoringPage />} />
+            </Route>
             <Route path="ingestion" element={<IngestionPage />} />
             <Route path="road-intelligence" element={<RoadIntelligencePage />} />
             <Route path="fleet" element={<FleetPage />} />

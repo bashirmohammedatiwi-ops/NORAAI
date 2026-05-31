@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -53,17 +54,16 @@ export default function DatasetsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">Datasets</h1>
-          <p className="text-muted-foreground">Browse images, classes, and labels per dataset</p>
-        </div>
+      <PageHeader
+        title="Dataset Gallery"
+        description="Browse all datasets — view images, class labels, and annotation status."
+      >
         {projectId && (
           <Link to={`/projects/${projectId}/data`}>
-            <Button><Database className="h-4 w-4 mr-2" /> Dataset Builder</Button>
+            <Button><Database className="h-4 w-4" /> Dataset Builder</Button>
           </Link>
         )}
-      </div>
+      </PageHeader>
 
       <Card>
         <CardHeader><CardTitle>Create Dataset</CardTitle></CardHeader>

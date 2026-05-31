@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Play, Rocket } from 'lucide-react';
 
 interface Props {
@@ -49,50 +50,50 @@ export function SimpleTrainingPanel({ projectId, datasetVersionId, imageCount }:
   };
 
   return (
-    <Card>
+    <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-card">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Rocket className="h-5 w-5 text-primary" />
-          4. Quick Train
-        </CardTitle>
+        <div className="flex items-center gap-3">
+          <span className="step-badge">4</span>
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Rocket className="h-5 w-5 text-emerald-600" />
+              Quick Train
+            </CardTitle>
+            <CardDescription>
+              Train on <strong>{imageCount}</strong> labeled images (80% train / 20% validation)
+            </CardDescription>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Train on <strong>{imageCount}</strong> labeled images (auto full-image boxes).
-        </p>
         <div className="flex flex-wrap gap-4 items-end">
-          <div>
-            <label className="text-xs text-muted-foreground block mb-1">Model</label>
-            <select
-              className="h-10 rounded-md border border-border bg-background px-3 text-sm min-w-[160px]"
-              value={architecture}
-              onChange={(e) => setArchitecture(e.target.value)}
-            >
+          <div className="min-w-[160px]">
+            <Select label="Model" value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
               <option value="yolo11">YOLO11 (recommended)</option>
               <option value="yolov10">YOLOv10</option>
               <option value="rt_detr">RT-DETR</option>
-            </select>
+            </Select>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">Epochs</label>
+            <label className="text-xs font-medium text-muted-foreground block mb-1.5">Epochs</label>
             <Input type="number" className="w-24" value={epochs} min={5} max={200} onChange={(e) => setEpochs(+e.target.value)} />
           </div>
-          <Button onClick={startTraining} disabled={loading || imageCount < 1}>
-            <Play className="h-4 w-4 mr-2" />
+          <Button onClick={startTraining} disabled={loading || imageCount < 1} variant="success">
+            <Play className="h-4 w-4" />
             {loading ? 'Starting...' : 'Start Training'}
           </Button>
         </div>
         {done && (
-          <p className="text-sm text-green-600">
+          <p className="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 border border-emerald-100">
             Training started!{' '}
-            <Link to={`/projects/${projectId}/training`} className="underline font-medium">
+            <Link to={`/projects/${projectId}/training`} className="underline font-semibold">
               View progress →
             </Link>
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Need full control? Open{' '}
-          <Link to={`/projects/${projectId}/training`} className="underline">Advanced Training</Link>
+          Need full control?{' '}
+          <Link to={`/projects/${projectId}/training`} className="underline text-primary">Advanced Training</Link>
         </p>
       </CardContent>
     </Card>

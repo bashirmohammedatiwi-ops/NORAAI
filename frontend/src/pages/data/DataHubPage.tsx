@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { SimpleTrainingPanel } from '@/components/training/SimpleTrainingPanel';
 import { DatasetGallery } from '@/components/datasets/DatasetGallery';
 import {
-  CheckCircle2, Database, Eye, ImagePlus, Plus, RefreshCw, Tag, Upload, AlertCircle,
+  CheckCircle2, Eye, ImagePlus, Plus, RefreshCw, AlertCircle,
 } from 'lucide-react';
 
 interface DatasetSummary {
@@ -129,55 +131,58 @@ export default function DataHubPage() {
   const selectedClass = classes.find((c) => c.id === selectedClassId);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Database className="h-8 w-8 text-primary" />
-            Dataset Builder
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Upload images with a class — auto full-image labels — then train.
-          </p>
-        </div>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+        <p className="text-sm text-foreground">
+          <strong>Workflow:</strong> Pick dataset → choose class → upload images → train
+        </p>
         <div className="flex gap-2">
           {selectedId && projectId && stats && stats.image_count > 0 && (
             <Link to={`/projects/${projectId}/datasets/${selectedId}`}>
-              <Button variant="outline" size="sm"><Eye className="h-4 w-4 mr-1" /> Browse images</Button>
+              <Button variant="outline" size="sm"><Eye className="h-4 w-4" /> Gallery</Button>
             </Link>
           )}
           <Button variant="outline" size="sm" onClick={refreshAll}>
-            <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+            <RefreshCw className="h-4 w-4" /> Refresh
           </Button>
         </div>
       </div>
 
-      {/* Step 1: Dataset */}
       <Card>
-        <CardHeader><CardTitle className="text-base">1. Dataset</CardTitle></CardHeader>
-        <CardContent className="flex flex-wrap gap-3 items-end">
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-xs text-muted-foreground block mb-1">Select dataset</label>
-            <select
-              className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
-              value={selectedId}
-              onChange={(e) => setSelectedId(e.target.value)}
-            >
-              {datasets.map((d) => (
-                <option key={d.id} value={d.id}>{d.name} ({d.image_count} imgs)</option>
-              ))}
-            </select>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <span className="step-badge">1</span>
+            <div>
+              <CardTitle>Choose dataset</CardTitle>
+              <CardDescription>Select existing or create a new dataset</CardDescription>
+            </div>
           </div>
-          <div className="flex gap-2 flex-1 min-w-[200px]">
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3 items-end">
+          <div className="flex-1 min-w-[220px]">
+            <Select label="Active dataset" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id}>{d.name} ({d.image_count} images)</option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex gap-2 flex-1 min-w-[220px]">
             <Input placeholder="New dataset name" value={newDatasetName} onChange={(e) => setNewDatasetName(e.target.value)} />
             <Button onClick={createDataset}><Plus className="h-4 w-4" /></Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Step 2: Classes */}
       <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Tag className="h-4 w-4" /> 2. Class (label for upload)</CardTitle></CardHeader>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <span className="step-badge">2</span>
+            <div>
+              <CardTitle>Pick class label</CardTitle>
+              <CardDescription>Every uploaded image gets this class automatically</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {classes.length === 0 && (
@@ -188,8 +193,8 @@ export default function DataHubPage() {
                 key={c.id}
                 type="button"
                 onClick={() => setSelectedClassId(c.id)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-md border text-sm transition-colors ${
-                  selectedClassId === c.id ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-all ${
+                  selectedClassId === c.id ? 'border-primary bg-primary/10 text-primary shadow-sm' : 'border-border bg-card hover:bg-accent'
                 }`}
               >
                 <span className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
@@ -204,24 +209,31 @@ export default function DataHubPage() {
         </CardContent>
       </Card>
 
-      {/* Step 3: Upload with class */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Upload className="h-4 w-4" /> 3. Upload images for class
-            {selectedClass && (
-              <span className="text-sm font-normal text-muted-foreground">
-                → <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedClass.color }} />{selectedClass.name}</span>
-              </span>
-            )}
-          </CardTitle>
+          <div className="flex items-center gap-3">
+            <span className="step-badge">3</span>
+            <div>
+              <CardTitle className="flex flex-wrap items-center gap-2">
+                Upload images
+                {selectedClass && (
+                  <Badge style={{ backgroundColor: selectedClass.color, color: '#fff', borderColor: 'transparent' }}>
+                    {selectedClass.name}
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>Drag & drop or browse — auto full-image YOLO labels</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div
             onDragOver={(e) => e.preventDefault()}
             onDrop={onDrop}
-            className={`border-2 border-dashed rounded-lg p-10 text-center transition-colors ${
-              selectedClassId ? 'border-border hover:border-primary/50' : 'border-yellow-500/40 bg-yellow-500/5'
+            className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all ${
+              selectedClassId
+                ? 'border-primary/30 bg-primary/5 hover:border-primary/50 hover:bg-primary/10'
+                : 'border-amber-200 bg-amber-50/50'
             }`}
           >
             <ImagePlus className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
@@ -248,38 +260,38 @@ export default function DataHubPage() {
       {/* Stats */}
       {stats && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Dataset Summary</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Summary</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
+              <div className="rounded-xl bg-secondary/50 p-4">
                 <p className="text-xs text-muted-foreground">Total images</p>
                 <p className="text-2xl font-bold">{stats.image_count}</p>
               </div>
-              <div>
+              <div className="rounded-xl bg-secondary/50 p-4">
                 <p className="text-xs text-muted-foreground">Auto-labeled</p>
                 <p className="text-2xl font-bold">{stats.annotated_count}</p>
               </div>
-              <div className="md:col-span-2 flex items-center gap-2">
+              <div className="md:col-span-2 flex items-center gap-2 rounded-xl border border-border/60 p-4">
                 {stats.ready_for_training ? (
                   <>
-                    <CheckCircle2 className="h-6 w-6 text-green-500" />
-                    <span className="text-green-600 font-medium">Ready for training</span>
+                    <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+                    <span className="text-emerald-700 font-medium">Ready for training</span>
                   </>
                 ) : (
                   <>
-                    <AlertCircle className="h-6 w-6 text-yellow-500" />
-                    <span className="text-yellow-600">Upload images with a class to enable training</span>
+                    <AlertCircle className="h-6 w-6 text-amber-500" />
+                    <span className="text-amber-700">Upload images with a class to enable training</span>
                   </>
                 )}
               </div>
             </div>
             {stats.per_class.length > 0 && (
-              <div className="flex flex-wrap gap-3 pt-2 border-t border-border">
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
                 {stats.per_class.map((c) => (
-                  <div key={c.class_id} className="flex items-center gap-2 text-sm px-3 py-1 rounded-full bg-secondary">
+                  <Badge key={c.class_id} variant="outline" className="gap-1.5 py-1">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
-                    {c.name}: <strong>{c.count}</strong>
-                  </div>
+                    {c.name}: {c.count}
+                  </Badge>
                 ))}
               </div>
             )}
