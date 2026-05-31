@@ -64,6 +64,10 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     domain: Mapped[str] = mapped_column(String(100), default="computer_vision")
+    active_model_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_artifacts.id", use_alter=True, name="fk_projects_active_model"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

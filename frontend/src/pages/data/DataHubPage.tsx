@@ -301,12 +301,7 @@ export default function DataHubPage() {
 
       {/* Step 4: Train */}
       {projectId && stats?.ready_for_training && stats.head_version_id && (
-        <SimpleTrainingPanel
-          projectId={projectId}
-          datasetId={selectedId}
-          datasetVersionId={stats.head_version_id}
-          imageCount={stats.image_count}
-        />
+        <SimpleTrainingPanel projectId={projectId} imageCount={stats.image_count} />
       )}
 
       {selectedId && stats && stats.image_count > 0 && (

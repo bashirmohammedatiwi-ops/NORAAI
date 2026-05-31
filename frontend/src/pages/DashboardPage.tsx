@@ -28,7 +28,7 @@ export default function DashboardPage() {
     { step: 1, title: 'Create or open a project', desc: 'Organize your models and datasets', to: '/projects', icon: FolderKanban },
     { step: 2, title: 'Upload images with classes', desc: 'Dataset Builder auto-labels for YOLO', to: '/builder', icon: Sparkles },
     { step: 3, title: 'Browse & verify labels', desc: 'Gallery view with class filters', to: projects[0] ? `/projects/${projects[0].id}/datasets` : '/projects', icon: Images },
-    { step: 4, title: 'Train & deploy', desc: 'Quick Train then publish model', to: projects[0] ? `/projects/${projects[0].id}/training` : '/projects', icon: Rocket },
+    { step: 4, title: 'Retrain & use everywhere', desc: 'One model — all services connected', to: projects[0] ? `/projects/${projects[0].id}/model` : '/projects', icon: Rocket },
   ];
 
   return (

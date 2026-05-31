@@ -25,6 +25,12 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text(
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS active_model_artifact_id UUID "
+                "REFERENCES model_artifacts(id)"
+            )
+        )
 
     async with async_session() as db:
         org_result = await db.execute(select(Organization).limit(1))

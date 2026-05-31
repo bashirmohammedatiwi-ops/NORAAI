@@ -1,12 +1,14 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
-from app.models import HyperparameterTrial, ModelArchitecture, ModelArtifact, TrainingJob, TrainingMetric, TrainingMode, TrainingStatus, User
+from app.models import ClassLabel, HyperparameterTrial, ModelArchitecture, ModelArtifact, TrainingJob, TrainingMetric, TrainingMode, TrainingStatus, User
+from app.services.datasets.dataset_images import ensure_default_dataset, get_dataset_summary
+from app.services.models.active_model import get_active_model_status
 from app.schemas import ModelArtifactResponse, ModelCompareRequest, TrainingJobCreate, TrainingJobResponse
 from app.services.evaluation.compare import compare_models
 from app.services.training.service import TRAINING_OPTIONS, get_job_detail
@@ -163,3 +165,78 @@ async def update_model_lifecycle(model_id: UUID, lifecycle: str, db: AsyncSessio
 @router.post("/models/compare")
 async def compare_model_artifacts(data: ModelCompareRequest, db: AsyncSession = Depends(get_db)):
     return await compare_models(db, data.model_ids)
+
+
+@router.get("/projects/{project_id}/active-model")
+async def project_active_model(project_id: UUID, db: AsyncSession = Depends(get_db)):
+    status = await get_active_model_status(db, project_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return status
+
+
+@router.post("/training/project/{project_id}/retrain", response_model=TrainingJobResponse)
+async def retrain_project_model(
+    project_id: UUID,
+    epochs: int = Query(20, ge=5, le=200),
+    architecture: str = Query("yolo11"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrain the single project model on the latest dataset — no manual model selection."""
+    from app.models import Dataset, TrainingStatus
+
+    running = await db.execute(
+        select(TrainingJob).where(
+            TrainingJob.project_id == project_id,
+            TrainingJob.status.in_([TrainingStatus.PENDING, TrainingStatus.RUNNING]),
+        )
+    )
+    if running.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Training already in progress")
+
+    dataset = await ensure_default_dataset(db, project_id)
+    summary = await get_dataset_summary(db, dataset.id)
+    if not summary or summary.get("image_count", 0) < 1:
+        raise HTTPException(status_code=400, detail="No images in dataset. Upload via Dataset Builder first.")
+
+    head_version_id = summary.get("head_version_id")
+    if not head_version_id:
+        raise HTTPException(status_code=400, detail="Dataset has no version")
+
+    job = TrainingJob(
+        project_id=project_id,
+        name="Retrain Main Model",
+        architecture=ModelArchitecture(architecture),
+        training_mode=TrainingMode.SINGLE_GPU,
+        dataset_version_id=UUID(head_version_id) if isinstance(head_version_id, str) else head_version_id,
+        hpo_enabled=False,
+        config={
+            "epochs": epochs,
+            "batch_size": 8,
+            "learning_rate": 0.01,
+            "optimizer": "AdamW",
+            "scheduler": "cosine",
+            "augmentation": "medium",
+            "image_size": 640,
+            "mixed_precision": False,
+            "val_split": 0.2,
+            "continuous": True,
+        },
+        created_by=user.id,
+    )
+    db.add(job)
+    await db.flush()
+
+    task = run_training_job.delay(str(job.id))
+    job.celery_task_id = task.id
+    await db.flush()
+
+    return TrainingJobResponse(
+        id=job.id,
+        name=job.name,
+        architecture=job.architecture.value,
+        status=job.status.value,
+        hpo_enabled=job.hpo_enabled,
+        created_at=job.created_at,
+    )

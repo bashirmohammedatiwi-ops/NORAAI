@@ -13,7 +13,7 @@ import DatasetDetailPage from '@/pages/datasets/DatasetDetailPage';
 import AnnotationPage from '@/pages/annotation/AnnotationPage';
 import ClassesPage from '@/pages/classes/ClassesPage';
 import TrainingPage from '@/pages/training/TrainingPage';
-import ModelsPage from '@/pages/models/ModelsPage';
+import UnifiedModelPage from '@/pages/models/UnifiedModelPage';
 import DeploymentsPage from '@/pages/deployments/DeploymentsPage';
 import MonitoringPage from '@/pages/monitoring/MonitoringPage';
 import IngestionPage from '@/pages/ingestion/IngestionPage';
@@ -48,7 +48,8 @@ export default function App() {
               <Route path="annotation" element={<AnnotationPage />} />
               <Route path="classes" element={<ClassesPage />} />
               <Route path="training" element={<TrainingPage />} />
-              <Route path="models" element={<ModelsPage />} />
+              <Route path="model" element={<UnifiedModelPage />} />
+              <Route path="models" element={<UnifiedModelPage />} />
               <Route path="deployments" element={<DeploymentsPage />} />
               <Route path="monitoring" element={<MonitoringPage />} />
             </Route>

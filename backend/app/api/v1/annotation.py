@@ -123,13 +123,22 @@ async def reject_annotation(
 
 
 @router.post("/auto-label")
-async def trigger_auto_label(data: AutoLabelRequest):
+async def trigger_auto_label(data: AutoLabelRequest, db: AsyncSession = Depends(get_db)):
+    from app.services.models.active_model import get_active_model
+
+    model_id = data.model_artifact_id
+    if not model_id:
+        artifact = await get_active_model(db, data.project_id)
+        if not artifact:
+            raise HTTPException(status_code=400, detail="No active model. Train the project model first.")
+        model_id = artifact.id
+
     task = auto_label_images.delay(
         str(data.project_id),
         [str(i) for i in data.image_ids],
-        str(data.model_artifact_id),
+        str(model_id),
     )
-    return {"task_id": task.id, "status": "queued"}
+    return {"task_id": task.id, "status": "queued", "model_id": str(model_id)}
 
 
 @router.get("/active-learning/{project_id}")

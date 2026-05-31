@@ -5,16 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { Play, Rocket } from 'lucide-react';
+import { Play, RefreshCw } from 'lucide-react';
 
 interface Props {
   projectId: string;
-  datasetId: string;
-  datasetVersionId: string;
   imageCount: number;
 }
 
-export function SimpleTrainingPanel({ projectId, datasetVersionId, imageCount }: Props) {
+export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
   const [architecture, setArchitecture] = useState('yolo11');
   const [epochs, setEpochs] = useState(20);
   const [loading, setLoading] = useState(false);
@@ -25,24 +23,9 @@ export function SimpleTrainingPanel({ projectId, datasetVersionId, imageCount }:
     setLoading(true);
     setDone(false);
     try {
-      await api.post(`/api/v1/training/project/${projectId}`, {
-        name: `${architecture} training`,
-        architecture,
-        training_mode: 'single_gpu',
-        dataset_version_id: datasetVersionId,
-        hpo_enabled: false,
-        config: {
-          epochs,
-          batch_size: 8,
-          learning_rate: 0.01,
-          optimizer: 'AdamW',
-          scheduler: 'cosine',
-          augmentation: 'medium',
-          image_size: 640,
-          mixed_precision: false,
-          val_split: 0.2,
-        },
-      });
+      await api.post(
+        `/api/v1/training/project/${projectId}/retrain?epochs=${epochs}&architecture=${architecture}`
+      );
       setDone(true);
     } finally {
       setLoading(false);
@@ -56,11 +39,11 @@ export function SimpleTrainingPanel({ projectId, datasetVersionId, imageCount }:
           <span className="step-badge">4</span>
           <div>
             <CardTitle className="flex items-center gap-2">
-              <Rocket className="h-5 w-5 text-emerald-600" />
-              Quick Train
+              <RefreshCw className="h-5 w-5 text-emerald-600" />
+              Retrain project model
             </CardTitle>
             <CardDescription>
-              Train on <strong>{imageCount}</strong> labeled images (80% train / 20% validation)
+              Updates the <strong>single project model</strong> with {imageCount} images — Road Intel, Fleet & Monitoring use it automatically
             </CardDescription>
           </div>
         </div>
@@ -80,21 +63,15 @@ export function SimpleTrainingPanel({ projectId, datasetVersionId, imageCount }:
           </div>
           <Button onClick={startTraining} disabled={loading || imageCount < 1} variant="success">
             <Play className="h-4 w-4" />
-            {loading ? 'Starting...' : 'Start Training'}
+            {loading ? 'Starting...' : 'Retrain Model'}
           </Button>
         </div>
         {done && (
           <p className="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 border border-emerald-100">
-            Training started!{' '}
-            <Link to={`/projects/${projectId}/training`} className="underline font-semibold">
-              View progress →
-            </Link>
+            Retraining started!{' '}
+            <Link to={`/projects/${projectId}/model`} className="underline font-semibold">View model →</Link>
           </p>
         )}
-        <p className="text-xs text-muted-foreground">
-          Need full control?{' '}
-          <Link to={`/projects/${projectId}/training`} className="underline text-primary">Advanced Training</Link>
-        </p>
       </CardContent>
     </Card>
   );

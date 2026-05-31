@@ -245,7 +245,7 @@ class AnnotationResponse(BaseModel):
 class AutoLabelRequest(BaseModel):
     project_id: UUID
     image_ids: list[UUID]
-    model_artifact_id: UUID
+    model_artifact_id: UUID | None = None
 
 
 class TrainingJobCreate(BaseModel):

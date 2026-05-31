@@ -6,19 +6,21 @@ import { Badge } from '@/components/ui/badge';
 import { Database, Brain, Images, PenTool, Rocket, ArrowRight } from 'lucide-react';
 
 const actions = [
-  { to: 'data', label: 'Dataset Builder', desc: 'Upload images + assign classes + train', icon: Database, color: 'bg-blue-50 text-blue-600' },
-  { to: 'datasets', label: 'Browse Gallery', desc: 'View images and labels by class', icon: Images, color: 'bg-violet-50 text-violet-600' },
-  { to: 'training', label: 'Training', desc: 'Monitor jobs and metrics', icon: Brain, color: 'bg-emerald-50 text-emerald-600' },
-  { to: 'annotation', label: 'Review Labels', desc: 'Approve or reject annotations', icon: PenTool, color: 'bg-amber-50 text-amber-600' },
-  { to: 'deployments', label: 'Deploy Model', desc: 'Publish to production endpoint', icon: Rocket, color: 'bg-rose-50 text-rose-600' },
+  { to: 'data', label: 'Add data', desc: 'Upload images & classes', icon: Database, color: 'bg-blue-50 text-blue-600' },
+  { to: 'model', label: 'Project model', desc: 'Retrain & view metrics', icon: Brain, color: 'bg-violet-50 text-violet-600' },
+  { to: 'datasets', label: 'Gallery', desc: 'Browse labeled images', icon: Images, color: 'bg-emerald-50 text-emerald-600' },
+  { to: 'annotation', label: 'Review labels', desc: 'Approve annotations', icon: PenTool, color: 'bg-amber-50 text-amber-600' },
+  { to: 'monitoring', label: 'Monitor', desc: 'Inference & drift alerts', icon: Rocket, color: 'bg-rose-50 text-rose-600' },
 ];
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
+  const [modelStatus, setModelStatus] = useState<{ has_model: boolean; model: { metrics: Record<string, number> } | null } | null>(null);
   const [models, setModels] = useState<{ id: string; name: string; task_type: string }[]>([]);
 
   useEffect(() => {
     if (!id) return;
+    api.get<typeof modelStatus>(`/api/v1/projects/${id}/active-model`).then(setModelStatus).catch(() => {});
     api.get<typeof models>(`/api/v1/projects/${id}/models`).then(setModels).catch(() => {});
   }, [id]);
 
@@ -26,6 +28,35 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="space-y-6">
+      <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5 text-primary" />
+            Single model workflow
+          </CardTitle>
+          <CardDescription>
+            One model per project — add data, retrain continuously. No manual deploy: Fleet, Road Intel, and Monitoring connect automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-3">
+          {modelStatus?.has_model ? (
+            <>
+              <Badge variant="success">Model active</Badge>
+              {modelStatus.model?.metrics?.map50_95 != null && (
+                <span className="text-sm text-muted-foreground">
+                  mAP: {(modelStatus.model.metrics.map50_95 * 100).toFixed(1)}%
+                </span>
+              )}
+            </>
+          ) : (
+            <Badge variant="warning">Train your first model</Badge>
+          )}
+          <Link to={`/projects/${id}/model`} className="text-sm text-primary font-medium inline-flex items-center gap-1">
+            Open model page <ArrowRight className="h-4 w-4" />
+          </Link>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {actions.map(({ to, label, desc, icon: Icon, color }) => (
           <Link key={to} to={`/projects/${id}/${to}`}>
@@ -44,26 +75,19 @@ export default function ProjectDetailPage() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Model Definitions</CardTitle>
-          <CardDescription>Registered model architectures for this project</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {models.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No models defined yet. Start training to create artifacts.</p>
-          ) : (
-            <div className="space-y-2">
-              {models.map((m) => (
-                <div key={m.id} className="flex items-center justify-between rounded-xl border border-border/60 bg-secondary/30 px-4 py-3">
-                  <span className="font-medium">{m.name}</span>
-                  <Badge variant="outline">{m.task_type}</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {models.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle>Model definitions</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {models.map((m) => (
+              <div key={m.id} className="flex justify-between rounded-xl border border-border/60 bg-secondary/30 px-4 py-3">
+                <span>{m.name}</span>
+                <Badge variant="outline">{m.task_type}</Badge>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

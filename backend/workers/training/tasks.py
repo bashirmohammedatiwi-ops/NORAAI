@@ -133,7 +133,7 @@ def run_training_job(job_id: str):
             artifact = ModelArtifact(
                 project_id=job.project_id,
                 training_job_id=job.id,
-                name=f"{job.name}-v1",
+                name="Main Model",
                 architecture=job.architecture.value,
                 lifecycle=ModelLifecycle.REGISTERED,
                 minio_weights_key=minio_key,
@@ -146,6 +146,12 @@ def run_training_job(job_id: str):
                 model_size_mb=len(weights_bytes) / (1024 * 1024),
             )
             session.add(artifact)
+            session.flush()
+
+            from app.services.models.active_model import ensure_live_deployment_sync, promote_as_active_model_sync
+
+            promote_as_active_model_sync(session, job.project_id, artifact.id)
+            ensure_live_deployment_sync(session, job.project_id, artifact.id)
 
         job.status = TrainingStatus.COMPLETED
         job.completed_at = datetime.now(timezone.utc)
