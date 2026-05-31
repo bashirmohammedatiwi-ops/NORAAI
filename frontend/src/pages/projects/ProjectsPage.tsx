@@ -51,7 +51,7 @@ export default function ProjectsPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">{p.description || 'No description'}</p>
-                <span className="inline-block mt-2 text-xs bg-secondary px-2 py-1 rounded">{p.domain}</span>
+                <span className="inline-block mt-2 text-xs bg-primary/10 text-primary px-2 py-1 rounded">Dataset Builder →</span>
               </CardContent>
             </Card>
           </Link>

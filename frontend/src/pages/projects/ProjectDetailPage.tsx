@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { Database } from 'lucide-react';
 
 const tabs = [
   { key: 'data', label: 'Dataset Builder', path: 'data' },
@@ -32,9 +34,17 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">{project.name}</h1>
-        <p className="text-muted-foreground">{project.description}</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">{project.name}</h1>
+          <p className="text-muted-foreground">{project.description}</p>
+        </div>
+        <Link to={`/projects/${id}/data`}>
+          <Button size="lg" className="gap-2">
+            <Database className="h-5 w-5" />
+            Open Dataset Builder
+          </Button>
+        </Link>
       </div>
 
       <div className="flex gap-2 flex-wrap border-b border-border pb-2">

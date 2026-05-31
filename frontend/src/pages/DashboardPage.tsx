@@ -48,9 +48,9 @@ export default function DashboardPage() {
         <CardContent>
           <div className="space-y-2">
             {projects.map((p) => (
-              <Link key={p.id} to={`/projects/${p.id}`} className="flex items-center justify-between p-3 rounded-md hover:bg-accent">
+              <Link key={p.id} to={`/projects/${p.id}/data`} className="flex items-center justify-between p-3 rounded-md hover:bg-accent">
                 <span className="font-medium">{p.name}</span>
-                <span className="text-sm text-muted-foreground">View →</span>
+                <span className="text-sm text-primary">Dataset Builder →</span>
               </Link>
             ))}
             {projects.length === 0 && <p className="text-muted-foreground">No projects yet. Run init_db to seed data.</p>}

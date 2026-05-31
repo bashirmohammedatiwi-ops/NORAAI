@@ -6,6 +6,7 @@ import DashboardPage from '@/pages/DashboardPage';
 import ProjectsPage from '@/pages/projects/ProjectsPage';
 import ProjectDetailPage from '@/pages/projects/ProjectDetailPage';
 import DataHubPage from '@/pages/data/DataHubPage';
+import DatasetBuilderLandingPage from '@/pages/data/DatasetBuilderLandingPage';
 import DatasetsPage from '@/pages/datasets/DatasetsPage';
 import AnnotationPage from '@/pages/annotation/AnnotationPage';
 import ClassesPage from '@/pages/classes/ClassesPage';
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route index element={<DashboardPage />} />
+            <Route path="builder" element={<DatasetBuilderLandingPage />} />
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="projects/:id" element={<ProjectDetailPage />} />
             <Route path="projects/:id/data" element={<DataHubPage />} />

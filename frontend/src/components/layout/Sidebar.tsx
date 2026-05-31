@@ -1,9 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FolderKanban, Map, Truck, FileText, Settings, Brain, Activity } from 'lucide-react';
+import { LayoutDashboard, FolderKanban, Database, Map, Truck, FileText, Settings, Brain, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/builder', icon: Database, label: 'Dataset Builder' },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/road-intelligence', icon: Map, label: 'Road Intel' },
   { to: '/fleet', icon: Truck, label: 'Fleet' },
