@@ -3,7 +3,7 @@
 import asyncio
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.core.config import get_settings
 from app.core.database import async_session, engine, Base
@@ -23,6 +23,7 @@ ROAD_PROJECT = {
 
 async def init_db():
     async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         await conn.run_sync(Base.metadata.create_all)
 
     async with async_session() as db:

@@ -81,8 +81,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 10s
-      retries: 12
-      start_period: 120s
+      retries: 18
+      start_period: 180s
     networks:
       - aiops
 

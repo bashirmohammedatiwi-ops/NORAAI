@@ -111,9 +111,35 @@ TRAINING_CPU_FALLBACK=false
 
 ## استكشاف الأخطاء
 
+### تحديث فاشل (git pull conflict)
+
+إذا ظهر `Your local changes would be overwritten`:
+
+```bash
+cd /opt/aiops
+chmod +x scripts/update_vps.sh
+./scripts/update_vps.sh
+```
+
+### API unhealthy
+
+```bash
+./scripts/diagnose.sh
+docker compose -f docker-compose.prod.yml logs api --tail 80
+./scripts/sync_env.sh .env
+```
+
+إذا ظهر `password authentication failed` — أعد إنشاء قاعدة البيانات (يحذف البيانات):
+
+```bash
+docker compose -f docker-compose.prod.yml down -v
+./scripts/sync_env.sh .env
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
 ```bash
 # تحقق من صحة API
-curl http://localhost:6000/health
+curl http://localhost:6001/health
 
 # تحقق من قاعدة البيانات
 docker compose -f docker-compose.prod.yml exec api python scripts/init_db.py
