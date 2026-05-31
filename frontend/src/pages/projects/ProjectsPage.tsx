@@ -2,16 +2,18 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Plus, ArrowRight, FolderKanban, Sparkles } from 'lucide-react';
+import { Plus, ArrowRight, Trash2 } from 'lucide-react';
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<{ id: string; name: string; description: string; domain: string }[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => api.get<typeof projects>('/api/v1/projects').then(setProjects).catch(() => {});
 
@@ -25,66 +27,77 @@ export default function ProjectsPage() {
     load();
   };
 
+  const deleteProject = async (password: string) => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.deleteWithBody(`/api/v1/projects/${deleteTarget.id}`, { password });
+      setDeleteTarget(null);
+      await load();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Projects"
-        description="Each project holds datasets, classes, training jobs, and deployed models."
-      >
-        <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" /> New Project</Button>
+      <PageHeader title="Projects">
+        <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" /> New</Button>
       </PageHeader>
 
       {showCreate && (
-        <Card className="border-primary/30 shadow-card">
-          <CardHeader>
-            <CardTitle className="text-base">Create new project</CardTitle>
-            <CardDescription>Give your road detection or classification project a name</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Input placeholder="e.g. Pothole Detection UAE" value={name} onChange={(e) => setName(e.target.value)} className="max-w-md" />
-            <Button onClick={create}>Create</Button>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-          </CardContent>
-        </Card>
+        <div className="surface p-4 flex flex-wrap gap-2">
+          <Input placeholder="Project name" value={name} onChange={(e) => setName(e.target.value)} className="max-w-xs" />
+          <Button onClick={create}>Create</Button>
+          <Button variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {projects.map((p) => (
-          <Card key={p.id} className="group hover:shadow-card hover:border-primary/30 transition-all">
-            <CardHeader>
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <FolderKanban className="h-5 w-5" />
-                </div>
-                <Badge variant="secondary">{p.domain.replace('_', ' ')}</Badge>
+          <Card key={p.id} className="hover:border-primary/30 transition-colors">
+            <CardContent className="p-4 space-y-3">
+              <div>
+                <p className="font-medium">{p.name}</p>
+                {p.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{p.description}</p>}
               </div>
-              <CardTitle className="pt-2">{p.name}</CardTitle>
-              <CardDescription>{p.description || 'No description yet'}</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              <Link to={`/projects/${p.id}/data`}>
-                <Button className="w-full justify-between" variant="default">
-                  <span className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Dataset Builder</span>
-                  <ArrowRight className="h-4 w-4" />
+              <div className="flex gap-2">
+                <Link to={`/projects/${p.id}`} className="flex-1">
+                  <Button className="w-full" size="sm">Open <ArrowRight className="h-3.5 w-3.5" /></Button>
+                </Link>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive hover:bg-red-50"
+                  onClick={() => setDeleteTarget({ id: p.id, name: p.name })}
+                >
+                  <Trash2 className="h-4 w-4" />
                 </Button>
-              </Link>
-              <Link to={`/projects/${p.id}`}>
-                <Button className="w-full" variant="outline">Project overview</Button>
-              </Link>
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
       {projects.length === 0 && !showCreate && (
-        <Card className="border-dashed">
-          <CardContent className="py-16 text-center">
-            <FolderKanban className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
-            <p className="text-muted-foreground mb-4">Create your first project to start uploading and training.</p>
-            <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" /> New Project</Button>
-          </CardContent>
-        </Card>
+        <div className="surface py-12 text-center text-sm text-muted-foreground">
+          <p>No projects yet</p>
+          <Button className="mt-3" size="sm" onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" /> New project</Button>
+        </div>
       )}
+
+      <ConfirmDeleteDialog
+        open={!!deleteTarget}
+        title="Delete project?"
+        description={
+          deleteTarget
+            ? `Delete "${deleteTarget.name}" with all datasets, classes, images, models, training jobs, and deployments.`
+            : ''
+        }
+        loading={deleting}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={deleteProject}
+      />
     </div>
   );
 }

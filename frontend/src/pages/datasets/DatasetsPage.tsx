@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { api } from '@/lib/api';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Database, Eye, ImageIcon, Tag } from 'lucide-react';
+import { Database, Eye, ImageIcon, Tag, Trash2 } from 'lucide-react';
 
 interface DatasetSummary {
   id: string;
@@ -28,28 +29,44 @@ export default function DatasetsPage() {
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
   const [statsMap, setStatsMap] = useState<Record<string, BuilderStats>>({});
   const [newName, setNewName] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const reload = async () => {
+    if (!projectId) return;
+    const list = await api.get<DatasetSummary[]>(`/api/v1/datasets/project/${projectId}`).catch(() => []);
+    setDatasets(list);
+    const stats: Record<string, BuilderStats> = {};
+    await Promise.all(
+      list.map(async (d) => {
+        const s = await api.get<BuilderStats>(`/api/v1/datasets/${d.id}/builder-stats`).catch(() => null);
+        if (s) stats[d.id] = s;
+      })
+    );
+    setStatsMap(stats);
+  };
 
   useEffect(() => {
-    if (!projectId) return;
-    api.get<DatasetSummary[]>(`/api/v1/datasets/project/${projectId}`).then(async (list) => {
-      setDatasets(list);
-      const stats: Record<string, BuilderStats> = {};
-      await Promise.all(
-        list.map(async (d) => {
-          const s = await api.get<BuilderStats>(`/api/v1/datasets/${d.id}/builder-stats`).catch(() => null);
-          if (s) stats[d.id] = s;
-        })
-      );
-      setStatsMap(stats);
-    }).catch(() => {});
+    reload().catch(() => {});
   }, [projectId]);
 
   const createDataset = async () => {
     if (!projectId || !newName.trim()) return;
     await api.post(`/api/v1/datasets/project/${projectId}`, { name: newName.trim() });
     setNewName('');
-    const d = await api.get<DatasetSummary[]>(`/api/v1/datasets/project/${projectId}`);
-    setDatasets(d);
+    await reload();
+  };
+
+  const deleteDataset = async (password: string) => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.deleteWithBody(`/api/v1/datasets/${deleteTarget.id}`, { password });
+      setDeleteTarget(null);
+      await reload();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -141,11 +158,31 @@ export default function DatasetsPage() {
                     <Eye className="h-4 w-4 mr-2" /> Browse images & labels
                   </Button>
                 </Link>
+                <Button
+                  variant="ghost"
+                  className="w-full text-destructive hover:text-destructive hover:bg-red-50"
+                  onClick={() => setDeleteTarget({ id: d.id, name: d.name })}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" /> Delete dataset
+                </Button>
               </CardContent>
             </Card>
           );
         })}
       </div>
+
+      <ConfirmDeleteDialog
+        open={!!deleteTarget}
+        title="Delete dataset?"
+        description={
+          deleteTarget
+            ? `Delete "${deleteTarget.name}" with all versions, images, and labels in this dataset.`
+            : ''
+        }
+        loading={deleting}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={deleteDataset}
+      />
     </div>
   );
 }

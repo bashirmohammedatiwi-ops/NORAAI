@@ -1,104 +1,110 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, FolderKanban, Database, Map, Truck, FileText, Settings,
-  Sparkles, Images, ChevronRight,
+  LayoutDashboard, FolderKanban, Sparkles, Database, Map, Truck, FileText, Settings, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
 
-const mainNav = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard', hint: 'Overview' },
-  { to: '/projects', icon: FolderKanban, label: 'Projects', hint: 'All ML projects' },
-  { to: '/builder', icon: Sparkles, label: 'Quick Start', hint: 'Upload & train' },
+const navGroups = [
+  {
+    items: [
+      { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/projects', icon: FolderKanban, label: 'Projects' },
+      { to: '/builder', icon: Sparkles, label: 'Quick Start' },
+    ],
+  },
+  {
+    title: 'Platform',
+    items: [
+      { to: '/ingestion', icon: Database, label: 'Ingestion' },
+      { to: '/road-intelligence', icon: Map, label: 'Road Intel' },
+      { to: '/fleet', icon: Truck, label: 'Fleet' },
+      { to: '/reports', icon: FileText, label: 'Reports' },
+    ],
+  },
 ];
 
-const dataNav = [
-  { to: '/ingestion', icon: Database, label: 'Ingestion', hint: 'Upload pipeline' },
-];
-
-const opsNav = [
-  { to: '/road-intelligence', icon: Map, label: 'Road Intel', hint: 'Events & maps' },
-  { to: '/fleet', icon: Truck, label: 'Fleet', hint: 'Edge devices' },
-  { to: '/reports', icon: FileText, label: 'Reports', hint: 'Analytics' },
-];
-
-function NavSection({ title, items }: { title: string; items: typeof mainNav }) {
+function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
 
   return (
-    <div className="space-y-1">
-      <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">{title}</p>
-      {items.map(({ to, icon: Icon, label, hint }) => {
-        const active = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
-        return (
-          <Link
-            key={to}
-            to={to}
-            className={cn(
-              'group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all',
-              active
-                ? 'bg-sidebar-accent text-primary shadow-sm'
-                : 'text-sidebar-foreground/80 hover:bg-accent hover:text-foreground'
-            )}
-          >
-            <span className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-lg',
-              active ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground group-hover:bg-card'
-            )}>
-              <Icon className="h-4 w-4" />
-            </span>
-            <span className="flex-1 min-w-0">
-              <span className="block text-sm font-medium leading-tight">{label}</span>
-              <span className="block text-[11px] text-muted-foreground truncate">{hint}</span>
-            </span>
-            {active && <ChevronRight className="h-4 w-4 text-primary shrink-0" />}
-          </Link>
-        );
-      })}
-    </div>
+    <>
+      {navGroups.map((group, i) => (
+        <div key={i} className="space-y-0.5">
+          {group.title && (
+            <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {group.title}
+            </p>
+          )}
+          {group.items.map(({ to, icon: Icon, label }) => {
+            const active = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
+            return (
+              <Link
+                key={to}
+                to={to}
+                onClick={onNavigate}
+                className={cn('nav-link', active && 'nav-link-active')}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
+    </>
   );
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
+
+export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const location = useLocation();
 
+  const footer = (
+    <Link
+      to="/settings"
+      onClick={onMobileClose}
+      className={cn('nav-link', location.pathname === '/settings' && 'nav-link-active')}
+    >
+      <Settings className="h-4 w-4" />
+      Settings
+    </Link>
+  );
+
   return (
-    <aside className="hidden lg:flex w-[280px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar min-h-screen">
-      <div className="flex items-center gap-3 border-b border-sidebar-border px-5 py-5">
-        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary shadow-sm">
-          <Images className="h-6 w-6 text-primary-foreground" />
+    <>
+      {/* Desktop */}
+      <aside className="hidden lg:flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar min-h-screen">
+        <div className="border-b border-sidebar-border px-4 py-4">
+          <p className="text-sm font-semibold">NORAAI</p>
         </div>
-        <div>
-          <h1 className="font-bold text-base text-foreground">NORAAI</h1>
-          <p className="text-xs text-muted-foreground">Smart Road AI Platform</p>
-        </div>
-      </div>
+        <nav className="flex-1 overflow-y-auto p-3">
+          <NavLinks />
+        </nav>
+        <div className="border-t border-sidebar-border p-3">{footer}</div>
+      </aside>
 
-      <nav className="flex-1 space-y-6 overflow-y-auto p-4">
-        <NavSection title="Main" items={mainNav} />
-        <NavSection title="Data" items={dataNav} />
-        <NavSection title="Operations" items={opsNav} />
-      </nav>
-
-      <div className="border-t border-sidebar-border p-4 space-y-2">
-        <Link
-          to="/settings"
-          className={cn(
-            'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
-            location.pathname === '/settings' ? 'bg-sidebar-accent text-primary' : 'text-muted-foreground hover:bg-accent'
-          )}
-        >
-          <Settings className="h-4 w-4" />
-          Settings
-        </Link>
-        <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2.5">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-medium text-emerald-800">System online</span>
-          </div>
-          <Badge variant="success" className="mt-2">Ready for training</Badge>
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={onMobileClose} />
+          <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-sidebar shadow-xl">
+            <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4">
+              <p className="text-sm font-semibold">NORAAI</p>
+              <button type="button" onClick={onMobileClose} className="rounded-md p-1 hover:bg-accent" aria-label="Close menu">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <nav className="flex-1 overflow-y-auto p-3">
+              <NavLinks onNavigate={onMobileClose} />
+            </nav>
+            <div className="border-t border-sidebar-border p-3">{footer}</div>
+          </aside>
         </div>
-      </div>
-    </aside>
+      )}
+    </>
   );
 }

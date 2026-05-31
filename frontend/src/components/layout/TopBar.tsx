@@ -1,35 +1,38 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, Bell } from 'lucide-react';
+import { LogOut, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 
 const routeTitles: Record<string, string> = {
   '/': 'Dashboard',
-  '/builder': 'Dataset Builder',
+  '/builder': 'Quick Start',
   '/projects': 'Projects',
   '/ingestion': 'Ingestion',
   '/road-intelligence': 'Road Intelligence',
-  '/fleet': 'Fleet Devices',
+  '/fleet': 'Fleet',
   '/reports': 'Reports',
   '/settings': 'Settings',
 };
 
 function getPageTitle(pathname: string): string {
   if (routeTitles[pathname]) return routeTitles[pathname];
-  if (pathname.includes('/data')) return 'Dataset Builder';
-  if (pathname.includes('/datasets/')) return 'Dataset Gallery';
-  if (pathname.includes('/datasets')) return 'Browse Datasets';
+  if (pathname.includes('/data')) return 'Data';
+  if (pathname.includes('/datasets/')) return 'Dataset';
+  if (pathname.includes('/datasets')) return 'Datasets';
   if (pathname.includes('/training')) return 'Training';
-  if (pathname.includes('/models')) return 'Models';
-  if (pathname.includes('/deployments')) return 'Deployments';
-  if (pathname.includes('/annotation')) return 'Annotation';
+  if (pathname.includes('/model')) return 'Model';
+  if (pathname.includes('/annotation')) return 'Review';
   if (pathname.includes('/classes')) return 'Classes';
   if (pathname.includes('/monitoring')) return 'Monitoring';
-  if (pathname.match(/\/projects\/[^/]+$/)) return 'Project Overview';
+  if (pathname.match(/\/projects\/[^/]+$/)) return 'Overview';
   return 'NORAAI';
 }
 
-export function TopBar() {
+interface TopBarProps {
+  onMenuClick?: () => void;
+}
+
+export function TopBar({ onMenuClick }: TopBarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const title = getPageTitle(location.pathname);
@@ -40,20 +43,17 @@ export function TopBar() {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border/80 bg-card/80 px-6 backdrop-blur-md">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">NORAAI Platform</p>
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-      </div>
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="text-muted-foreground" aria-label="Notifications">
-          <Bell className="h-4 w-4" />
+    <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-card px-4 sm:px-6">
+      <div className="flex items-center gap-3 min-w-0">
+        <Button variant="ghost" size="icon" className="lg:hidden shrink-0" onClick={onMenuClick} aria-label="Open menu">
+          <Menu className="h-5 w-5" />
         </Button>
-        <Button variant="outline" size="sm" onClick={logout}>
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </Button>
+        <h1 className="truncate text-base font-semibold">{title}</h1>
       </div>
+      <Button variant="ghost" size="sm" onClick={logout} className="text-muted-foreground shrink-0">
+        <LogOut className="h-4 w-4" />
+        <span className="hidden sm:inline">Sign out</span>
+      </Button>
     </header>
   );
 }

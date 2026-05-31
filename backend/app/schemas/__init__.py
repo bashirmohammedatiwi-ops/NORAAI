@@ -338,6 +338,15 @@ class RoadEventCreate(BaseModel):
     confidence: float | None = None
 
 
+class PasswordConfirmRequest(BaseModel):
+    password: str = Field(min_length=1)
+
+
+class DeleteResultResponse(BaseModel):
+    deleted: str
+    message: str | None = None
+
+
 class ReportCreate(BaseModel):
     name: str
     format: str = "pdf"

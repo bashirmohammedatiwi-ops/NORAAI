@@ -1,18 +1,21 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, verify_user_password
 from app.core.database import get_db
 from app.models import ModelDefinition, Project, User
 from app.schemas import (
+    DeleteResultResponse,
     ModelDefinitionCreate,
     ModelDefinitionResponse,
+    PasswordConfirmRequest,
     ProjectCreate,
     ProjectResponse,
 )
+from app.services.deletion import delete_project_permanently
 from app.services.projects.service import create_project, list_projects
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -56,3 +59,21 @@ async def add_model(project_id: UUID, data: ModelDefinitionCreate, db: AsyncSess
     db.add(model)
     await db.flush()
     return model
+
+
+@router.delete("/{project_id}", response_model=DeleteResultResponse)
+async def delete_project(
+    project_id: UUID,
+    data: PasswordConfirmRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await verify_user_password(user, data.password)
+    try:
+        result = await delete_project_permanently(db, project_id, user.organization_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return DeleteResultResponse(
+        deleted=result["deleted"],
+        message=f"Project '{result['project_name']}' and all related data were permanently deleted.",
+    )

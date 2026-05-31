@@ -1,10 +1,12 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DatasetGallery } from '@/components/datasets/DatasetGallery';
+import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Layers, Tag } from 'lucide-react';
+import { Layers, Tag, Trash2 } from 'lucide-react';
 
 interface DatasetSummary {
   id: string;
@@ -24,9 +26,12 @@ interface BuilderStats {
 }
 
 export default function DatasetDetailPage() {
+  const navigate = useNavigate();
   const { id: projectId, datasetId } = useParams();
   const [summary, setSummary] = useState<DatasetSummary | null>(null);
   const [stats, setStats] = useState<BuilderStats | null>(null);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!datasetId) return;
@@ -34,14 +39,30 @@ export default function DatasetDetailPage() {
     api.get<BuilderStats>(`/api/v1/datasets/${datasetId}/builder-stats`).then(setStats).catch(() => {});
   }, [datasetId]);
 
+  const deleteDataset = async (password: string) => {
+    if (!datasetId || !projectId) return;
+    setDeleting(true);
+    try {
+      await api.deleteWithBody(`/api/v1/datasets/${datasetId}`, { password });
+      navigate(`/projects/${projectId}/datasets`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (!datasetId || !projectId) return null;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-        <Link to={`/projects/${projectId}/datasets`} className="hover:text-primary">All datasets</Link>
-        <span>/</span>
-        <span className="text-foreground font-medium">{summary?.name ?? 'Loading...'}</span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <Link to={`/projects/${projectId}/datasets`} className="hover:text-primary">All datasets</Link>
+          <span>/</span>
+          <span className="text-foreground font-medium">{summary?.name ?? 'Loading...'}</span>
+        </div>
+        <Button variant="outline" className="text-destructive border-red-200 hover:bg-red-50" onClick={() => setShowDelete(true)}>
+          <Trash2 className="h-4 w-4" /> Delete dataset
+        </Button>
       </div>
 
       {stats && (
@@ -60,6 +81,15 @@ export default function DatasetDetailPage() {
       )}
 
       <DatasetGallery datasetId={datasetId} projectId={projectId} showHeader={false} />
+
+      <ConfirmDeleteDialog
+        open={showDelete}
+        title="Delete dataset?"
+        description={`Delete "${summary?.name ?? 'this dataset'}" with all images, versions, and labels.`}
+        loading={deleting}
+        onClose={() => setShowDelete(false)}
+        onConfirm={deleteDataset}
+      />
     </div>
   );
 }

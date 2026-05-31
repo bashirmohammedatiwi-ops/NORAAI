@@ -77,6 +77,10 @@ class ApiClient {
 
   delete<T>(path: string) { return this.request<T>(path, { method: 'DELETE' }); }
 
+  deleteWithBody<T>(path: string, body: { password: string }) {
+    return this.request<T>(path, { method: 'DELETE', body: JSON.stringify(body) });
+  }
+
   getDownloadUrl(path: string): string {
     return API_URL ? `${API_URL}${path}` : path;
   }

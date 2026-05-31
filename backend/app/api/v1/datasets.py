@@ -14,7 +14,9 @@ from app.schemas import (
     DatasetCreate,
     DatasetDiffResponse,
     DatasetGalleryResponse,
+    DeleteResultResponse,
     DatasetSummaryResponse,
+    PasswordConfirmRequest,
     DatasetUploadResponse,
     DatasetVersionCreate,
     ImageResponse,
@@ -26,6 +28,7 @@ from app.services.datasets.dataset_images import (
     get_dataset_summary,
 )
 from app.services.datasets.gallery import get_dataset_gallery
+from app.services.deletion import delete_dataset_permanently
 from app.services.datasets.versioning import compare_versions, create_dataset, create_version, rollback_dataset
 from workers.ingestion.tasks import process_image
 
@@ -279,3 +282,26 @@ async def merge_datasets(
     merged_ids = list(set(from_v.manifest.get("image_ids", []) + to_v.manifest.get("image_ids", [])))
     version = await create_version(db, dataset_id, f"merge-{target_version_id}", [UUID(i) for i in merged_ids])
     return {"id": str(version.id), "image_count": version.image_count}
+
+
+@router.delete("/{dataset_id}", response_model=DeleteResultResponse)
+async def delete_dataset(
+    dataset_id: UUID,
+    data: PasswordConfirmRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await verify_user_password(user, data.password)
+    dataset = await db.get(Dataset, dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    try:
+        result = await delete_dataset_permanently(db, dataset_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return DeleteResultResponse(
+        deleted=result["deleted"],
+        message=(
+            f"Dataset '{result['dataset_name']}' deleted with {result['images_removed']} image(s) removed."
+        ),
+    )

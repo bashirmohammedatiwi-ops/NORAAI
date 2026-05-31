@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, verify_user_password
 from app.core.database import get_db
 from app.core.minio_client import download_bytes, upload_bytes
 from app.models import (
@@ -25,12 +25,15 @@ from app.schemas import (
     ClassMergeRequest,
     ClassResponse,
     ClassUpdate,
+    DeleteResultResponse,
     FleetDeviceCreate,
     FleetDeviceResponse,
     ImageResponse,
     IngestionUploadResponse,
+    PasswordConfirmRequest,
     TelemetryRequest,
 )
+from app.services.deletion import delete_class_permanently as remove_class_permanently
 from app.core.redis_client import get_redis
 from workers.ingestion.tasks import process_image
 
@@ -244,14 +247,26 @@ async def merge_classes_endpoint(
     return {"status": "merged"}
 
 
-@router.delete("/projects/{project_id}/classes/{class_id}")
-async def archive_class(
-    project_id: UUID, class_id: UUID, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+@router.delete("/projects/{project_id}/classes/{class_id}", response_model=DeleteResultResponse)
+async def delete_class_endpoint(
+    project_id: UUID,
+    class_id: UUID,
+    data: PasswordConfirmRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    cls = await db.get(ClassLabel, class_id)
-    cls.is_archived = True
-    db.add(ClassAuditLog(project_id=project_id, action="archive", details={"class_id": str(class_id)}, user_id=user.id))
-    return {"status": "archived"}
+    await verify_user_password(user, data.password)
+    try:
+        result = await remove_class_permanently(db, project_id, class_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return DeleteResultResponse(
+        deleted=result["deleted"],
+        message=(
+            f"Class '{result['class_name']}' deleted permanently "
+            f"({result['annotations_removed']} annotation(s) removed)."
+        ),
+    )
 
 
 @router.get("/fleet/{project_id}", response_model=list[FleetDeviceResponse])
