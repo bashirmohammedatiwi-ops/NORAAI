@@ -302,7 +302,7 @@ export default function DataHubPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Uploaded images preview</CardTitle>
             <Link to={`/projects/${projectId}/datasets/${selectedId}`}>
-              <Button variant="link" size="sm">View full gallery</Button>
+              <Button variant="ghost" size="sm" className="text-primary">View full gallery</Button>
             </Link>
           </CardHeader>
           <CardContent>
