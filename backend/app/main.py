@@ -7,7 +7,6 @@ from starlette.responses import Response
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
-from app.core.database import Base, engine
 from app.core.minio_client import ensure_bucket
 
 settings = get_settings()
@@ -17,8 +16,7 @@ REQUEST_COUNT = Counter("aiops_requests_total", "Total requests", ["method", "en
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Tables are created by scripts/init_db.py in entrypoint before uvicorn starts.
     try:
         ensure_bucket()
     except Exception:

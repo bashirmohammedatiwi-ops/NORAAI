@@ -15,12 +15,12 @@ echo "=============================================="
 
 # --- Docker ---
 if ! command -v docker &>/dev/null; then
-  echo "[1/5] Installing Docker..."
+  echo "[1/6] Installing Docker..."
   curl -fsSL https://get.docker.com | sh
   systemctl enable docker
   systemctl start docker
 else
-  echo "[1/5] Docker already installed"
+  echo "[1/6] Docker already installed"
 fi
 
 if ! docker compose version &>/dev/null; then
@@ -29,7 +29,7 @@ if ! docker compose version &>/dev/null; then
 fi
 
 # --- Environment ---
-echo "[2/5] Preparing environment..."
+echo "[2/6] Preparing environment..."
 if [ ! -f .env ]; then
   cp .env.production.example .env
   echo ""
@@ -41,8 +41,11 @@ if [ ! -f .env ]; then
     sed -i '' "s/REPLACE_WITH_openssl_rand_hex_32/$SECRET/" .env 2>/dev/null || true
 fi
 
-# Detect VPS IP
-VPS_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s icanhazip.com 2>/dev/null || hostname -I | awk '{print $1}')
+chmod +x scripts/sync_env.sh 2>/dev/null || true
+./scripts/sync_env.sh .env
+
+# Detect VPS IP (prefer IPv4)
+VPS_IP=$(curl -4 -s --max-time 5 ifconfig.me 2>/dev/null || curl -4 -s --max-time 5 icanhazip.com 2>/dev/null || curl -s --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 if [ -n "$VPS_IP" ]; then
   sed -i "s|YOUR_VPS_IP|$VPS_IP|g" .env 2>/dev/null || \
     sed -i '' "s|YOUR_VPS_IP|$VPS_IP|g" .env 2>/dev/null || true
@@ -50,7 +53,7 @@ if [ -n "$VPS_IP" ]; then
 fi
 
 # --- GPU (optional) ---
-echo "[3/5] Checking GPU..."
+echo "[3/6] Checking GPU..."
 if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
   echo "  NVIDIA GPU detected — set TRAINING_DOCKERFILE=Dockerfile.gpu in .env for GPU training"
 else
@@ -61,24 +64,42 @@ else
 fi
 
 # --- Build & Start ---
-echo "[4/5] Building and starting containers (this may take 10-20 min first time)..."
+echo "[4/6] Building containers (first build may take 10-20 min)..."
 docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
 docker compose -f docker-compose.prod.yml build --parallel
+
+echo "[5/6] Starting containers..."
 docker compose -f docker-compose.prod.yml up -d
 
-echo "[5/5] Waiting for services..."
-sleep 15
+echo "[6/6] Waiting for API health (up to 3 min)..."
+OK=0
+for i in $(seq 1 36); do
+  if docker compose -f docker-compose.prod.yml ps api 2>/dev/null | grep -q "healthy"; then
+    OK=1
+    break
+  fi
+  if curl -sf http://localhost:${PORT_API:-6001}/health >/dev/null 2>&1; then
+    OK=1
+    break
+  fi
+  sleep 5
+done
 
-# Health check
-if curl -sf http://localhost:${PORT_APP:-6000}/health >/dev/null 2>&1; then
-  echo "  Health check: OK"
-else
-  echo "  Health check: waiting..."
-  for i in $(seq 1 30); do
-    curl -sf http://localhost:${PORT_APP:-6000}/health >/dev/null 2>&1 && break
-    sleep 5
-  done
+if [ "$OK" -eq 0 ]; then
+  echo ""
+  echo "ERROR: API did not become healthy. Last 50 lines of api logs:"
+  docker compose -f docker-compose.prod.yml logs --tail=50 api
+  echo ""
+  echo "Common fixes:"
+  echo "  1. Ensure POSTGRES_PASSWORD in .env matches DATABASE_URL password"
+  echo "  2. Run: ./scripts/sync_env.sh .env"
+  echo "  3. If DB volume has wrong password: docker compose -f docker-compose.prod.yml down -v (DELETES DATA)"
+  exit 1
 fi
+
+# Start gateway if api is healthy
+docker compose -f docker-compose.prod.yml up -d gateway worker-ingestion worker-labeling worker-training worker-deploy worker-monitor worker-reports 2>/dev/null || \
+  docker compose -f docker-compose.prod.yml up -d
 
 echo ""
 echo "=============================================="
@@ -93,9 +114,4 @@ echo "  Grafana:        http://${VPS_IP:-localhost}:${PORT_GRAFANA:-6004}"
 echo "  Prometheus:     http://${VPS_IP:-localhost}:${PORT_PROMETHEUS:-6005}"
 echo ""
 echo "  Login: admin@aiops.local / (see ADMIN_PASSWORD in .env)"
-echo ""
-echo "  Useful commands:"
-echo "    docker compose -f docker-compose.prod.yml logs -f api"
-echo "    docker compose -f docker-compose.prod.yml ps"
-echo "    docker compose -f docker-compose.prod.yml restart"
 echo "=============================================="
