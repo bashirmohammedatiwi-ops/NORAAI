@@ -31,7 +31,7 @@ async def test_dashboard_stats(client):
 @pytest.mark.asyncio
 async def test_login_invalid(client):
     response = await client.post("/api/v1/auth/login", json={
-        "email": "invalid@test.com",
+        "username": "invalid-user",
         "password": "wrong",
     })
     assert response.status_code == 401

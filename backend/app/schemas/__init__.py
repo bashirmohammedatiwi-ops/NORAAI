@@ -11,16 +11,13 @@ class TokenResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str
+    username: str
     password: str
 
-    @field_validator("email")
+    @field_validator("username")
     @classmethod
-    def normalize_email(cls, v: str) -> str:
-        v = v.strip().lower()
-        if "@" not in v or v.startswith("@") or v.endswith("@"):
-            raise ValueError("Invalid email address")
-        return v
+    def strip_username(cls, v: str) -> str:
+        return v.strip()
 
 
 class UserCreate(BaseModel):
