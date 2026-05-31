@@ -1,5 +1,5 @@
 #!/bin/bash
-# One-shot VPS update: pull latest code, fix line endings, sync DB passwords, rebuild API.
+# One-shot VPS update: pull latest code, fix line endings, sync DB passwords, rebuild.
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -7,18 +7,13 @@ cd "$PROJECT_DIR"
 
 echo "=== AI Ops VPS Update ==="
 
-# Discard local edits to tracked deploy scripts (common after first deploy)
-if git diff --quiet scripts/deploy_vps.sh 2>/dev/null; then
-  :
-else
-  echo "Resetting local changes to scripts/deploy_vps.sh ..."
-  git checkout -- scripts/deploy_vps.sh
-fi
+echo "Resetting local edits to tracked scripts..."
+git checkout -- scripts/ 2>/dev/null || true
+git checkout -- backend/entrypoint.sh 2>/dev/null || true
 
 echo "Pulling latest code..."
 git pull origin main
 
-# Fix Windows CRLF in shell scripts (breaks entrypoint on Linux)
 for f in backend/entrypoint.sh scripts/*.sh; do
   [ -f "$f" ] && sed -i 's/\r$//' "$f" && chmod +x "$f"
 done
@@ -29,11 +24,11 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-chmod +x scripts/sync_env.sh scripts/diagnose.sh scripts/deploy_vps.sh
+chmod +x scripts/sync_env.sh scripts/diagnose.sh scripts/deploy_vps.sh scripts/pull_and_rebuild.sh
 ./scripts/sync_env.sh .env
 
-echo "Rebuilding API (no cache)..."
-docker compose -f docker-compose.prod.yml build --no-cache api
+echo "Rebuilding gateway + API (no cache — required for UI updates)..."
+docker compose -f docker-compose.prod.yml build --no-cache gateway api worker-ingestion worker-training
 
 echo "Restarting stack..."
 docker compose -f docker-compose.prod.yml up -d
@@ -56,11 +51,6 @@ if [ "$OK" -eq 0 ]; then
   echo ""
   echo "API still unhealthy. Running diagnose..."
   ./scripts/diagnose.sh
-  echo ""
-  echo "If logs show 'password authentication failed', reset DB volume:"
-  echo "  docker compose -f docker-compose.prod.yml down -v"
-  echo "  ./scripts/sync_env.sh .env"
-  echo "  docker compose -f docker-compose.prod.yml up -d --build"
   exit 1
 fi
 
@@ -68,4 +58,6 @@ docker compose -f docker-compose.prod.yml up -d gateway worker-ingestion worker-
   docker compose -f docker-compose.prod.yml up -d
 
 echo ""
-echo "Update complete. App: http://$(curl -4 -s --max-time 3 ifconfig.me 2>/dev/null || echo localhost):${PORT_APP:-6000}"
+echo "Update complete."
+echo "  Dataset Builder: http://$(curl -4 -s --max-time 3 ifconfig.me 2>/dev/null || echo localhost):${PORT_APP:-8080}/builder"
+echo "  Hard refresh browser: Ctrl+Shift+R"
