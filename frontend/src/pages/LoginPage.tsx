@@ -38,7 +38,7 @@ export default function LoginPage() {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
-        const res = await fetch('/health', { signal: controller.signal });
+        const res = await fetch('/health/ready', { signal: controller.signal });
         clearTimeout(timer);
         if (cancelled) return;
         if (res.ok) {

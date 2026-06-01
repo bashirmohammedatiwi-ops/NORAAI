@@ -103,7 +103,7 @@ if [ "$OK" -eq 0 ]; then
 fi
 
 # Start gateway if api is healthy
-docker compose -f docker-compose.prod.yml up -d gateway worker-ingestion worker-labeling worker-training worker-deploy worker-monitor worker-reports 2>/dev/null || \
+docker compose -f docker-compose.prod.yml up -d --remove-orphans gateway worker-general worker-training 2>/dev/null || \
   docker compose -f docker-compose.prod.yml up -d
 
 if [ -x scripts/docker_cleanup_after_update.sh ]; then

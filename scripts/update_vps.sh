@@ -52,7 +52,7 @@ else
 fi
 
 echo "Restarting stack..."
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
 echo "Waiting for API (up to 4 min)..."
 OK=0
@@ -80,8 +80,8 @@ if [ "$OK" -eq 0 ]; then
     exit 1
   }
 else
-  docker compose -f docker-compose.prod.yml up -d gateway worker-ingestion worker-labeling worker-training worker-deploy worker-monitor worker-reports 2>/dev/null || \
-    docker compose -f docker-compose.prod.yml up -d
+  docker compose -f docker-compose.prod.yml up -d --remove-orphans gateway worker-general worker-training 2>/dev/null || \
+    docker compose -f docker-compose.prod.yml up -d --remove-orphans
 fi
 
 echo ""
@@ -97,10 +97,12 @@ echo "Update complete."
 echo "  App: http://$(curl -4 -s --max-time 3 ifconfig.me 2>/dev/null || echo localhost):${PORT_APP:-8080}"
 echo ""
 if command -v systemctl &>/dev/null && systemctl list-unit-files aiops-health.timer 2>/dev/null | grep -q enabled; then
-  echo "Watchdog timer: enabled (checks every 3 min)"
+  echo "Watchdog timer: enabled (checks every 2 min)"
+  sudo systemctl restart aiops-health.timer 2>/dev/null || true
 else
   echo "IMPORTANT — install auto-recovery (once):"
   echo "  sudo ./scripts/install_boot_service.sh"
+  echo "  sudo ./scripts/setup_swap.sh   # optional 2GB swap against OOM"
 fi
 echo "Manual recover: ./scripts/ensure_services.sh recover"
 echo "Watchdog log:   tail -f logs/watchdog.log"

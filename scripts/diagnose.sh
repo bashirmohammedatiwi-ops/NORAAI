@@ -19,6 +19,17 @@ dmesg -T 2>/dev/null | grep -iE 'oom|killed process|out of memory' | tail -20 ||
 free -h 2>/dev/null || true
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}' 2>/dev/null | head -15 || true
 
+echo ""
+echo "=== Autoheal / unhealthy containers ==="
+docker compose -f docker-compose.prod.yml ps autoheal 2>/dev/null || echo "autoheal: not running"
+for cid in $(docker compose -f docker-compose.prod.yml ps -q 2>/dev/null); do
+  status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}-{{end}}' "$cid" 2>/dev/null || echo "?")
+  name=$(docker inspect -f '{{.Name}}' "$cid" 2>/dev/null | sed 's/^\///')
+  if [ "$status" = "unhealthy" ]; then
+    echo " UNHEALTHY: $name"
+  fi
+done
+
 if [ -f logs/watchdog.log ]; then
   echo ""
   echo "=== Watchdog log (last 15 lines) ==="

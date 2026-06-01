@@ -47,6 +47,7 @@ services:
   minio:
     image: minio/minio:latest
     restart: always
+    mem_limit: 384m
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -70,7 +71,7 @@ services:
       dockerfile: Dockerfile
     image: aiops-backend:latest
     restart: always
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_UVICORN_WORKERS:-1}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_UVICORN_WORKERS:-1} --timeout-keep-alive 30 --limit-concurrency 100
     env_file: .env
     mem_limit: 768m
     ports:
@@ -83,30 +84,19 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
-      interval: 15s
-      timeout: 10s
-      retries: 12
-      start_period: 120s
+      test: ["CMD", "curl", "-f", "--max-time", "6", "http://localhost:8000/health/ready"]
+      interval: 20s
+      timeout: 8s
+      retries: 4
+      start_period: 90s
     networks:
       - aiops
 
-  worker-ingestion:
+  worker-general:
     image: aiops-backend:latest
     restart: always
-    mem_limit: 512m
-    command: celery -A workers.celery_app worker -Q ingestion -c ${CELERY_INGESTION_CONCURRENCY:-2} --loglevel=info
-    env_file: .env
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      - aiops
-
-  worker-labeling:
-    image: aiops-backend:latest
-    restart: always
-    command: celery -A workers.celery_app worker -Q labeling -c 1 --loglevel=info
+    mem_limit: 768m
+    command: celery -A workers.celery_app worker -Q ingestion,labeling,deploy,monitor,reports -c ${CELERY_GENERAL_CONCURRENCY:-2} --loglevel=info
     env_file: .env
     depends_on:
       api:
@@ -120,7 +110,7 @@ services:
       dockerfile: ${TRAINING_DOCKERFILE:-Dockerfile}
     image: aiops-backend-training:latest
     restart: always
-    mem_limit: 1536m
+    mem_limit: 1024m
     command: celery -A workers.celery_app worker -Q training -c 1 --loglevel=info
     env_file: .env
     volumes:
@@ -131,42 +121,10 @@ services:
     networks:
       - aiops
 
-  worker-deploy:
-    image: aiops-backend:latest
-    restart: always
-    command: celery -A workers.celery_app worker -Q deploy -c 1 --loglevel=info
-    env_file: .env
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      - aiops
-
-  worker-monitor:
-    image: aiops-backend:latest
-    restart: always
-    command: celery -A workers.celery_app worker -Q monitor -c 1 --loglevel=info
-    env_file: .env
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      - aiops
-
-  worker-reports:
-    image: aiops-backend:latest
-    restart: always
-    command: celery -A workers.celery_app worker -Q reports -c 1 --loglevel=info
-    env_file: .env
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      - aiops
-
   celery-beat:
     image: aiops-backend:latest
     restart: always
+    mem_limit: 128m
     command: celery -A workers.celery_app beat --loglevel=info
     env_file: .env
     depends_on:
@@ -176,6 +134,7 @@ services:
       - aiops
 
   prometheus:
+    profiles: ["monitoring"]
     image: prom/prometheus:v2.54.1
     restart: always
     volumes:
@@ -187,6 +146,7 @@ services:
       - aiops
 
   grafana:
+    profiles: ["monitoring"]
     image: grafana/grafana:11.2.0
     restart: always
     environment:
@@ -218,11 +178,25 @@ services:
       api:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+      test: ["CMD", "wget", "-qO-", "http://localhost/health/ready"]
+      interval: 25s
+      timeout: 8s
+      retries: 4
+      start_period: 30s
+    networks:
+      - aiops
+
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    restart: always
+    mem_limit: 48m
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: all
+      AUTOHEAL_INTERVAL: 20
+      AUTOHEAL_START_PERIOD: 120
+      AUTOHEAL_DEFAULT_STOP_TIMEOUT: 15
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - aiops
 

@@ -36,7 +36,7 @@ else
 fi
 
 echo "Starting services..."
-docker compose -f docker-compose.prod.yml up -d gateway api worker-ingestion worker-training worker-labeling worker-deploy worker-monitor worker-reports celery-beat 2>/dev/null || \
+docker compose -f docker-compose.prod.yml up -d --remove-orphans gateway api worker-general worker-training celery-beat 2>/dev/null || \
   docker compose -f docker-compose.prod.yml up -d
 
 ./scripts/docker_cleanup_after_update.sh

@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,9 +56,12 @@ async def health_ready():
     from app.core.database import engine
 
     try:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
+        async with asyncio.timeout(5):
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
         return {"status": "ready", "service": settings.app_name, "database": "ok"}
+    except TimeoutError as exc:
+        raise HTTPException(status_code=503, detail="not ready: database timeout") from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"not ready: {exc}") from exc
 

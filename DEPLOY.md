@@ -162,9 +162,16 @@ sudo ./scripts/install_boot_service.sh
 
 هذا يثبّت:
 - `aiops.service` — يشغّل Docker Compose عند إقلاع VPS
-- `aiops-health.timer` — **watchdog كل 3 دقائق** يعيد تشغيل الحاويات المتوقفة أو الـ API إن توقف
+- `aiops-health.timer` — **watchdog كل دقيقتين** + حاوية **autoheal** تعيد تشغيل الحاويات unhealthy تلقائياً
 
-**سبب شائع لتوقف السيرفر:** نفاد الذاكرة (OOM) على VPS صغير (4 GB) — خصوصاً أثناء التدريب أو رفع صور كثيرة. التحديث الأخير يقلّل workers ويحدّ الذاكرة لكل حاوية.
+**مهم على VPS 4GB (مرة واحدة):**
+
+```bash
+sudo ./scripts/setup_swap.sh          # 2GB swap ضد OOM
+sudo ./scripts/install_boot_service.sh
+```
+
+**سبب شائع لتوقف السيرفر:** نفاد الذاكرة (OOM) — الحاوية تبقى "running" لكن API لا يستجيب. الحل: swap + autoheal + تقليل workers (Grafana/Prometheus معطّلان افتراضياً).
 
 **إذا ظهر الخطأ الآن:**
 
@@ -185,7 +192,9 @@ tail -20 logs/watchdog.log
 ./scripts/diagnose.sh
 ```
 
-**إذا تكرر التوقف:** راجع `dmesg | grep -i oom` — إن ظهر `Killed process` فالذاكرة ممتلئة. أوقف Grafana/Prometheus مؤقتاً أو زِد RAM VPS.
+**إذا تكرر التوقف:** راجع `dmesg | grep -i oom` — إن ظهر `Killed process` فالذاكرة ممتلئة. نفّذ `sudo ./scripts/setup_swap.sh` أو زِد RAM VPS.
+
+**Grafana/Prometheus (اختياري):** `docker compose -f docker-compose.prod.yml --profile monitoring up -d`
 
 ### تحديث فاشل (git pull conflict)
 
