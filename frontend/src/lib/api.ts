@@ -162,8 +162,8 @@ class ApiClient {
     return res.json();
   }
 
-  get<T>(path: string, init?: RequestInit) {
-    return this.request<T>(path, init);
+  get<T>(path: string, init?: RequestInit, timeoutMs?: number) {
+    return this.request<T>(path, init, timeoutMs ?? DEFAULT_TIMEOUT_MS);
   }
 
   post<T>(path: string, body?: unknown, init?: RequestInit, timeoutMs?: number) {

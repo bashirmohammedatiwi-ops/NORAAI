@@ -102,14 +102,15 @@ export const dashboardKeys = {
 export function useProjectsList() {
   const query = useQuery<ProjectListItem[], Error>({
     queryKey: projectKeys.list(),
-    queryFn: ({ signal }) => api.get<ProjectListItem[]>('/api/v1/projects', { signal }),
+    queryFn: ({ signal }) => api.get<ProjectListItem[]>('/api/v1/projects', { signal }, 15_000),
     staleTime: 60_000,
     gcTime: 30 * 60_000,
+    placeholderData: (prev) => prev,
     retry: (failureCount, error) => {
       if (error.message.includes('Session expired')) return false;
-      return failureCount < 2;
+      return failureCount < 1;
     },
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
+    retryDelay: 1500,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   });
@@ -117,7 +118,7 @@ export function useProjectsList() {
   return {
     ...query,
     projects,
-    isInitialLoading: query.isLoading,
+    isInitialLoading: query.isPending && !query.data,
   };
 }
 
@@ -161,8 +162,10 @@ export function useDashboardHome() {
   return useQuery({
     queryKey: dashboardKeys.home,
     queryFn: async ({ signal }) => {
-      const data = await api.get<DashboardHomeData>('/api/v1/dashboard/home', { signal });
-      queryClient.setQueryData(projectKeys.list(), data.projects);
+      const data = await api.get<DashboardHomeData>('/api/v1/dashboard/home', { signal }, 20_000);
+      if (data.projects?.length) {
+        queryClient.setQueryData(projectKeys.list(), data.projects);
+      }
       return data;
     },
     staleTime: 20_000,

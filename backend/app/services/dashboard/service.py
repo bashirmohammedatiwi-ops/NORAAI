@@ -1,8 +1,10 @@
+import asyncio
 import uuid
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import async_session
 from app.models import Deployment, DeploymentStatus, DriftAlert, FleetDevice, Image, Project, TrainingJob, TrainingStatus
 from app.schemas import ProjectListItemResponse
 from app.services.dashboard.active_training import fetch_active_training_jobs
@@ -33,7 +35,7 @@ async def _fast_image_count(db: AsyncSession, org_id: uuid.UUID) -> int:
     return org_count
 
 
-async def fetch_dashboard_stats(db: AsyncSession, org_id: uuid.UUID) -> dict:
+async def fetch_dashboard_stats(db: AsyncSession, org_id: uuid.UUID, *, include_images: bool = True) -> dict:
     total_projects = (
         await db.execute(select(func.count(Project.id)).where(Project.organization_id == org_id))
     ).scalar() or 0
@@ -67,7 +69,7 @@ async def fetch_dashboard_stats(db: AsyncSession, org_id: uuid.UUID) -> dict:
             )
         )
     ).scalar() or 0
-    images = await _fast_image_count(db, org_id)
+    images = await _fast_image_count(db, org_id) if include_images else 0
     alerts = (
         await db.execute(
             select(func.count(DriftAlert.id))
@@ -90,6 +92,16 @@ async def fetch_dashboard_stats(db: AsyncSession, org_id: uuid.UUID) -> dict:
     }
 
 
+async def _fetch_dashboard_stats_for_org(org_id: uuid.UUID, *, include_images: bool) -> dict:
+    async with async_session() as db:
+        return await fetch_dashboard_stats(db, org_id, include_images=include_images)
+
+
+async def _fetch_active_training_for_org(org_id: uuid.UUID) -> list[dict]:
+    async with async_session() as db:
+        return await fetch_active_training_jobs(db, org_id)
+
+
 async def fetch_dashboard_home(db: AsyncSession, org_id: uuid.UUID) -> dict:
     projects = await list_projects(db, org_id)
     project_items = [
@@ -103,6 +115,10 @@ async def fetch_dashboard_home(db: AsyncSession, org_id: uuid.UUID) -> dict:
         )
         for p in projects
     ]
-    stats = await fetch_dashboard_stats(db, org_id)
-    active_training = await fetch_active_training_jobs(db, org_id)
+
+    stats, active_training = await asyncio.gather(
+        _fetch_dashboard_stats_for_org(org_id, include_images=False),
+        _fetch_active_training_for_org(org_id),
+    )
+
     return {"stats": stats, "projects": project_items, "active_training": active_training}

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useDashboardHome } from '@/hooks/useProjects';
+import { useDashboardHome, useProjectsList } from '@/hooks/useProjects';
 import { DashboardActiveTraining } from '@/components/dashboard/DashboardActiveTraining';
 import { DashboardManualTest } from '@/components/dashboard/DashboardManualTest';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -10,25 +10,40 @@ import { FolderKanban, Brain, Truck, AlertTriangle, ArrowRight, Sparkles, Refres
 
 export default function DashboardPage() {
   const {
+    projects,
+    isInitialLoading: projectsLoading,
+    isError: projectsError,
+    error: projectsErrorMsg,
+    refetch: refetchProjects,
+    isFetching: projectsFetching,
+  } = useProjectsList();
+
+  const {
     data,
-    isLoading: isInitialLoading,
-    isFetching,
-    isError,
-    error,
-    refetch,
+    isLoading: statsLoading,
+    isFetching: statsFetching,
+    isError: statsError,
+    error: statsErrorMsg,
+    refetch: refetchStats,
   } = useDashboardHome();
 
-  const projects = data?.projects ?? [];
   const stats = data?.stats ?? {};
   const activeTraining = data?.active_training ?? [];
   const hasActiveTraining = activeTraining.length > 0;
 
+  const refreshAll = () => {
+    refetchProjects();
+    refetchStats();
+  };
+
   const kpis = [
     { label: 'Projects', value: stats.total_projects ?? projects.length, icon: FolderKanban },
-    { label: 'Training', value: stats.active_training_jobs || activeTraining.length, icon: Brain },
-    { label: 'Fleet online', value: stats.fleet_devices_online || 0, icon: Truck },
-    { label: 'Alerts', value: stats.alerts_active || 0, icon: AlertTriangle },
+    { label: 'Training', value: stats.active_training_jobs ?? activeTraining.length, icon: Brain },
+    { label: 'Fleet online', value: stats.fleet_devices_online ?? 0, icon: Truck },
+    { label: 'Alerts', value: stats.alerts_active ?? 0, icon: AlertTriangle },
   ];
+
+  const isRefreshing = projectsFetching || statsFetching;
 
   return (
     <div className="space-y-6">
@@ -36,13 +51,13 @@ export default function DashboardPage() {
         <Link to="/builder">
           <Button><Sparkles className="h-4 w-4" /> Quick Start</Button>
         </Link>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+        <Button variant="outline" size="sm" onClick={refreshAll} disabled={isRefreshing}>
+          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
         </Button>
       </PageHeader>
 
       {hasActiveTraining && (
-        <DashboardActiveTraining jobs={activeTraining} onStopped={() => refetch()} />
+        <DashboardActiveTraining jobs={activeTraining} onStopped={() => refetchStats()} />
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -51,7 +66,9 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="text-2xl font-semibold mt-0.5">{isInitialLoading && label === 'Projects' ? '—' : value}</p>
+                <p className="text-2xl font-semibold mt-0.5">
+                  {statsLoading && label !== 'Projects' ? '—' : value}
+                </p>
               </div>
               <Icon className="h-5 w-5 text-muted-foreground/60" />
             </div>
@@ -66,7 +83,7 @@ export default function DashboardPage() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base flex items-center gap-2">
             Projects
-            {isFetching && projects.length > 0 && (
+            {projectsFetching && projects.length > 0 && (
               <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
             )}
           </CardTitle>
@@ -75,21 +92,23 @@ export default function DashboardPage() {
           </Link>
         </CardHeader>
         <CardContent className="space-y-1">
-          {isInitialLoading && (
+          {projectsLoading && (
             <p className="py-6 text-center text-sm text-muted-foreground">Loading projects...</p>
           )}
 
-          {isError && (
+          {projectsError && !projects.length && (
             <div className="py-8 text-center space-y-3">
               <AlertCircle className="h-8 w-8 mx-auto text-destructive/80" />
-              <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : 'Failed to load projects'}</p>
-              <Button size="sm" onClick={() => refetch()} disabled={isFetching}>
-                <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> Retry
+              <p className="text-sm text-muted-foreground">
+                {projectsErrorMsg instanceof Error ? projectsErrorMsg.message : 'Failed to load projects'}
+              </p>
+              <Button size="sm" onClick={() => refetchProjects()} disabled={projectsFetching}>
+                <RefreshCw className={`h-4 w-4 ${projectsFetching ? 'animate-spin' : ''}`} /> Retry
               </Button>
             </div>
           )}
 
-          {!isInitialLoading && !isError && projects.map((p) => (
+          {!projectsLoading && !projectsError && projects.map((p) => (
             <Link
               key={p.id}
               to={`/projects/${p.id}`}
@@ -110,11 +129,17 @@ export default function DashboardPage() {
             </Link>
           ))}
 
-          {!isInitialLoading && !isError && projects.length === 0 && (
+          {!projectsLoading && !projectsError && projects.length === 0 && (
             <div className="py-8 text-center text-sm text-muted-foreground">
               <p>No projects yet</p>
               <Link to="/projects"><Button className="mt-3" size="sm">Create project</Button></Link>
             </div>
+          )}
+
+          {statsError && !statsLoading && (
+            <p className="pt-2 text-center text-xs text-muted-foreground">
+              Stats unavailable — {statsErrorMsg instanceof Error ? statsErrorMsg.message : 'refresh to retry'}
+            </p>
           )}
         </CardContent>
         </Card>

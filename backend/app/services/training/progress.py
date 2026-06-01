@@ -23,7 +23,10 @@ def publish_training_progress(job_id: str | uuid.UUID, payload: dict) -> None:
 
 
 def get_training_progress(job_id: str | uuid.UUID) -> dict | None:
-    raw = get_sync_redis().get(_progress_key(job_id))
+    try:
+        raw = get_sync_redis().get(_progress_key(job_id))
+    except Exception:
+        return None
     if not raw:
         return None
     try:

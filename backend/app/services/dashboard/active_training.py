@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import datetime, timezone
 
@@ -56,10 +57,19 @@ async def fetch_active_training_jobs(db: AsyncSession, org_id: uuid.UUID) -> lis
     latest_by_job = await _latest_metrics_by_job(db, [job.id for job, _ in rows])
 
     jobs: list[dict] = []
+    live_by_job: dict[uuid.UUID, dict | None] = {}
+    if rows:
+        live_results = await asyncio.gather(
+            *[asyncio.to_thread(get_training_progress, job.id) for job, _ in rows],
+            return_exceptions=True,
+        )
+        for (job, _), live in zip(rows, live_results, strict=True):
+            live_by_job[job.id] = live if isinstance(live, dict) else None
+
     for job, project_name in rows:
         latest = latest_by_job.get(job.id)
         progress, current_epoch, total_epochs = _job_progress(job, latest)
-        live = get_training_progress(job.id)
+        live = live_by_job.get(job.id)
 
         duration = None
         if job.started_at:

@@ -1,10 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { prefetchProjectsList } from '@/hooks/useProjects';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    prefetchProjectsList(queryClient).catch(() => {});
+  }, [queryClient]);
 
   return (
     <div className="flex min-h-screen bg-background">

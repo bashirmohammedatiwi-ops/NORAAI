@@ -19,5 +19,11 @@ async def get_redis() -> aioredis.Redis:
 def get_sync_redis() -> Redis:
     global _sync_redis
     if _sync_redis is None:
-        _sync_redis = Redis.from_url(settings.redis_url, decode_responses=True)
+        _sync_redis = Redis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+            retry_on_timeout=False,
+        )
     return _sync_redis
