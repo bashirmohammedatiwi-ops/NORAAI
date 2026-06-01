@@ -358,37 +358,91 @@ input:focus {
 .nx-toast__gps button { padding: 8px 14px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--nx-teal-dim); border: 1px solid rgba(13,148,136,0.25); color: var(--nx-teal); }
 
 .nx-setup {
-  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px;
+  height: 100dvh;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
   background:
-    radial-gradient(ellipse 80% 60% at 10% 0%, rgba(99,102,241,0.12), transparent 50%),
-    radial-gradient(ellipse 70% 50% at 90% 100%, rgba(13,148,136,0.14), transparent 45%),
+    radial-gradient(ellipse 80% 50% at 15% 0%, rgba(99, 102, 241, 0.14), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 85% 100%, rgba(13, 148, 136, 0.16), transparent 50%),
     linear-gradient(165deg, var(--nx-bg) 0%, var(--nx-bg-2) 100%);
+}
+.nx-setup__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 16px 12px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 .nx-setup__bg { display: none; }
 .nx-setup__card {
-  width: 100%; max-width: 520px; padding: 36px; border-radius: 28px;
-  background: var(--nx-glass); backdrop-filter: blur(24px);
-  border: 1px solid rgba(255,255,255,0.85); box-shadow: var(--nx-shadow);
+  width: 100%;
+  max-width: 480px;
+  padding: 28px 24px 20px;
+  border-radius: 24px;
+  background: var(--nx-glass);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  box-shadow: var(--nx-shadow);
 }
-.nx-setup__card header { text-align: center; margin-bottom: 28px; }
-.nx-setup__card header p { font-size: 11px; font-weight: 800; letter-spacing: 0.14em; color: var(--nx-teal); }
-.nx-setup__card header h1 { font-size: 30px; font-weight: 800; margin: 10px 0 8px; }
-.nx-setup__card header span { color: var(--nx-muted); font-size: 14px; line-height: 1.6; }
-.nx-setup__tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 24px; }
-.nx-setup__tags i { padding: 6px 14px; border-radius: 999px; font-size: 12px; font-style: normal; font-weight: 600; background: var(--nx-surface-2); border: 1px solid var(--nx-line); color: var(--nx-muted); }
-.nx-setup__card form { display: flex; flex-direction: column; gap: 14px; }
-.nx-setup__card label { display: flex; flex-direction: column; gap: 6px; }
-.nx-setup__card label span { font-size: 12px; font-weight: 600; color: var(--nx-muted); }
-.nx-setup__row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.nx-setup__limit input { max-width: 100px; }
-.nx-setup__hint { font-size: 11px; color: var(--nx-dim); font-weight: 500; margin-top: -2px; }
-.nx-setup__err { color: #b91c1c; font-size: 14px; }
-.nx-setup__card button[type='submit'] {
-  margin-top: 10px; padding: 18px; border-radius: var(--nx-r); font-size: 17px; font-weight: 800;
-  background: linear-gradient(135deg, var(--nx-teal-2), var(--nx-teal)); color: #fff;
-  box-shadow: 0 10px 32px rgba(13,148,136,0.35);
+.nx-setup__head { text-align: center; margin-bottom: 20px; }
+.nx-setup__logo {
+  width: 52px; height: 52px; margin: 0 auto 12px;
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 800; color: #fff;
+  background: linear-gradient(135deg, var(--nx-teal-2), var(--nx-indigo));
+  box-shadow: 0 8px 24px rgba(13, 148, 136, 0.35);
 }
-.nx-setup__card button[type='submit']:disabled { opacity: 0.55; }
+.nx-setup__brand { font-size: 11px; font-weight: 800; letter-spacing: 0.14em; color: var(--nx-teal); }
+.nx-setup__head h1 { font-size: 26px; font-weight: 800; margin: 8px 0 6px; }
+.nx-setup__head span { color: var(--nx-muted); font-size: 13px; line-height: 1.55; display: block; }
+.nx-setup__tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 18px; }
+.nx-setup__tags i {
+  padding: 5px 12px; border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600;
+  background: var(--nx-surface-2); border: 1px solid var(--nx-line); color: var(--nx-muted);
+}
+.nx-setup__form { display: flex; flex-direction: column; gap: 12px; }
+.nx-setup__form label { display: flex; flex-direction: column; gap: 5px; }
+.nx-setup__form label > span:first-child { font-size: 11px; font-weight: 700; color: var(--nx-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.nx-setup__form input {
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+.nx-setup__row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.nx-setup__limit input { max-width: 96px; }
+.nx-setup__hint { font-size: 11px; color: var(--nx-dim); font-weight: 500; line-height: 1.4; }
+.nx-setup__bar {
+  flex-shrink: 0;
+  padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--nx-line);
+  box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.06);
+}
+.nx-setup__err {
+  color: #b91c1c; font-size: 13px; font-weight: 600;
+  margin-bottom: 10px; padding: 10px 12px; border-radius: 12px;
+  background: rgba(185, 28, 28, 0.08); border: 1px solid rgba(185, 28, 28, 0.15);
+}
+.nx-setup__submit {
+  width: 100%;
+  padding: 16px 20px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--nx-teal-2), var(--nx-teal));
+  color: #fff;
+  box-shadow: 0 10px 28px rgba(13, 148, 136, 0.38);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.nx-setup__submit:active:not(:disabled) { transform: scale(0.98); }
+.nx-setup__submit:disabled { opacity: 0.55; cursor: wait; }
 
 @media (max-width: 900px) {
   :root { --nx-dash: 118px; }
@@ -402,7 +456,11 @@ input:focus {
 }
 
 @media (max-width: 560px) {
+  .nx-setup__scroll { padding: 12px 12px 8px; }
+  .nx-setup__card { padding: 22px 18px 16px; border-radius: 20px; }
+  .nx-setup__head h1 { font-size: 22px; }
   .nx-setup__row { grid-template-columns: 1fr; }
+  .nx-setup__bar { padding-left: 12px; padding-right: 12px; }
   .nx-map-ui__ctrl { flex-direction: row; top: auto; bottom: 100px; left: 12px; transform: none; }
   .nx-cam-float { width: 168px; }
 }

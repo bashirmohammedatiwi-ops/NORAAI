@@ -1,21 +1,12 @@
-import { useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { useProjectsList } from '@/hooks/useProjects';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Sparkles, Plus, ArrowRight, FolderKanban } from 'lucide-react';
 
 export default function DatasetBuilderLandingPage() {
-  const [projects, setProjects] = useState<{ id: string; name: string; description: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.get<typeof projects>('/api/v1/projects')
-      .then(setProjects)
-      .catch(() => setProjects([]))
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: projects = [], isLoading: loading } = useProjectsList();
 
   if (loading) {
     return <div className="py-12 text-center text-muted-foreground">Loading projects...</div>;

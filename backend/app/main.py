@@ -52,32 +52,7 @@ async def metrics():
 
 
 @app.get("/api/v1/dashboard/stats")
-async def dashboard_stats():
-    from sqlalchemy import func, select
-    from app.core.database import async_session
-    from app.models import Deployment, DeploymentStatus, DriftAlert, FleetDevice, Image, Project, TrainingJob, TrainingStatus
+async def dashboard_stats_legacy():
+    from app.services.dashboard.service import fetch_dashboard_stats
 
-    async with async_session() as db:
-        projects = await db.execute(select(func.count(Project.id)))
-        training = await db.execute(
-            select(func.count(TrainingJob.id)).where(TrainingJob.status == TrainingStatus.RUNNING)
-        )
-        deployed = await db.execute(
-            select(func.count(Deployment.id)).where(Deployment.status == DeploymentStatus.ACTIVE)
-        )
-        fleet = await db.execute(
-            select(func.count(FleetDevice.id)).where(FleetDevice.is_online == True)
-        )
-        images = await db.execute(select(func.count(Image.id)))
-        alerts = await db.execute(
-            select(func.count(DriftAlert.id)).where(DriftAlert.is_acknowledged == False)
-        )
-
-    return {
-        "total_projects": projects.scalar() or 0,
-        "active_training_jobs": training.scalar() or 0,
-        "deployed_models": deployed.scalar() or 0,
-        "fleet_devices_online": fleet.scalar() or 0,
-        "images_ingested": images.scalar() or 0,
-        "alerts_active": alerts.scalar() or 0,
-    }
+    return await fetch_dashboard_stats()

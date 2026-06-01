@@ -22,7 +22,15 @@ import FleetPage from '@/pages/fleet/FleetPage';
 import ReportsPage from '@/pages/reports/ReportsPage';
 import SettingsPage from '@/pages/settings/SettingsPage';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 20_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('token');

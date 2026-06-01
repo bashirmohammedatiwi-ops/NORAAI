@@ -21,8 +21,16 @@ DEFAULT_MODELS = [
 
 
 async def list_projects(db: AsyncSession, org_id: uuid.UUID) -> list[Project]:
-    result = await db.execute(select(Project).where(Project.organization_id == org_id))
+    result = await db.execute(
+        select(Project)
+        .where(Project.organization_id == org_id)
+        .order_by(Project.created_at.desc())
+    )
     return list(result.scalars().all())
+
+
+def project_has_model(project: Project) -> bool:
+    return project.active_model_artifact_id is not None
 
 
 async def create_project(db: AsyncSession, org_id: uuid.UUID, data: dict) -> Project:

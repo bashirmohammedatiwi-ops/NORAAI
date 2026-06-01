@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { useActiveModel, useInvalidateProjects } from '@/hooks/useProjects';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,30 +11,6 @@ import { Input } from '@/components/ui/input';
 import {
   Brain, RefreshCw, Link2, Map, Truck, PenTool, Activity, Database, Play, Loader2,
 } from 'lucide-react';
-
-interface ActiveModelStatus {
-  project_id: string;
-  project_name: string;
-  has_model: boolean;
-  model: {
-    id: string;
-    name: string;
-    architecture: string;
-    lifecycle: string;
-    metrics: Record<string, number>;
-    classes_used: string[];
-    model_size_mb: number;
-    updated_at: string;
-  } | null;
-  training: {
-    is_running: boolean;
-    job_id: string | null;
-    status: string | null;
-    name: string | null;
-  };
-  live_endpoint: string | null;
-  connected_services: { id: string; name: string; uses: string }[];
-}
 
 const serviceIcons: Record<string, typeof Map> = {
   road_intelligence: Map,
@@ -45,28 +22,19 @@ const serviceIcons: Record<string, typeof Map> = {
 
 export default function UnifiedModelPage() {
   const { id: projectId } = useParams();
-  const [status, setStatus] = useState<ActiveModelStatus | null>(null);
+  const { data: status, refetch } = useActiveModel(projectId, { refetchInterval: 8000 });
+  const { invalidateProject } = useInvalidateProjects();
   const [epochs, setEpochs] = useState(20);
   const [architecture, setArchitecture] = useState('yolo11');
   const [loading, setLoading] = useState(false);
-
-  const load = useCallback(() => {
-    if (!projectId) return;
-    api.get<ActiveModelStatus>(`/api/v1/projects/${projectId}/active-model`).then(setStatus).catch(() => {});
-  }, [projectId]);
-
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 8000);
-    return () => clearInterval(t);
-  }, [load]);
 
   const retrain = async () => {
     if (!projectId) return;
     setLoading(true);
     try {
       await api.post(`/api/v1/training/project/${projectId}/retrain?epochs=${epochs}&architecture=${architecture}`);
-      load();
+      await refetch();
+      invalidateProject(projectId);
     } finally {
       setLoading(false);
     }

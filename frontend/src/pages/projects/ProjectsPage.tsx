@@ -1,30 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { useProjectsList, useInvalidateProjects } from '@/hooks/useProjects';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { api } from '@/lib/api';
 import { Plus, ArrowRight, Trash2 } from 'lucide-react';
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<{ id: string; name: string; description: string; domain: string }[]>([]);
+  const { data: projects = [], isLoading } = useProjectsList();
+  const { invalidateList } = useInvalidateProjects();
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  const load = () => api.get<typeof projects>('/api/v1/projects').then(setProjects).catch(() => {});
-
-  useEffect(() => { load(); }, []);
 
   const create = async () => {
     if (!name.trim()) return;
     await api.post('/api/v1/projects', { name: name.trim(), description: '', domain: 'computer_vision' });
     setName('');
     setShowCreate(false);
-    load();
+    await invalidateList();
   };
 
   const deleteProject = async (password: string) => {
@@ -33,7 +32,7 @@ export default function ProjectsPage() {
     try {
       await api.deleteWithBody(`/api/v1/projects/${deleteTarget.id}`, { password });
       setDeleteTarget(null);
-      await load();
+      await invalidateList();
     } finally {
       setDeleting(false);
     }
@@ -58,7 +57,12 @@ export default function ProjectsPage() {
           <Card key={p.id} className="hover:border-primary/30 transition-colors">
             <CardContent className="p-4 space-y-3">
               <div>
-                <p className="font-medium">{p.name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium">{p.name}</p>
+                  <Badge variant={p.has_model ? 'success' : 'warning'} className="text-[10px] px-1.5 py-0">
+                    {p.has_model ? 'Model ready' : 'No model'}
+                  </Badge>
+                </div>
                 {p.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{p.description}</p>}
               </div>
               <div className="flex gap-2">
@@ -79,7 +83,7 @@ export default function ProjectsPage() {
         ))}
       </div>
 
-      {projects.length === 0 && !showCreate && (
+      {!isLoading && projects.length === 0 && !showCreate && (
         <div className="surface py-12 text-center text-sm text-muted-foreground">
           <p>No projects yet</p>
           <Button className="mt-3" size="sm" onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" /> New project</Button>

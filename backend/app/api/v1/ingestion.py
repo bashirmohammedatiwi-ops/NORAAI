@@ -36,7 +36,7 @@ from app.schemas import (
 )
 from app.services.deletion import delete_class_permanently as remove_class_permanently
 from app.core.redis_client import get_redis
-from workers.ingestion.tasks import process_image
+from app.services.ingestion.batch_upload import FilePayload, ingest_files_parallel
 
 router = APIRouter(tags=["ingestion", "classes", "fleet"])
 
@@ -63,29 +63,28 @@ async def upload_images(
         if not cls or cls.project_id != project_id:
             raise HTTPException(status_code=400, detail="Invalid class for this project")
 
-    results = []
+    payloads: list[FilePayload] = []
     for file in files:
         content = await file.read()
-        metadata: dict = {"dataset_id": str(target_dataset_id)}
-        if class_id:
-            metadata["class_id"] = str(class_id)
+        payloads.append(FilePayload(content=content, content_type=file.content_type or "image/jpeg"))
 
-        record = IngestionRecord(
-            project_id=project_id,
-            source_type=IngestionSourceType(source_type),
-            source_id=str(user.id),
-            status="processing",
-            extra_metadata=metadata,
-        )
-        db.add(record)
-        await db.flush()
+    metadata: dict = {"dataset_id": str(target_dataset_id)}
+    if class_id:
+        metadata["class_id"] = str(class_id)
 
-        minio_key = f"ingestion/temp/{record.id}"
-        upload_bytes(minio_key, content, file.content_type or "image/jpeg")
-        process_image.delay(str(record.id), minio_key=minio_key)
-        results.append(record)
+    record_ids = await ingest_files_parallel(
+        db,
+        project_id=project_id,
+        source_type=IngestionSourceType(source_type),
+        source_id=str(user.id),
+        files=payloads,
+        extra_metadata=metadata,
+    )
 
-    return IngestionUploadResponse(record_id=results[-1].id if results else UUID(int=0), status="processing")
+    return IngestionUploadResponse(
+        record_id=record_ids[-1] if record_ids else UUID(int=0),
+        status="processing",
+    )
 
 
 @router.post("/ingest/device", response_model=IngestionUploadResponse)

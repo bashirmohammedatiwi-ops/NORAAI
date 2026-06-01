@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useParams } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { useProjectOverview } from '@/hooks/useProjects';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
@@ -18,16 +17,10 @@ const tabs = [
 export function ProjectLayout() {
   const { id } = useParams();
   const location = useLocation();
-  const [project, setProject] = useState<{ id: string; name: string; description: string | null } | null>(null);
-  const [modelReady, setModelReady] = useState(false);
+  const { data } = useProjectOverview(id);
 
-  useEffect(() => {
-    if (!id) return;
-    api.get<typeof project>(`/api/v1/projects/${id}`).then(setProject).catch(() => {});
-    api.get<{ has_model: boolean }>(`/api/v1/projects/${id}/active-model`)
-      .then((s) => setModelReady(s.has_model))
-      .catch(() => {});
-  }, [id, location.pathname]);
+  const project = data?.project;
+  const modelReady = data?.model_status?.has_model ?? false;
 
   if (!id) return null;
 

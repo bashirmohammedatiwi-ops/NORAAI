@@ -140,7 +140,21 @@ async def get_active_model_status(db: AsyncSession, project_id: uuid.UUID) -> di
     if not project:
         return {}
 
-    artifact = await get_active_model(db, project_id)
+    if project.active_model_artifact_id:
+        artifact = await db.get(ModelArtifact, project.active_model_artifact_id)
+    else:
+        result = await db.execute(
+            select(ModelArtifact)
+            .where(
+                ModelArtifact.project_id == project_id,
+                ModelArtifact.lifecycle == ModelLifecycle.PRODUCTION,
+            )
+            .order_by(ModelArtifact.created_at.desc())
+            .limit(1)
+        )
+        artifact = result.scalar_one_or_none()
+        if artifact:
+            project.active_model_artifact_id = artifact.id
 
     running_job = await db.execute(
         select(TrainingJob)

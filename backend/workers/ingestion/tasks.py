@@ -51,6 +51,12 @@ def process_image(record_id: str, image_bytes_b64: str | None = None, minio_key:
 
         existing = session.query(Image).filter_by(content_hash=content_hash, project_id=record.project_id).first()
         if existing:
+            if minio_key and minio_key.startswith("ingestion/temp/"):
+                try:
+                    from app.core.minio_client import remove_object
+                    remove_object(minio_key)
+                except Exception:
+                    pass
             record.status = "duplicate"
             record.image_id = existing.id
             record.error_message = "Duplicate image detected"
@@ -71,8 +77,21 @@ def process_image(record_id: str, image_bytes_b64: str | None = None, minio_key:
         quality = assess_image_quality(image_bytes)
         lat, lon = extract_gps_from_exif(image_bytes)
 
-        minio_key = f"projects/{record.project_id}/images/{content_hash[:16]}.jpg"
-        upload_bytes(minio_key, image_bytes, "image/jpeg")
+        final_key = f"projects/{record.project_id}/images/{content_hash[:16]}.jpg"
+        temp_key = minio_key if minio_key and minio_key.startswith("ingestion/temp/") else None
+
+        if temp_key:
+            from app.core.minio_client import copy_object, remove_object
+
+            copy_object(temp_key, final_key, "image/jpeg")
+            try:
+                remove_object(temp_key)
+            except Exception:
+                pass
+        else:
+            upload_bytes(final_key, image_bytes, "image/jpeg")
+
+        minio_key = final_key
 
         status = ImageStatus.VALIDATED
         if quality["is_corrupted"] or quality["overall_score"] < settings.quality_score_threshold:

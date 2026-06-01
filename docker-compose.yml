@@ -64,7 +64,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A workers.celery_app worker -Q ingestion -c 2 --loglevel=info
+    command: celery -A workers.celery_app worker -Q ingestion -c 4 --loglevel=info
     env_file: .env
     volumes:
       - ./backend:/app

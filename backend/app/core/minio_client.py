@@ -26,6 +26,26 @@ def ensure_bucket() -> None:
         client.make_bucket(settings.minio_bucket)
 
 
+def copy_object(source_key: str, dest_key: str, content_type: str = "image/jpeg") -> str:
+    """Server-side copy within the bucket (faster than download + re-upload)."""
+    client = get_minio()
+    ensure_bucket()
+    from minio.commonconfig import CopySource
+
+    client.copy_object(
+        settings.minio_bucket,
+        dest_key,
+        CopySource(settings.minio_bucket, source_key),
+    )
+    return dest_key
+
+
+def remove_object(key: str) -> None:
+    client = get_minio()
+    ensure_bucket()
+    client.remove_object(settings.minio_bucket, key)
+
+
 def upload_bytes(key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
     client = get_minio()
     ensure_bucket()

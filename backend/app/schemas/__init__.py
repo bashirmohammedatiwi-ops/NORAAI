@@ -61,6 +61,20 @@ class ProjectResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ProjectListItemResponse(ProjectResponse):
+    has_model: bool = False
+
+
+class ProjectOverviewResponse(BaseModel):
+    project: ProjectResponse
+    model_status: dict
+
+
+class DashboardHomeResponse(BaseModel):
+    stats: dict
+    projects: list[ProjectListItemResponse]
+
+
 class ModelDefinitionCreate(BaseModel):
     name: str
     task_type: str = "detection"

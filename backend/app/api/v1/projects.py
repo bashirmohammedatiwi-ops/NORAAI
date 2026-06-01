@@ -13,17 +13,31 @@ from app.schemas import (
     ModelDefinitionResponse,
     PasswordConfirmRequest,
     ProjectCreate,
+    ProjectListItemResponse,
+    ProjectOverviewResponse,
     ProjectResponse,
 )
 from app.services.deletion import delete_project_permanently
-from app.services.projects.service import create_project, list_projects
+from app.services.models.active_model import get_active_model_status
+from app.services.projects.service import create_project, list_projects, project_has_model
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-@router.get("", response_model=list[ProjectResponse])
+@router.get("", response_model=list[ProjectListItemResponse])
 async def get_projects(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return await list_projects(db, user.organization_id)
+    projects = await list_projects(db, user.organization_id)
+    return [
+        ProjectListItemResponse(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            domain=p.domain,
+            created_at=p.created_at,
+            has_model=project_has_model(p),
+        )
+        for p in projects
+    ]
 
 
 @router.post("", response_model=ProjectResponse)
@@ -45,6 +59,26 @@ async def get_project(
         select(Project).where(Project.id == project_id, Project.organization_id == user.organization_id)
     )
     return result.scalar_one()
+
+
+@router.get("/{project_id}/overview", response_model=ProjectOverviewResponse)
+async def get_project_overview(
+    project_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.organization_id == user.organization_id)
+    )
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    model_status = await get_active_model_status(db, project_id)
+    return ProjectOverviewResponse(
+        project=ProjectResponse.model_validate(project),
+        model_status=model_status,
+    )
 
 
 @router.get("/{project_id}/models", response_model=list[ModelDefinitionResponse])

@@ -133,7 +133,7 @@ export function BulkImageUpload({
                   : 'Select a class first'}
             </p>
             <p className="text-sm text-muted-foreground mt-1">
-              Bulk upload — JPG, PNG, WebP · batches of 25 · auto YOLO labels
+              Bulk upload — parallel ×4 · 15 images/request · auto YOLO labels
             </p>
             {className && ready && (
               <span

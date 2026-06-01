@@ -6,8 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
-from app.core.minio_client import upload_bytes
-from app.models import ClassLabel, Dataset, DatasetVersion, Image, ImageQualityScore, IngestionRecord, IngestionSourceType, User
+from app.models import ClassLabel, Dataset, DatasetVersion, Image, ImageQualityScore, IngestionSourceType, User
 from app.schemas import (
     AddImagesToDatasetRequest,
     DatasetBuilderStatsResponse,
@@ -30,7 +29,7 @@ from app.services.datasets.dataset_images import (
 from app.services.datasets.gallery import get_dataset_gallery
 from app.services.deletion import delete_dataset_permanently
 from app.services.datasets.versioning import compare_versions, create_dataset, create_version, rollback_dataset
-from workers.ingestion.tasks import process_image
+from app.services.ingestion.batch_upload import FilePayload, ingest_files_parallel
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -170,27 +169,23 @@ async def upload_to_dataset(
         if not cls or cls.project_id != dataset.project_id:
             raise HTTPException(status_code=400, detail="Invalid class for this project")
 
-    record_ids = []
+    payloads: list[FilePayload] = []
     for file in files:
         content = await file.read()
-        metadata: dict = {"dataset_id": str(dataset_id)}
-        if class_id:
-            metadata["class_id"] = str(class_id)
+        payloads.append(FilePayload(content=content, content_type=file.content_type or "image/jpeg"))
 
-        record = IngestionRecord(
-            project_id=dataset.project_id,
-            source_type=IngestionSourceType(source_type),
-            source_id=str(user.id),
-            status="processing",
-            extra_metadata=metadata,
-        )
-        db.add(record)
-        await db.flush()
+    metadata: dict = {"dataset_id": str(dataset_id)}
+    if class_id:
+        metadata["class_id"] = str(class_id)
 
-        minio_key = f"ingestion/temp/{record.id}"
-        upload_bytes(minio_key, content, file.content_type or "image/jpeg")
-        process_image.delay(str(record.id), minio_key=minio_key)
-        record_ids.append(record.id)
+    record_ids = await ingest_files_parallel(
+        db,
+        project_id=dataset.project_id,
+        source_type=IngestionSourceType(source_type),
+        source_id=str(user.id),
+        files=payloads,
+        extra_metadata=metadata,
+    )
 
     cls_note = ""
     if class_id:
@@ -202,7 +197,7 @@ async def upload_to_dataset(
         record_ids=record_ids,
         status="processing",
         class_id=class_id,
-        message=f"Uploading {len(record_ids)} image(s) to '{dataset.name}'{cls_note}",
+        message=f"Queued {len(record_ids)} image(s) for '{dataset.name}'{cls_note}",
     )
 
 

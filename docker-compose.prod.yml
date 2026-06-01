@@ -92,7 +92,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: always
-    command: celery -A workers.celery_app worker -Q ingestion -c 2 --loglevel=info
+    command: celery -A workers.celery_app worker -Q ingestion -c 6 --loglevel=info
     env_file: .env
     depends_on:
       api:

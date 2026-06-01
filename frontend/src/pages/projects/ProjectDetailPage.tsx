@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { useProjectOverview } from '@/hooks/useProjects';
 import { Badge } from '@/components/ui/badge';
 import { Database, Brain, Images, PenTool, Activity, ArrowRight } from 'lucide-react';
 
@@ -14,12 +13,8 @@ const actions = [
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
-  const [modelStatus, setModelStatus] = useState<{ has_model: boolean; model: { metrics: Record<string, number> } | null } | null>(null);
-
-  useEffect(() => {
-    if (!id) return;
-    api.get<typeof modelStatus>(`/api/v1/projects/${id}/active-model`).then(setModelStatus).catch(() => {});
-  }, [id]);
+  const { data } = useProjectOverview(id);
+  const modelStatus = data?.model_status;
 
   if (!id) return null;
 
