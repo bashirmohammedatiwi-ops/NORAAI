@@ -6,6 +6,9 @@ export function normalizeClassName(name: string): string {
 
 export function detectionBoxClass(className: string): string {
   const n = normalizeClassName(className);
+  if (n === 'vehicle' || n === 'car' || n === 'truck' || n === 'bus' || n === 'motorcycle') {
+    return 'border-blue-500 bg-blue-500/10';
+  }
   if (n.includes('pothole') || n.includes('crack') || n.includes('road') || n.includes('flooded')) {
     return 'border-orange-500 bg-orange-500/10';
   }
@@ -17,6 +20,9 @@ export function detectionBoxClass(className: string): string {
 
 export function detectionLabelClass(className: string): string {
   const n = normalizeClassName(className);
+  if (n === 'vehicle' || n === 'car' || n === 'truck' || n === 'bus' || n === 'motorcycle') {
+    return 'bg-blue-600';
+  }
   if (n.includes('pothole') || n.includes('crack') || n.includes('road')) {
     return 'bg-orange-600';
   }

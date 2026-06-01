@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 from app.core.minio_client import download_bytes
 from app.models import Annotation, AnnotationStatus, ClassLabel, Image
 from ml.detection.class_taxonomy import detection_mode, normalize_class_name
+from ml.detection.damage_localizer import localize_damage_from_bytes
+from ml.detection.dual_vehicle_damage import vehicle_to_bbox_xyxy
 from ml.detection.vehicle_localizer import detect_vehicles_from_bytes, largest_vehicle
+
+VEHICLE_CLASS_PRIORITY = ("Vehicle", "Car", "Truck", "Bus", "Motorcycle")
 
 
 def create_full_image_annotation_sync(
@@ -91,6 +95,41 @@ def create_region_annotation_sync(
     return ann
 
 
+def resolve_vehicle_class_id(session: Session, project_id: uuid.UUID) -> uuid.UUID | None:
+    for name in VEHICLE_CLASS_PRIORITY:
+        cls = (
+            session.query(ClassLabel)
+            .filter(
+                ClassLabel.project_id == project_id,
+                ClassLabel.name == name,
+                ClassLabel.is_archived == False,
+            )
+            .first()
+        )
+        if cls:
+            return cls.id
+    for cls in (
+        session.query(ClassLabel)
+        .filter(ClassLabel.project_id == project_id, ClassLabel.is_archived == False)
+        .all()
+    ):
+        if detection_mode(cls.name) == "vehicle":
+            return cls.id
+    return None
+
+
+def annotate_vehicle_if_present(
+    session: Session,
+    image_id: uuid.UUID,
+    project_id: uuid.UUID,
+    vehicle: dict,
+) -> Annotation | None:
+    vehicle_class_id = resolve_vehicle_class_id(session, project_id)
+    if not vehicle_class_id:
+        return None
+    return create_vehicle_class_annotation_sync(session, image_id, vehicle_class_id, vehicle)
+
+
 def create_vehicle_class_annotation_sync(
     session: Session,
     image_id: uuid.UUID,
@@ -148,7 +187,7 @@ def auto_annotate_class_on_image_sync(
     """
     Auto-label with localized boxes:
     - Road classes (Pothole, Road_Crack): box on road surface
-    - Damage classes (Accident, Vehicle_Damage): tight box on damage area
+    - Damage classes (Accident, Vehicle_Damage): Vehicle box + tight damage box (CV-localized)
     - Vehicle classes: COCO vehicle detector
     """
     cls = session.get(ClassLabel, class_id)
@@ -157,12 +196,14 @@ def auto_annotate_class_on_image_sync(
 
     image = session.get(Image, image_id)
     vehicles: list[dict] = []
+    img_bytes: bytes | None = None
     if image and image.minio_key:
         try:
             img_bytes = download_bytes(image.minio_key)
             vehicles = detect_vehicles_from_bytes(img_bytes)
         except Exception:
             vehicles = []
+            img_bytes = None
 
     vehicle = largest_vehicle(vehicles)
 
@@ -177,24 +218,31 @@ def auto_annotate_class_on_image_sync(
         )
 
     if mode == "damage":
-        if vehicle:
-            region = damage_region_from_vehicle(vehicle)
-            ann = create_region_annotation_sync(
-                session,
-                image_id,
-                class_id,
-                source="upload_damage_auto",
-                **region,
+        vehicle_bbox = vehicle_to_bbox_xyxy(vehicle) if vehicle else None
+        if img_bytes:
+            region = localize_damage_from_bytes(
+                img_bytes,
+                vehicle_bbox=vehicle_bbox,
             )
-            return ann
-        region = damage_region_no_vehicle()
-        return create_region_annotation_sync(
+        elif vehicle:
+            region = damage_region_from_vehicle(vehicle)
+        else:
+            region = damage_region_no_vehicle()
+
+        ann = create_region_annotation_sync(
             session,
             image_id,
             class_id,
             source="upload_damage_auto",
-            **region,
+            x_center=region["x_center"],
+            y_center=region["y_center"],
+            width=region["width"],
+            height=region["height"],
+            confidence=float(region.get("confidence", 0.85)),
         )
+        if vehicle and image:
+            annotate_vehicle_if_present(session, image_id, image.project_id, vehicle)
+        return ann
 
     if mode == "vehicle" and vehicle:
         return create_vehicle_class_annotation_sync(session, image_id, class_id, vehicle)

@@ -237,14 +237,15 @@ export default function DataHubPage() {
             </CardHeader>
             <CardContent className="text-sm space-y-2 text-muted-foreground">
               <p>
-                <strong className="text-foreground">Accident / Vehicle_Damage:</strong> box around the damaged part only
-                (bumper, door, hood) — even if the photo shows only the damage.
+                <strong className="text-foreground">Accident / Vehicle_Damage:</strong> two boxes —{' '}
+                <span className="text-blue-600">Vehicle</span> (whole car) +{' '}
+                <span className="text-red-600">damage</span> (windshield, bumper, panel only).
               </p>
               <p>
                 <strong className="text-foreground">Pothole / Road_Crack:</strong> box on each hole or crack on the pavement.
               </p>
               <p className="text-xs">
-                Auto-label gives a starting box — refine in{' '}
+                Auto-label creates both vehicle + damage boxes — refine in{' '}
                 <Link to={`/projects/${projectId}/annotation`} className="text-primary underline">Annotation</Link>{' '}
                 for best accuracy, then retrain.
               </p>

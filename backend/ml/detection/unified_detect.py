@@ -6,6 +6,7 @@ from app.core.config import Settings
 from app.services.driver.project_classes import normalize_class_name
 from app.services.inference.filters import filter_detections
 from ml.detection.class_taxonomy import detection_mode, is_damage_class, is_road_class
+from ml.detection.dual_vehicle_damage import append_vehicle_predictions, enrich_damage_detections
 from ml.detection.two_stage import classify_vehicles_two_stage
 
 
@@ -95,6 +96,18 @@ def detect_with_project_model(
         if candidates:
             pipeline = "two_stage"
 
+    if has_damage and candidates:
+        candidates, vehicles = enrich_damage_detections(
+            image_path,
+            candidates,
+            vehicles=vehicles or None,
+            vehicle_conf=0.35,
+            iou=settings.inference_iou_threshold,
+        )
+        candidates = append_vehicle_predictions(candidates, class_names, allowed_norm)
+        if vehicles and pipeline == "localized":
+            pipeline = "dual_vehicle_damage"
+
     class_count = max(len(class_names), 1)
     predictions, threshold, warnings = filter_detections(
         candidates,
@@ -106,8 +119,8 @@ def detect_with_project_model(
     tips: list[str] = []
     if has_damage:
         tips.append(
-            "Accident/damage: label a tight box around the damaged area only (bumper, door, glass) — "
-            "not the whole car. Use Annotation to refine auto-labels."
+            "Accident/damage: blue dashed box = vehicle, red box = damaged part (glass, bumper, panel). "
+            "Refine both in Annotation, then retrain."
         )
     if has_road:
         tips.append(
