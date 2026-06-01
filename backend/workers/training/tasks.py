@@ -1,4 +1,3 @@
-import json
 import os
 import tempfile
 import uuid
@@ -10,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
 from app.core.minio_client import upload_bytes
-from app.core.redis_client import get_sync_redis
+from app.services.training.progress import publish_training_progress
 from app.models import (
     ClassLabel,
     HyperparameterTrial,
@@ -31,10 +30,10 @@ SessionLocal = sessionmaker(bind=engine)
 
 
 def publish_metric(job_id: str, metrics: dict):
-    redis = get_sync_redis()
-    payload = json.dumps({**metrics, "job_id": job_id, "timestamp": datetime.now(timezone.utc).isoformat()})
-    redis.publish(f"training:{job_id}", payload)
-    redis.setex(f"training:progress:{job_id}", 3600, payload)
+    publish_training_progress(job_id, {
+        **metrics,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
 
 
 @celery_app.task(name="workers.training.tasks.run_training_job")
@@ -56,21 +55,13 @@ def run_training_job(job_id: str):
         adapter = get_adapter(job.architecture.value)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            if job.dataset_version_id:
-                yaml_path, class_names = export_yolo_dataset_sync(
-                    session, job.dataset_version_id, tmpdir, config.get("val_split", 0.2)
-                )
-            else:
-                yaml_path = os.path.join(tmpdir, "data.yaml")
-                Path(yaml_path).write_text(
-                    f"path: {tmpdir}\ntrain: images/train\nval: images/val\nnc: 1\nnames: ['object']\n"
-                )
-                for split in ("train", "val"):
-                    os.makedirs(os.path.join(tmpdir, "images", split), exist_ok=True)
-                class_names = ["object"]
-
-            def metrics_callback(m):
+            def progress_callback(m: dict):
                 publish_metric(job_id, m)
+
+            def metrics_callback(m: dict):
+                publish_metric(job_id, m)
+                if not m.get("save_epoch_metric"):
+                    return
                 metric = TrainingMetric(
                     training_job_id=job.id,
                     epoch=m["epoch"],
@@ -84,7 +75,30 @@ def run_training_job(job_id: str):
                 session.add(metric)
                 session.commit()
 
-            publish_metric(job_id, {"epoch": 0, "status": "running", "message": "Training started"})
+            publish_metric(job_id, {
+                "epoch": 0,
+                "status": "running",
+                "phase": "export",
+                "message": "Preparing dataset",
+                "progress": 0,
+            })
+
+            if job.dataset_version_id:
+                yaml_path, class_names = export_yolo_dataset_sync(
+                    session,
+                    job.dataset_version_id,
+                    tmpdir,
+                    config.get("val_split", 0.2),
+                    progress_callback=progress_callback,
+                )
+            else:
+                yaml_path = os.path.join(tmpdir, "data.yaml")
+                Path(yaml_path).write_text(
+                    f"path: {tmpdir}\ntrain: images/train\nval: images/val\nnc: 1\nnames: ['object']\n"
+                )
+                for split in ("train", "val"):
+                    os.makedirs(os.path.join(tmpdir, "images", split), exist_ok=True)
+                class_names = ["object"]
 
             if job.hpo_enabled:
                 def hpo_train_fn(params):

@@ -16,6 +16,10 @@ export interface TrainingJobDetail {
   duration_seconds: number | null;
   error_message: string | null;
   device?: string;
+  phase?: string | null;
+  message?: string | null;
+  batch?: number | null;
+  total_batches?: number | null;
   latest_metrics: {
     loss: number | null;
     precision: number | null;
@@ -71,18 +75,28 @@ export function useTrainingJob(jobId: string | null) {
 
   const liveJob = useMemo(() => {
     if (!job) return null;
-    const latestLive = [...liveMetrics].reverse().find((m) => m.epoch);
-    if (!latestLive?.epoch) return job;
+    const latestLive = liveMetrics.length ? liveMetrics[liveMetrics.length - 1] : null;
+    const hasLive = latestLive && (
+      latestLive.progress != null
+      || latestLive.epoch != null
+      || latestLive.phase
+      || latestLive.message
+    );
+    if (!hasLive) return job;
 
-    const epoch = Number(latestLive.epoch);
+    const epoch = Number(latestLive.epoch ?? job.current_epoch);
     const total = Number(latestLive.total_epochs ?? job.total_epochs) || job.total_epochs;
-    const progress = Number(latestLive.progress ?? Math.min(100, Math.round((epoch / total) * 100)));
+    const progress = Number(latestLive.progress ?? job.progress);
 
     return {
       ...job,
       current_epoch: epoch,
       total_epochs: total,
-      progress,
+      progress: Math.min(100, Math.max(0, progress)),
+      phase: (latestLive.phase as string | undefined) ?? job.phase,
+      message: (latestLive.message as string | undefined) ?? job.message,
+      batch: num(latestLive.batch, job.batch),
+      total_batches: num(latestLive.total_batches, job.total_batches),
       latest_metrics: {
         loss: num(latestLive.loss, job.latest_metrics?.loss),
         precision: num(latestLive.precision, job.latest_metrics?.precision),
@@ -105,6 +119,8 @@ function num(value: unknown, fallback: number | null | undefined): number | null
 function mergeMetrics(historical: TrainingMetricPoint[], live: TrainingMetricPoint[]): TrainingMetricPoint[] {
   const map = new Map<number, TrainingMetricPoint>();
   historical.forEach((m) => map.set(m.epoch, m));
-  live.filter((m) => m.epoch).forEach((m) => map.set(m.epoch, { ...map.get(m.epoch), ...m }));
+  live
+    .filter((m) => m.save_epoch_metric && m.epoch)
+    .forEach((m) => map.set(m.epoch, { ...map.get(m.epoch), ...m }));
   return Array.from(map.values()).sort((a, b) => a.epoch - b.epoch);
 }

@@ -12,8 +12,9 @@ import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import {
-  Brain, RefreshCw, Link2, Map, Truck, PenTool, Activity, Database, Play, Loader2, Trash2, Cpu, AlertTriangle,
+  Brain, RefreshCw, Link2, Map, Truck, PenTool, Activity, Database, Play, Loader2, Trash2, Cpu, AlertTriangle, Zap,
 } from 'lucide-react';
+import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
 
 const serviceIcons: Record<string, typeof Map> = {
   road_intelligence: Map,
@@ -40,7 +41,8 @@ export default function UnifiedModelPage() {
   const runningJobId = status?.training.is_running ? status.training.job_id : null;
   const { job: runningJob } = useTrainingJob(runningJobId);
 
-  const [epochs, setEpochs] = useState(20);
+  const [epochs, setEpochs] = useState(CPU_PRESETS[DEFAULT_CPU_PRESET].epochs);
+  const [preset, setPreset] = useState<CpuPreset>(DEFAULT_CPU_PRESET);
   const [architecture, setArchitecture] = useState('yolo11');
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState<ModelArtifact[]>([]);
@@ -58,12 +60,18 @@ export default function UnifiedModelPage() {
     if (!projectId) return;
     setLoading(true);
     try {
-      await api.post(`/api/v1/training/project/${projectId}/retrain?epochs=${epochs}&architecture=${architecture}`);
+      const query = buildRetrainQuery({ epochs, architecture, preset });
+      await api.post(`/api/v1/training/project/${projectId}/retrain?${query}`);
       await refetch();
       invalidateProject(projectId);
     } finally {
       setLoading(false);
     }
+  };
+
+  const onPresetChange = (value: CpuPreset) => {
+    setPreset(value);
+    setEpochs(CPU_PRESETS[value].epochs);
   };
 
   const handleDelete = async (password: string) => {
@@ -89,6 +97,10 @@ export default function UnifiedModelPage() {
   const progress = runningJob?.progress ?? training?.progress ?? 0;
   const currentEpoch = runningJob?.current_epoch ?? training?.current_epoch ?? 0;
   const totalEpochs = runningJob?.total_epochs ?? training?.total_epochs ?? 0;
+  const phase = runningJob?.phase;
+  const message = runningJob?.message;
+  const batch = runningJob?.batch;
+  const totalBatches = runningJob?.total_batches;
 
   return (
     <div className="space-y-6">
@@ -118,6 +130,10 @@ export default function UnifiedModelPage() {
           deviceLabel={training.device_label ?? 'CPU Training'}
           status={training.status ?? 'running'}
           jobName={training.name ?? undefined}
+          phase={phase}
+          message={message}
+          batch={batch}
+          totalBatches={totalBatches}
         />
       )}
 
@@ -213,6 +229,16 @@ export default function UnifiedModelPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Badge variant="secondary" className="gap-1 w-fit"><Cpu className="h-3 w-3" /> CPU Training</Badge>
+            <Select
+              label="CPU preset"
+              value={preset}
+              onChange={(e) => onPresetChange(e.target.value as CpuPreset)}
+            >
+              {(Object.entries(CPU_PRESETS) as [CpuPreset, typeof CPU_PRESETS.fast_cpu][]).map(([key, p]) => (
+                <option key={key} value={key}>{p.label}</option>
+              ))}
+            </Select>
+            <p className="text-xs text-muted-foreground -mt-2">{CPU_PRESETS[preset].description}</p>
             <Select label="Architecture" value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
               <option value="yolo11">YOLO11</option>
               <option value="yolov10">YOLOv10</option>
@@ -223,8 +249,8 @@ export default function UnifiedModelPage() {
               <Input type="number" min={5} max={200} value={epochs} onChange={(e) => setEpochs(+e.target.value)} />
             </div>
             <Button className="w-full" onClick={retrain} disabled={loading || training?.is_running}>
-              <Play className="h-4 w-4" />
-              Retrain on latest data
+              {preset === 'fast_cpu' ? <Zap className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              {preset === 'fast_cpu' ? 'Fast CPU Retrain' : 'Retrain on latest data'}
             </Button>
             {training?.is_running && training.job_id && (
               <Link to={`/projects/${projectId}/training`} className="block text-center text-sm text-primary underline">

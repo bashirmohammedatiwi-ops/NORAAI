@@ -198,6 +198,10 @@ export default function TrainingPage() {
           deviceLabel={(job.config?.device as string) === 'cpu' || !job.config?.device ? 'CPU Training' : String(job.config.device)}
           status={job.status}
           jobName={job.name}
+          phase={job.phase}
+          message={job.message}
+          batch={job.batch}
+          totalBatches={job.total_batches}
         />
       )}
 

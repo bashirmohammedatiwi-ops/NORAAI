@@ -1,6 +1,9 @@
 import random
 import uuid
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,8 +17,10 @@ def export_yolo_dataset_sync(
     dataset_version_id: uuid.UUID,
     output_dir: str,
     val_split: float = 0.2,
+    progress_callback: Callable[[dict], None] | None = None,
+    max_workers: int = 8,
 ) -> tuple[str, list[str]]:
-    """Export dataset version to YOLO format. Returns (yaml_path, class_names)."""
+    """Export dataset version to YOLO format with parallel MinIO downloads."""
     version = session.get(DatasetVersion, dataset_version_id)
     if not version:
         raise ValueError("Dataset version not found")
@@ -47,34 +52,73 @@ def export_yolo_dataset_sync(
     val_count = max(1, int(len(shuffled) * val_split)) if shuffled else 0
     val_ids = set(shuffled[:val_count])
 
-    exported = 0
-    for img_id in image_ids:
-        image = session.get(Image, img_id)
-        if not image:
-            continue
+    images = {
+        img.id: img
+        for img in session.execute(select(Image).where(Image.id.in_(image_ids))).scalars().all()
+    }
 
+    ann_by_image: dict[uuid.UUID, list] = defaultdict(list)
+    if image_ids:
+        ann_rows = session.execute(
+            select(Annotation).where(
+                Annotation.image_id.in_(image_ids),
+                Annotation.status.in_([AnnotationStatus.APPROVED, AnnotationStatus.EDITED]),
+            )
+        )
+        for ann in ann_rows.scalars().all():
+            ann_by_image[ann.image_id].append(ann)
+
+    total = len(image_ids)
+    if progress_callback:
+        progress_callback({
+            "phase": "export",
+            "message": "Preparing dataset",
+            "export_current": 0,
+            "export_total": total,
+            "progress": 2,
+            "epoch": 0,
+            "status": "running",
+        })
+
+    def export_one(img_id: uuid.UUID) -> bool:
+        image = images.get(img_id)
+        if not image:
+            return False
         split = "val" if img_id in val_ids else "train"
         try:
             img_bytes = download_bytes(image.minio_key)
         except Exception:
-            continue
+            return False
 
         img_name = f"{img_id}.jpg"
         (base / "images" / split / img_name).write_bytes(img_bytes)
 
-        ann_result = session.execute(
-            select(Annotation).where(
-                Annotation.image_id == img_id,
-                Annotation.status.in_([AnnotationStatus.APPROVED, AnnotationStatus.EDITED]),
-            )
-        )
         labels = []
-        for ann in ann_result.scalars().all():
+        for ann in ann_by_image.get(img_id, []):
             cls_idx = class_map.get(str(ann.class_id), 0)
             labels.append(f"{cls_idx} {ann.x_center:.6f} {ann.y_center:.6f} {ann.width:.6f} {ann.height:.6f}")
-
         (base / "labels" / split / f"{img_id}.txt").write_text("\n".join(labels))
-        exported += 1
+        return True
+
+    exported = 0
+    done = 0
+    workers = max(1, min(max_workers, total or 1))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(export_one, img_id): img_id for img_id in image_ids}
+        for future in as_completed(futures):
+            done += 1
+            if future.result():
+                exported += 1
+            if progress_callback and (done == total or done % max(1, total // 20) == 0):
+                progress_callback({
+                    "phase": "export",
+                    "message": f"Exporting images {done}/{total}",
+                    "export_current": done,
+                    "export_total": total,
+                    "progress": min(15, int((done / max(total, 1)) * 15)),
+                    "epoch": 0,
+                    "status": "running",
+                })
 
     if exported == 0:
         _write_placeholder_dataset(base)
@@ -84,6 +128,18 @@ def export_yolo_dataset_sync(
     yaml_content = f"path: {output_dir}\ntrain: images/train\nval: images/val\nnc: {nc}\nnames: {names}\n"
     yaml_path = str(base / "data.yaml")
     Path(yaml_path).write_text(yaml_content)
+
+    if progress_callback:
+        progress_callback({
+            "phase": "train",
+            "message": "Starting YOLO training",
+            "export_current": total,
+            "export_total": total,
+            "progress": 15,
+            "epoch": 0,
+            "status": "running",
+        })
+
     return yaml_path, names
 
 

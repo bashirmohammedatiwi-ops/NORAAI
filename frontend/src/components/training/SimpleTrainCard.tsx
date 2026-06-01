@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { Loader2, Play, Settings2, Cpu } from 'lucide-react';
+import { Loader2, Play, Settings2, Cpu, Zap } from 'lucide-react';
 
 interface Props {
   projectId: string;
@@ -27,17 +28,24 @@ export function SimpleTrainCard({
   onToggleAdvanced,
 }: Props) {
   const [architecture, setArchitecture] = useState('yolo11');
-  const [epochs, setEpochs] = useState(30);
+  const [preset, setPreset] = useState<CpuPreset>(DEFAULT_CPU_PRESET);
+  const [epochs, setEpochs] = useState(CPU_PRESETS[DEFAULT_CPU_PRESET].epochs);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const onPresetChange = (value: CpuPreset) => {
+    setPreset(value);
+    setEpochs(CPU_PRESETS[value].epochs);
+  };
 
   const start = async () => {
     if (!ready || !datasetId) return;
     setLoading(true);
     setError('');
     try {
+      const query = buildRetrainQuery({ epochs, architecture, preset });
       const job = await api.post<{ id: string }>(
-        `/api/v1/training/project/${projectId}/retrain?epochs=${epochs}&architecture=${architecture}`,
+        `/api/v1/training/project/${projectId}/retrain?${query}`,
       );
       onStarted(job.id);
     } catch (e) {
@@ -61,9 +69,12 @@ export function SimpleTrainCard({
                 ? `${imageCount} images ready · YOLO auto-labels applied`
                 : 'Upload images first to enable training'}
             </CardDescription>
-            <div className="mt-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               <Badge variant="secondary" className="gap-1 text-[10px]">
                 <Cpu className="h-3 w-3" /> CPU Training
+              </Badge>
+              <Badge variant="outline" className="gap-1 text-[10px]">
+                <Zap className="h-3 w-3" /> {CPU_PRESETS[preset].label}
               </Badge>
             </div>
           </div>
@@ -77,6 +88,13 @@ export function SimpleTrainCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-wrap items-end gap-4">
+          <div className="min-w-[140px] flex-1">
+            <Select label="CPU preset" value={preset} onChange={(e) => onPresetChange(e.target.value as CpuPreset)}>
+              {(Object.entries(CPU_PRESETS) as [CpuPreset, typeof CPU_PRESETS.fast_cpu][]).map(([key, p]) => (
+                <option key={key} value={key}>{p.label}</option>
+              ))}
+            </Select>
+          </div>
           <div className="min-w-[140px] flex-1">
             <Select label="Model" value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
               <option value="yolo11">YOLO11 (recommended)</option>
@@ -104,10 +122,11 @@ export function SimpleTrainCard({
             {loading ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Starting...</>
             ) : (
-              <><Play className="h-4 w-4" /> Start Training</>
+              <><Zap className="h-4 w-4" /> Fast Train</>
             )}
           </Button>
         </div>
+        <p className="text-xs text-muted-foreground">{CPU_PRESETS[preset].description}</p>
         {error && (
           <p className="text-sm text-destructive rounded-lg bg-destructive/10 px-3 py-2">{error}</p>
         )}

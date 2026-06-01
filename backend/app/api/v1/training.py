@@ -13,6 +13,7 @@ from app.services.models.active_model import get_active_model_status
 from app.services.models.deletion import delete_all_project_models, delete_model_artifact
 from app.schemas import DeleteResultResponse, ModelArtifactResponse, ModelCompareRequest, PasswordConfirmRequest, TrainingJobCreate, TrainingJobResponse
 from app.services.evaluation.compare import compare_models
+from app.services.training.cpu_presets import DEFAULT_CPU_PRESET, build_retrain_config
 from app.services.training.service import TRAINING_OPTIONS, get_job_detail, job_to_summary
 from workers.training.tasks import cancel_training_job, run_training_job
 
@@ -220,8 +221,9 @@ async def project_active_model(project_id: UUID, db: AsyncSession = Depends(get_
 @router.post("/training/project/{project_id}/retrain", response_model=TrainingJobResponse)
 async def retrain_project_model(
     project_id: UUID,
-    epochs: int = Query(20, ge=5, le=200),
+    epochs: int | None = Query(None, ge=5, le=200),
     architecture: str = Query("yolo11"),
+    preset: str = Query(DEFAULT_CPU_PRESET, pattern="^(fast_cpu|balanced)$"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -246,6 +248,8 @@ async def retrain_project_model(
     if not head_version_id:
         raise HTTPException(status_code=400, detail="Dataset has no version")
 
+    config = build_retrain_config(epochs, preset)
+
     job = TrainingJob(
         project_id=project_id,
         name="Retrain Main Model",
@@ -253,19 +257,7 @@ async def retrain_project_model(
         training_mode=TrainingMode.SINGLE_GPU,
         dataset_version_id=UUID(head_version_id) if isinstance(head_version_id, str) else head_version_id,
         hpo_enabled=False,
-        config={
-            "epochs": epochs,
-            "batch_size": 8,
-            "learning_rate": 0.01,
-            "optimizer": "AdamW",
-            "scheduler": "cosine",
-            "augmentation": "medium",
-            "image_size": 640,
-            "mixed_precision": False,
-            "val_split": 0.2,
-            "continuous": True,
-            "device": "cpu",
-        },
+        config=config,
         created_by=user.id,
     )
     db.add(job)

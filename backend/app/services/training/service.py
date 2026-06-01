@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import HyperparameterTrial, ModelArtifact, TrainingJob, TrainingMetric, TrainingStatus
+from app.services.training.progress import get_training_progress, merge_live_progress
 
 
 TRAINING_OPTIONS = {
@@ -40,6 +41,25 @@ TRAINING_OPTIONS = {
         "hpo_trials": 5,
         "patience": 10,
     },
+    "cpu_presets": [
+        {
+            "value": "fast_cpu",
+            "label": "Fast CPU",
+            "description": "10 epochs · 416px · light aug — recommended on CPU-only VPS",
+            "epochs": 10,
+            "image_size": 416,
+            "augmentation": "light",
+        },
+        {
+            "value": "balanced",
+            "label": "Balanced CPU",
+            "description": "20 epochs · 640px · medium aug — slower, higher quality",
+            "epochs": 20,
+            "image_size": 640,
+            "augmentation": "medium",
+        },
+    ],
+    "default_cpu_preset": "fast_cpu",
 }
 
 
@@ -78,6 +98,10 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
     )
 
     progress, current_epoch, epochs_total = _job_progress(job, latest)
+    live = get_training_progress(job_id)
+    live_fields = merge_live_progress(job.status.value, progress, current_epoch, live)
+    progress = live_fields["progress"]
+    current_epoch = live_fields["current_epoch"]
 
     duration = None
     if job.started_at:
@@ -103,6 +127,10 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
         "progress": progress,
         "current_epoch": current_epoch,
         "total_epochs": epochs_total,
+        "phase": live_fields.get("phase"),
+        "message": live_fields.get("message"),
+        "batch": live_fields.get("batch"),
+        "total_batches": live_fields.get("total_batches"),
         "duration_seconds": duration,
         "metrics_count": metrics_count.scalar() or 0,
         "trials_count": trials_count.scalar() or 0,

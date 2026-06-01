@@ -55,6 +55,10 @@ class YOLOAdapter:
         }
         if config.get("scheduler") == "cosine":
             kwargs["cos_lr"] = True
+        if use_cpu:
+            kwargs["workers"] = min(8, config.get("workers", os.cpu_count() or 4))
+            if config.get("cache", True):
+                kwargs["cache"] = True
         return kwargs
 
     def train(
@@ -75,6 +79,35 @@ class YOLOAdapter:
             model = YOLO(self.model_name)
 
             if metrics_callback:
+                batch_state = {"last_ts": 0.0}
+
+                def training_progress(epoch_idx: int, batch_i: int, nb: int) -> int:
+                    train_frac = (epoch_idx + batch_i / max(nb, 1)) / max(epochs, 1)
+                    return min(99, 15 + int(train_frac * 85))
+
+                def on_train_batch_end(trainer):
+                    now = time.time()
+                    batch_i = int(getattr(trainer, "ni", 0)) + 1
+                    nb = max(int(getattr(trainer, "nb", 1)), 1)
+                    epoch_idx = int(getattr(trainer, "epoch", 0))
+                    if now - batch_state["last_ts"] < 2.0 and batch_i % 5 != 0:
+                        return
+                    batch_state["last_ts"] = now
+                    loss_items = getattr(trainer, "loss_items", None)
+                    loss_val = float(sum(loss_items)) if loss_items is not None else None
+                    metrics_callback({
+                        "epoch": epoch_idx + 1,
+                        "total_epochs": epochs,
+                        "batch": batch_i,
+                        "total_batches": nb,
+                        "phase": "train",
+                        "message": f"Epoch {epoch_idx + 1}/{epochs} · batch {batch_i}/{nb}",
+                        "progress": training_progress(epoch_idx, batch_i, nb),
+                        "loss": loss_val,
+                        "device": str(device),
+                        "status": "running",
+                    })
+
                 def on_train_epoch_end(trainer):
                     epoch = int(trainer.epoch) + 1
                     metrics = getattr(trainer, "metrics", None) or {}
@@ -87,7 +120,9 @@ class YOLOAdapter:
                     metrics_callback({
                         "epoch": epoch,
                         "total_epochs": epochs,
-                        "progress": min(100, int((epoch / epochs) * 100)),
+                        "phase": "train",
+                        "message": f"Epoch {epoch}/{epochs} complete",
+                        "progress": min(100, 15 + int((epoch / max(epochs, 1)) * 85)),
                         "loss": loss_val,
                         "precision": precision,
                         "recall": recall,
@@ -96,8 +131,10 @@ class YOLOAdapter:
                         "map50_95": map50_95,
                         "device": str(device),
                         "status": "running",
+                        "save_epoch_metric": True,
                     })
 
+                model.add_callback("on_train_batch_end", on_train_batch_end)
                 model.add_callback("on_train_epoch_end", on_train_epoch_end)
 
             results = model.train(data=dataset_path, project=output_dir, name="train", **train_kwargs)

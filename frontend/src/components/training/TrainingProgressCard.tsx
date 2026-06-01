@@ -10,12 +10,22 @@ interface Props {
   status?: string;
   jobName?: string;
   compact?: boolean;
+  phase?: string | null;
+  message?: string | null;
+  batch?: number | null;
+  totalBatches?: number | null;
 }
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+function phaseLabel(phase?: string | null): string {
+  if (phase === 'export') return 'Preparing dataset';
+  if (phase === 'train') return 'Training model';
+  return 'Training in progress';
 }
 
 export function TrainingProgressCard({
@@ -27,9 +37,14 @@ export function TrainingProgressCard({
   status = 'running',
   jobName,
   compact,
+  phase,
+  message,
+  batch,
+  totalBatches,
 }: Props) {
   const pct = Math.min(100, Math.max(0, progress));
   const isActive = status === 'running' || status === 'pending';
+  const showEpoch = phase !== 'export';
 
   return (
     <div className={cn(
@@ -69,19 +84,32 @@ export function TrainingProgressCard({
 
         <div className="flex-1 min-w-[180px] space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold">{isActive ? 'Training in progress' : 'Training status'}</span>
+            <span className="font-semibold">{isActive ? phaseLabel(phase) : 'Training status'}</span>
             <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
               <Cpu className="h-3 w-3" /> {deviceLabel}
             </span>
           </div>
           {jobName && <p className="text-xs text-muted-foreground">{jobName}</p>}
+          {message && (
+            <p className="text-sm text-muted-foreground">{message}</p>
+          )}
           <div className="flex flex-wrap gap-4 text-sm">
-            <div>
-              <p className="text-[10px] uppercase text-muted-foreground">Epoch</p>
-              <p className="font-mono font-semibold text-lg leading-none">
-                {currentEpoch}<span className="text-muted-foreground text-sm"> / {totalEpochs || '—'}</span>
-              </p>
-            </div>
+            {showEpoch && (
+              <div>
+                <p className="text-[10px] uppercase text-muted-foreground">Epoch</p>
+                <p className="font-mono font-semibold text-lg leading-none">
+                  {currentEpoch}<span className="text-muted-foreground text-sm"> / {totalEpochs || '—'}</span>
+                </p>
+              </div>
+            )}
+            {batch != null && totalBatches != null && totalBatches > 0 && (
+              <div>
+                <p className="text-[10px] uppercase text-muted-foreground">Batch</p>
+                <p className="font-mono font-semibold text-lg leading-none">
+                  {batch}<span className="text-muted-foreground text-sm"> / {totalBatches}</span>
+                </p>
+              </div>
+            )}
             {durationSeconds != null && durationSeconds > 0 && (
               <div>
                 <p className="text-[10px] uppercase text-muted-foreground flex items-center gap-1">
