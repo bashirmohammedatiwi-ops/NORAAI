@@ -221,6 +221,10 @@ watchdog() {
     "${COMPOSE[@]}" up -d --force-recreate --no-deps api 2>/dev/null || "${COMPOSE[@]}" restart api 2>/dev/null || true
     sleep 15
     api_ready && api_ok=1
+    log "watchdog: restart gateway (refresh API DNS upstream)"
+    "${COMPOSE[@]}" restart gateway 2>/dev/null || true
+    sleep 8
+    app_ready && app_ok=1
   fi
 
   if [ "$app_ok" -eq 0 ]; then

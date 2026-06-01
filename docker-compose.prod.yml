@@ -176,7 +176,7 @@ services:
       - "${PORT_APP:-8080}:80"
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost/health/ready"]
       interval: 25s

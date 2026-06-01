@@ -64,6 +64,10 @@ done
 echo "Applying stack (remove-orphans)..."
 "${COMPOSE[@]}" up -d --remove-orphans
 
+echo "Restarting gateway (pick up current API address)..."
+"${COMPOSE[@]}" restart gateway 2>/dev/null || true
+sleep 5
+
 running=$("${COMPOSE[@]}" ps -q 2>/dev/null | wc -l | tr -d ' ')
 expected=${#ALLOWED[@]}
 

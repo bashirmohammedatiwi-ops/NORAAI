@@ -147,6 +147,31 @@ TRAINING_CPU_FALLBACK=false
 
 ## استكشاف الأخطاء
 
+### Bad Gateway (502)
+
+**السبب الشائع:** nginx يحتفظ بـ IP قديم لحاوية `api` بعد إعادة تشغيلها.
+
+```bash
+cd /opt/aiops
+./scripts/fix_gateway.sh
+# أو يدوياً:
+docker compose -f docker-compose.prod.yml restart gateway
+curl http://localhost:8080/health/ready
+```
+
+إذا API مباشرة يعمل لكن Gateway لا:
+
+```bash
+curl http://localhost:6001/health/ready   # يجب OK
+curl http://localhost:8080/health/ready   # إن فشل → restart gateway
+```
+
+**الحل الدائم:** أعد بناء gateway بعد `git pull` (يحدّث nginx لإعادة حل DNS تلقائياً):
+
+```bash
+./scripts/update_vps.sh
+```
+
 ### Cannot reach the server / بعد إعادة تشغيل VPS
 
 **السبب:** الخدمات لا تبدأ تلقائياً أو الـ API يحتاج 2–3 دقائق بعد الإقلاع.
