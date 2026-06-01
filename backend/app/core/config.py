@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     admin_email: str = "admin@aiops.com"
     admin_password: str = "admin123"
 
+    # Google Maps Platform — Roads API (speed limits on map-matched roads)
+    google_maps_api_key: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

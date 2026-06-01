@@ -13,8 +13,16 @@ from app.core.database import get_db
 from app.core.redis_client import get_redis
 from app.models import FleetDevice, RoadEvent
 from app.models.fleet_models import RoadEventType
-from app.schemas import DriverConfigResponse, DriverDetectResponse, DriverNearbyEvent, DriverProjectClass, TelemetryRequest
+from app.schemas import (
+    DriverConfigResponse,
+    DriverDetectResponse,
+    DriverNearbyEvent,
+    DriverProjectClass,
+    DriverSpeedLimitResponse,
+    TelemetryRequest,
+)
 from app.services.driver.detection import build_alert_types, create_events_from_detections, run_detection
+from app.services.driver.speed_limit import get_road_speed_limit
 from app.services.driver.project_classes import (
     allowed_detection_classes,
     get_project_classes,
@@ -87,9 +95,22 @@ async def driver_config(device: FleetDevice = Depends(get_fleet_device), db: Asy
         classes=allowed if allowed else [c.name for c in project_classes],
         alert_types=build_alert_types(project_classes),
         speed_limit_kmh=80,
+        road_speed_enabled=True,
         detection_enabled=model_ready and bool(allowed),
         message=message,
     )
+
+
+@router.get("/speed-limit", response_model=DriverSpeedLimitResponse)
+async def driver_speed_limit(
+    latitude: float,
+    longitude: float,
+    fallback: float = 80,
+    device: FleetDevice = Depends(get_fleet_device),
+):
+    del device
+    data = await get_road_speed_limit(latitude, longitude, fallback)
+    return DriverSpeedLimitResponse(**data)
 
 
 @router.post("/telemetry")

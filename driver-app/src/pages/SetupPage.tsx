@@ -1,12 +1,7 @@
 import { useState } from 'react';
 import type { DriverConfig } from '../lib/storage';
 
-const EVENT_LABELS: Record<string, string> = {
-  pothole: 'حفرة',
-  accident: 'حادث',
-  road_closed: 'طريق مغلق',
-  traffic_violation: 'مخالفة سرعة',
-};
+const TAGS = ['حفرة', 'حادث', 'طريق مغلق', 'سرعة'];
 
 interface Props {
   initial: DriverConfig | null;
@@ -22,63 +17,76 @@ export default function SetupPage({ initial, error, onSave }: Props) {
   const [vehicleId, setVehicleId] = useState(initial?.vehicleId ?? '');
   const [speedLimit, setSpeedLimit] = useState(initial?.speedLimit ?? 80);
   const [loading, setLoading] = useState(false);
-  const [localError, setLocalError] = useState('');
+  const [localErr, setLocalErr] = useState('');
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setLocalError('');
+    setLocalErr('');
     try {
       await onSave({ serverUrl, projectId, deviceId, apiKey, vehicleId, speedLimit });
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Setup failed');
+      setLocalErr(err instanceof Error ? err.message : 'فشل');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div className="card" style={{ width: '100%', maxWidth: 480 }}>
-        <h1 style={{ fontSize: 24, marginBottom: 4 }}>NORAAI Driver</h1>
-        <p style={{ color: '#94a3b8', marginBottom: 20, fontSize: 14 }}>
-          إعداد جهاز السيارة — سجّل الجهاز من لوحة Fleet واحصل على API Key
-        </p>
+    <div className="nx-setup">
+      <div className="nx-setup__bg" aria-hidden="true" />
 
-        <div style={{ marginBottom: 16, padding: 12, background: '#0f172a', borderRadius: 8, fontSize: 13 }}>
-          <p style={{ marginBottom: 8, fontWeight: 600 }}>ما يكتشفه التطبيق:</p>
-          {Object.entries(EVENT_LABELS).map(([k, v]) => (
-            <span key={k} style={{ display: 'inline-block', margin: '4px 4px 0 0', padding: '4px 8px', background: '#334155', borderRadius: 6 }}>{v}</span>
+      <div className="nx-setup__card">
+        <header>
+          <p>NORAAI · DRIVER</p>
+          <h1>ربط المركبة</h1>
+          <span>سجّل الجهاز من Fleet واحصل على API Key</span>
+        </header>
+
+        <div className="nx-setup__tags">
+          {TAGS.map((t) => (
+            <i key={t}>{t}</i>
           ))}
         </div>
 
-        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form onSubmit={submit}>
           <label>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>Server URL</span>
-            <input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} required />
+            <span>Server URL</span>
+            <input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} required dir="ltr" />
           </label>
+          <div className="nx-setup__row">
+            <label>
+              <span>Project ID</span>
+              <input value={projectId} onChange={(e) => setProjectId(e.target.value)} required dir="ltr" />
+            </label>
+            <label>
+              <span>Device ID</span>
+              <input value={deviceId} onChange={(e) => setDeviceId(e.target.value)} required dir="ltr" />
+            </label>
+          </div>
           <label>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>Project ID</span>
-            <input value={projectId} onChange={(e) => setProjectId(e.target.value)} required />
-          </label>
-          <label>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>Device ID</span>
-            <input value={deviceId} onChange={(e) => setDeviceId(e.target.value)} required />
-          </label>
-          <label>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>Vehicle ID</span>
+            <span>Vehicle ID</span>
             <input value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} required />
           </label>
           <label>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>API Key</span>
-            <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} required type="password" />
+            <span>API Key</span>
+            <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} type="password" required dir="ltr" />
           </label>
-          <label>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>Speed limit (km/h)</span>
-            <input type="number" value={speedLimit} onChange={(e) => setSpeedLimit(Number(e.target.value))} min={20} max={200} />
+          <label className="nx-setup__limit">
+            <span>حد سرعة احتياطي (km/h)</span>
+            <span className="nx-setup__hint">يُستخدم عند عدم توفر بيانات Google للشارع</span>
+            <input
+              type="number"
+              value={speedLimit}
+              onChange={(e) => setSpeedLimit(Number(e.target.value))}
+              min={20}
+              max={200}
+            />
           </label>
-          {(error || localError) && <p style={{ color: '#f87171', fontSize: 14 }}>{localError || error}</p>}
-          <button type="submit" disabled={loading}>{loading ? 'Connecting...' : 'Start driving'}</button>
+
+          {(error || localErr) && <p className="nx-setup__err">{localErr || error}</p>}
+
+          <button type="submit" disabled={loading}>{loading ? 'جاري الاتصال…' : 'بدء القيادة'}</button>
         </form>
       </div>
     </div>

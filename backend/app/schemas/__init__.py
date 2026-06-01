@@ -374,8 +374,18 @@ class DriverConfigResponse(BaseModel):
     classes: list[str]
     alert_types: list[DriverAlertType]
     speed_limit_kmh: float = 80
+    road_speed_enabled: bool = False
     detection_enabled: bool = False
     message: str | None = None
+
+
+class DriverSpeedLimitResponse(BaseModel):
+    speed_limit_kmh: float
+    source: str
+    road_speed_available: bool
+    place_id: str | None = None
+    road_name: str | None = None
+    highway_type: str | None = None
 
 
 class DriverDetectResponse(BaseModel):

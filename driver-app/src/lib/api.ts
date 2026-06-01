@@ -33,8 +33,18 @@ export interface ServerConfig {
   classes: string[];
   alert_types: AlertType[];
   speed_limit_kmh: number;
+  road_speed_enabled: boolean;
   detection_enabled: boolean;
   message: string | null;
+}
+
+export interface RoadSpeedLimit {
+  speed_limit_kmh: number;
+  source: 'google' | 'osm' | 'osm_inferred' | 'fallback' | 'default' | string;
+  road_speed_available: boolean;
+  place_id: string | null;
+  road_name: string | null;
+  highway_type: string | null;
 }
 
 export interface NearbyEvent {
@@ -107,6 +117,22 @@ export async function fetchNearby(
 ): Promise<NearbyEvent[]> {
   const q = new URLSearchParams({ latitude: String(lat), longitude: String(lon), radius_km: String(radiusKm) });
   const res = await fetch(`${baseUrl(config)}/api/v1/driver/events/nearby?${q}`, { headers: headers(config) });
+  if (!res.ok) await parseError(res);
+  return res.json();
+}
+
+export async function fetchRoadSpeedLimit(
+  config: DriverConfig,
+  lat: number,
+  lon: number,
+  fallback = 80
+): Promise<RoadSpeedLimit> {
+  const q = new URLSearchParams({
+    latitude: String(lat),
+    longitude: String(lon),
+    fallback: String(fallback),
+  });
+  const res = await fetch(`${baseUrl(config)}/api/v1/driver/speed-limit?${q}`, { headers: headers(config) });
   if (!res.ok) await parseError(res);
   return res.json();
 }

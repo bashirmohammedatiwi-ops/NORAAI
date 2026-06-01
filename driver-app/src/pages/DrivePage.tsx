@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AlertPanel from '../components/AlertPanel';
 import CameraPanel from '../components/CameraPanel';
+import DashBar from '../components/DashBar';
 import DriveMap from '../components/DriveMap';
-import SpeedGauge from '../components/SpeedGauge';
+import TopBar from '../components/TopBar';
 import {
   fetchConfig,
   detectFrame,
@@ -10,359 +12,271 @@ import {
   type NearbyEvent,
   type ServerConfig,
 } from '../lib/api';
-import { buildClassMetaFromServer, getEventMeta, type EventMeta } from '../lib/eventMeta';
-import {
-  gpsStatusLabel,
-  startLocationWatch,
-  type DriverLocation,
-  type GpsStatus,
-} from '../lib/location';
+import { buildClassMetaFromServer, getEventMeta } from '../lib/eventMeta';
+import { formatDistanceKm } from '../lib/mapGeo';
+import { formatAccuracy, openSystemLocationSettings } from '../lib/location';
+import { useDriverLocation } from '../hooks/useDriverLocation';
+import { useRoadSpeedLimit } from '../hooks/useRoadSpeedLimit';
 import type { DriverConfig } from '../lib/storage';
-
-type ViewMode = 'camera' | 'map';
 
 interface Props {
   config: DriverConfig;
   onLogout: () => void;
 }
 
-interface Alert {
-  id: string;
-  type: string;
-  label: string;
-  confidence: number;
-  time: number;
-}
-
-function AlertsPanel({
-  alerts,
-  nearby,
-  overlay,
-  classMeta,
-}: {
-  alerts: Alert[];
-  nearby: NearbyEvent[];
-  overlay?: boolean;
-  classMeta: Record<string, EventMeta>;
-}) {
-  return (
-    <aside className={`drive-aside${overlay ? ' drive-aside--overlay' : ''}`}>
-      <h2 className="drive-aside__title">تنبيهات</h2>
-      {alerts.length === 0 && <p className="drive-aside__empty">لا توجد تنبيهات</p>}
-      {alerts.map((a) => {
-        const meta = getEventMeta(a.label || a.type, classMeta);
-        return (
-          <div
-            key={a.id}
-            className="drive-alert"
-            style={{ '--alert-color': meta.color } as CSSProperties}
-          >
-            <p className="drive-alert__label">{meta.labelAr}</p>
-            <p className="drive-alert__meta">{Math.round(a.confidence * 100)}%</p>
-          </div>
-        );
-      })}
-
-      <h2 className="drive-aside__title drive-aside__title--spaced">أحداث قريبة</h2>
-      {nearby.length === 0 && <p className="drive-aside__empty">لا أحداث في النطاق</p>}
-      {nearby.slice(0, 10).map((e) => {
-        const meta = getEventMeta(e.event_type, classMeta);
-        return (
-          <div key={e.id} className="drive-nearby">
-            <span style={{ color: meta.color }}>{meta.icon} {meta.labelAr}</span>
-            <span className="drive-nearby__dist">{e.distance_km} km</span>
-          </div>
-        );
-      })}
-    </aside>
-  );
-}
-
 export default function DrivePage({ config, onLogout }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('camera');
+  const [camExpanded, setCamExpanded] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const [online, setOnline] = useState(false);
-  const [connectionError, setConnectionError] = useState('');
-  const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null);
-  const [location, setLocation] = useState<DriverLocation | null>(null);
-  const [gpsStatus, setGpsStatus] = useState<GpsStatus>('loading');
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [err, setErr] = useState('');
+  const [cfg, setCfg] = useState<ServerConfig | null>(null);
+  const loc = useDriverLocation();
+  const fallbackLimit = config.speedLimit;
+  const roadSpeed = useRoadSpeedLimit(config, loc.location, {
+    enabled: Boolean(loc.location),
+    fallback: fallbackLimit,
+  });
+  const activeLimit = loc.location ? roadSpeed.limit : fallbackLimit;
+  const [alerts, setAlerts] = useState<{ id: string; type: string; label: string; confidence: number }[]>([]);
   const [nearby, setNearby] = useState<NearbyEvent[]>([]);
   const [scanning, setScanning] = useState(false);
-  const [cameraOk, setCameraOk] = useState(false);
+  const [camOk, setCamOk] = useState(false);
 
-  const classMeta = useMemo(
-    () =>
-      serverConfig
-        ? buildClassMetaFromServer(serverConfig.project_classes, serverConfig.alert_types)
-        : buildClassMetaFromServer([]),
-    [serverConfig]
+  const meta = useMemo(
+    () => (cfg ? buildClassMetaFromServer(cfg.project_classes, cfg.alert_types) : buildClassMetaFromServer([])),
+    [cfg]
   );
 
+  const nearest = useMemo(() => [...nearby].sort((a, b) => a.distance_km - b.distance_km)[0], [nearby]);
+  const nm = nearest ? getEventMeta(nearest.event_type, meta) : null;
+
   const pushAlert = useCallback((type: string, label: string, confidence: number) => {
-    setAlerts((prev) => [
-      { id: `${Date.now()}-${type}`, type, label, confidence, time: Date.now() },
-      ...prev.slice(0, 9),
-    ]);
+    setAlerts((p) => [{ id: `${Date.now()}`, type, label, confidence }, ...p.slice(0, 9)]);
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const sync = async () => {
-      try {
-        const cfg = await fetchConfig(config);
-        if (!cancelled) {
-          setServerConfig(cfg);
-          setOnline(true);
-          setConnectionError('');
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setOnline(false);
-          setConnectionError(e instanceof Error ? e.message : 'فشل الاتصال بالسيرفر');
-        }
-      }
-    };
+    let x = false;
+    const sync = () =>
+      fetchConfig(config)
+        .then((c) => {
+          if (!x) {
+            setCfg(c);
+            setOnline(true);
+            setErr('');
+          }
+        })
+        .catch((e) => {
+          if (!x) {
+            setOnline(false);
+            setErr(e instanceof Error ? e.message : 'خطأ');
+          }
+        });
     sync();
-    const id = window.setInterval(sync, 20000);
+    const t = window.setInterval(sync, 20000);
     return () => {
-      cancelled = true;
-      window.clearInterval(id);
+      x = true;
+      window.clearInterval(t);
     };
   }, [config]);
 
   useEffect(() => {
-    let stream: MediaStream | null = null;
+    let s: MediaStream | null = null;
     navigator.mediaDevices
-      .getUserMedia({
-        video: { facingMode: 'environment', width: 1280, height: 720 },
-        audio: false,
-      })
-      .then((s) => {
-        stream = s;
-        streamRef.current = s;
-        const video = videoRef.current;
-        if (video) {
-          video.srcObject = s;
-          void video.play();
-          setCameraOk(true);
+      .getUserMedia({ video: { facingMode: 'environment', width: 1280, height: 720 }, audio: false })
+      .then((st) => {
+        s = st;
+        streamRef.current = st;
+        const v = videoRef.current;
+        if (v) {
+          v.srcObject = st;
+          void v.play();
+          setCamOk(true);
         }
       })
-      .catch(() => setCameraOk(false));
-
+      .catch(() => setCamOk(false));
     return () => {
       streamRef.current = null;
-      stream?.getTracks().forEach((t) => t.stop());
+      s?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
   useEffect(() => {
-    const video = videoRef.current;
-    const stream = streamRef.current;
-    if (!video || !stream) return;
-    if (video.srcObject !== stream) {
-      video.srcObject = stream;
-    }
-    if (video.paused) {
-      void video.play().catch(() => {});
-    }
-  }, [viewMode]);
+    const v = videoRef.current;
+    const st = streamRef.current;
+    if (!v || !st) return;
+    if (v.srcObject !== st) v.srcObject = st;
+    if (v.paused) void v.play().catch(() => {});
+  }, [camExpanded]);
 
   useEffect(() => {
-    return startLocationWatch(setLocation, setGpsStatus);
-  }, []);
-
-  useEffect(() => {
-    if (!location) return;
+    if (!loc.location) return;
     sendTelemetry(config, {
-      latitude: location.lat,
-      longitude: location.lon,
-      speed: location.speed,
-      gps_status: location.source === 'gps' ? 'ok' : 'approx',
-      camera_status: cameraOk ? 'ok' : 'error',
+      latitude: loc.location.lat,
+      longitude: loc.location.lon,
+      speed: loc.location.speed,
+      gps_status: 'ok',
+      camera_status: camOk ? 'ok' : 'error',
     }).catch(() => {});
-  }, [config, location, cameraOk]);
+  }, [config, loc.location, camOk]);
 
   useEffect(() => {
-    if (!location) return;
-    const radiusKm = viewMode === 'map' ? 15 : 10;
-    const load = () => {
-      fetchNearby(config, location.lat, location.lon, radiusKm).then(setNearby).catch(() => {});
-    };
+    if (!loc.location) return;
+    const load = () => fetchNearby(config, loc.location!.lat, loc.location!.lon, 15).then(setNearby).catch(() => {});
     load();
-    const t = window.setInterval(load, viewMode === 'map' ? 15000 : 30000);
+    const t = window.setInterval(load, 15000);
     return () => window.clearInterval(t);
-  }, [config, location, viewMode]);
+  }, [config, loc.location]);
 
-  const detectionEnabled = serverConfig?.detection_enabled ?? false;
+  const aiOn = cfg?.detection_enabled ?? false;
 
   useEffect(() => {
-    if (!location || !cameraOk || !detectionEnabled) return;
-    const scan = async () => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas || video.readyState < 2) return;
+    if (!loc.location || !camOk || !aiOn) return;
+    const run = () => {
+      const v = videoRef.current;
+      const c = canvasRef.current;
+      if (!v || !c || v.readyState < 2) return;
       setScanning(true);
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.drawImage(video, 0, 0);
-      canvas.toBlob(async (blob) => {
-        if (!blob || !location) return;
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      c.getContext('2d')?.drawImage(v, 0, 0);
+      c.toBlob(async (blob) => {
+        if (!blob || !loc.location) return;
         try {
-          const result = await detectFrame(config, blob, {
-            latitude: location.lat,
-            longitude: location.lon,
-            speed: location.speed,
-            speed_limit: config.speedLimit,
+          const res = await detectFrame(config, blob, {
+            latitude: loc.location.lat,
+            longitude: loc.location.lon,
+            speed: loc.location.speed,
+            speed_limit: activeLimit,
           });
-          for (const a of result.alerts) {
-            const label = a.class_name || a.label || a.type;
-            pushAlert(a.type, label, a.confidence);
-          }
-          if (result.events_created > 0) {
-            fetchNearby(config, location.lat, location.lon, viewMode === 'map' ? 15 : 10)
-              .then(setNearby)
-              .catch(() => {});
+          for (const a of res.alerts) pushAlert(a.type, a.class_name || a.label || a.type, a.confidence);
+          if (res.events_created > 0) {
+            fetchNearby(config, loc.location.lat, loc.location.lon, 15).then(setNearby).catch(() => {});
           }
         } finally {
           setScanning(false);
         }
       }, 'image/jpeg', 0.85);
     };
-    const interval = window.setInterval(scan, 4000);
-    scan();
-    return () => window.clearInterval(interval);
-  }, [config, location, cameraOk, pushAlert, viewMode, detectionEnabled]);
+    run();
+    const t = window.setInterval(run, 4000);
+    return () => window.clearInterval(t);
+  }, [config, loc.location, camOk, aiOn, pushAlert, activeLimit]);
 
-  const classNames = serverConfig?.classes ?? [];
-  const eventCount = nearby.filter((e) => classNames.includes(e.event_type)).length;
-  const gpsLabel = gpsStatusLabel(gpsStatus, location?.source);
-  const modelMessage = serverConfig?.message;
+  const gpsBad =
+    loc.gpsStatus === 'denied' ||
+    loc.gpsStatus === 'unavailable' ||
+    loc.gpsStatus === 'loading' ||
+    loc.gpsStatus === 'locating';
 
   return (
-    <div className="drive-page">
-      <header className="drive-header">
-        <div className="drive-header__brand">
-          <strong>NORAAI Driver</strong>
-          <span className="drive-header__vehicle">{config.vehicleId}</span>
-          {serverConfig?.model_name && (
-            <span className="drive-header__model">{serverConfig.model_name}</span>
+    <div className="nx-app">
+      <div className="nx-shell">
+        <TopBar
+          onLocate={() => void loc.locateNow()}
+          onLogout={onLogout}
+          onAlerts={() => setAlertsOpen((v) => !v)}
+          locating={loc.isLocating}
+          gpsOk={loc.precise}
+          online={online}
+          mapEvents={nearby.length}
+          alertCount={alerts.length + nearby.length}
+          alertsOpen={alertsOpen}
+          vehicle={config.vehicleId}
+        />
+
+        <main className="nx-stage">
+          {(gpsBad || (!online && err)) && (
+            <div className="nx-toast">
+              {!online && err && <p className="nx-toast__err">{err}</p>}
+              {gpsBad && (
+                <div className="nx-toast__gps">
+                  <strong>{loc.gpsLabel}</strong>
+                  {loc.gpsHint && <span>{loc.gpsHint}</span>}
+                  <div>
+                    <button type="button" onClick={() => void loc.locateNow()} disabled={loc.isLocating}>
+                      تحديد
+                    </button>
+                    {(loc.gpsStatus === 'denied' || loc.gpsStatus === 'unavailable') && (
+                      <button type="button" onClick={openSystemLocationSettings}>إعدادات</button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
-        </div>
 
-        <div className="view-toggle">
-          <button
-            type="button"
-            className={`view-toggle__btn${viewMode === 'camera' ? ' view-toggle__btn--active' : ''}`}
-            onClick={() => setViewMode('camera')}
-          >
-            📷 كاميرا
-          </button>
-          <button
-            type="button"
-            className={`view-toggle__btn${viewMode === 'map' ? ' view-toggle__btn--active' : ''}`}
-            onClick={() => setViewMode('map')}
-          >
-            🗺 خريطة
-            {eventCount > 0 && <span className="view-toggle__badge">{eventCount}</span>}
-          </button>
-        </div>
-
-        <div className="drive-header__actions">
-          <span className={`drive-status${online ? ' drive-status--online' : ''}`} title={connectionError}>
-            {online ? '● متصل' : '● غير متصل'}
-          </span>
-          {detectionEnabled && scanning && <span className="drive-scan-label">Scanning...</span>}
-          <button type="button" className="secondary drive-logout" onClick={onLogout}>
-            خروج
-          </button>
-        </div>
-      </header>
-
-      {!online && connectionError && (
-        <div className="drive-banner drive-banner--error">
-          {connectionError} — تحقق من Server URL و API Key
-        </div>
-      )}
-
-      {online && serverConfig && !detectionEnabled && modelMessage && (
-        <div className="drive-banner drive-banner--warn">
-          {modelMessage}
-          {serverConfig.project_classes.length > 0 && (
-            <span className="drive-banner__classes">
-              {' '}الكلاسات: {serverConfig.project_classes.map((c) => c.name).join('، ')}
-            </span>
-          )}
-        </div>
-      )}
-
-      {detectionEnabled && serverConfig && (
-        <div className="drive-banner drive-banner--ok">
-          النموذج نشط — يتعرف على: {serverConfig.classes.join('، ')}
-        </div>
-      )}
-
-      {location && location.source !== 'gps' && (
-        <div className="drive-banner drive-banner--warn">
-          {gpsLabel} — فعّل «Location» في إعدادات Windows للدقة الأفضل
-        </div>
-      )}
-
-      <main className={`drive-main drive-main--${viewMode}`}>
-        {viewMode === 'map' && (
-          <div className="drive-map-layout">
-            {location ? (
+          <div className="nx-stage__map">
+            {loc.location ? (
               <DriveMap
-                lat={location.lat}
-                lon={location.lon}
-                heading={location.heading}
+                lat={loc.location.lat}
+                lon={loc.location.lon}
+                heading={loc.location.heading}
+                accuracy={loc.location.accuracy}
                 events={nearby}
-                followUser={location.source === 'gps'}
-                classMeta={classMeta}
+                classMeta={meta}
+                visible
+                locateTick={loc.locateTick}
+                onLocate={() => void loc.locateNow()}
+                isLocating={loc.isLocating}
+                placeName={loc.placeName}
+                gpsLabel={loc.gpsLabel}
+                accuracyText={formatAccuracy(loc.location)}
+                online={online}
+                vehicleId={config.vehicleId}
               />
             ) : (
-              <div className="drive-map-loading">{gpsLabel}</div>
+              <div className="nx-map-load">
+                <div className="nx-map-load__ring" />
+                <p>{loc.gpsLabel}</p>
+              </div>
             )}
-            <div className="drive-map-overlay">
-              <SpeedGauge speed={location?.speed ?? null} limit={config.speedLimit} />
-            </div>
           </div>
-        )}
 
-        <CameraPanel
-          videoRef={videoRef}
-          canvasRef={canvasRef}
-          cameraOk={cameraOk}
-          scanning={detectionEnabled && scanning}
-          speed={location?.speed ?? null}
-          speedLimit={config.speedLimit}
-          mode={viewMode === 'camera' ? 'full' : 'pip'}
+          <CameraPanel
+            videoRef={videoRef}
+            canvasRef={canvasRef}
+            ok={camOk}
+            scan={aiOn && scanning}
+            expanded={camExpanded}
+            onToggle={() => setCamExpanded((v) => !v)}
+          />
+
+          <AlertPanel
+            alerts={alerts}
+            nearby={nearby}
+            open={alertsOpen}
+            floating
+            onToggle={() => setAlertsOpen((v) => !v)}
+            classMeta={meta}
+          />
+        </main>
+
+        <DashBar
+          speed={loc.location?.speed ?? null}
+          limit={activeLimit}
+          limitLabel={loc.location ? roadSpeed.limitLabel : 'حد يدوي'}
+          limitFromRoad={roadSpeed.fromRoad}
+          place={loc.placeName || loc.gpsLabel}
+            sub={
+              loc.location
+                ? [formatAccuracy(loc.location), roadSpeed.fromRoad ? roadSpeed.limitLabel : '']
+                    .filter(Boolean)
+                    .join(' · ')
+                : ''
+            }
+          online={online}
+          vehicle={config.vehicleId}
+          scanning={aiOn && scanning}
+          hazard={
+            nm && nearest
+              ? { icon: nm.icon, label: nm.labelAr, dist: formatDistanceKm(nearest.distance_km), color: nm.color }
+              : undefined
+          }
         />
-
-        <AlertsPanel
-          alerts={alerts}
-          nearby={nearby}
-          overlay={viewMode === 'map'}
-          classMeta={classMeta}
-        />
-      </main>
-
-      <footer className="drive-footer">
-        {location ? (
-          <span className={location.source === 'gps' ? 'drive-footer__gps-ok' : 'drive-footer__gps-warn'}>
-            {gpsLabel}: {location.lat.toFixed(5)}, {location.lon.toFixed(5)}
-          </span>
-        ) : (
-          <span>{gpsLabel}</span>
-        )}
-        {viewMode === 'map' && nearby.length > 0 && (
-          <span>{nearby.length} حدث في النطاق</span>
-        )}
-      </footer>
+      </div>
     </div>
   );
 }

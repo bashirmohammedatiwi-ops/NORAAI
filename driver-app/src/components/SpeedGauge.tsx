@@ -1,15 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 interface Props {
   speed: number | null;
   limit: number;
+  limitLabel?: string;
+  fromRoad?: boolean;
+  variant?: 'dash' | 'mini';
 }
 
-const SIZE = 168;
-const CENTER = SIZE / 2;
-const RADIUS = 58;
-const STROKE = 9;
-const START_ANGLE = 135;
+const START = 135;
 const SWEEP = 270;
 
 function polar(cx: number, cy: number, r: number, deg: number) {
@@ -17,102 +16,88 @@ function polar(cx: number, cy: number, r: number, deg: number) {
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
-function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number) {
-  const start = polar(cx, cy, r, startDeg);
-  const end = polar(cx, cy, r, endDeg);
-  const large = endDeg - startDeg > 180 ? 1 : 0;
-  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${large} 1 ${end.x} ${end.y}`;
+function arc(cx: number, cy: number, r: number, a: number, b: number) {
+  const s = polar(cx, cy, r, a);
+  const e = polar(cx, cy, r, b);
+  return `M ${s.x} ${s.y} A ${r} ${r} 0 ${b - a > 180 ? 1 : 0} 1 ${e.x} ${e.y}`;
 }
 
-function speedColor(ratio: number): string {
+function color(ratio: number) {
   if (ratio >= 1) return '#ef4444';
-  if (ratio >= 0.9) return '#f97316';
-  if (ratio >= 0.75) return '#eab308';
-  return '#22c55e';
+  if (ratio >= 0.92) return '#f97316';
+  if (ratio >= 0.78) return '#eab308';
+  return '#0d9488';
 }
 
-export default function SpeedGauge({ speed, limit }: Props) {
-  const [displaySpeed, setDisplaySpeed] = useState<number | null>(null);
+export default function SpeedGauge({ speed, limit, limitLabel, fromRoad, variant = 'dash' }: Props) {
+  const uid = useId().replace(/:/g, '');
+  const [v, setV] = useState<number | null>(null);
 
   useEffect(() => {
     if (speed == null) return;
-    setDisplaySpeed((prev) => {
-      if (prev == null) return speed;
-      return prev + (speed - prev) * 0.35;
-    });
+    setV((p) => (p == null ? speed : p + (speed - p) * 0.3));
   }, [speed]);
 
-  const hasSpeed = displaySpeed != null;
-  const value = hasSpeed ? Math.round(displaySpeed) : null;
-  const ratio = hasSpeed && limit > 0 ? displaySpeed / limit : 0;
-  const progress = Math.min(ratio, 1.15);
-  const arcLength = (SWEEP / 360) * 2 * Math.PI * RADIUS;
-  const progressLength = arcLength * Math.min(progress, 1);
-  const color = hasSpeed ? speedColor(ratio) : '#64748b';
-  const overLimit = hasSpeed && ratio >= 1;
-  const warnZone = hasSpeed && ratio >= 0.9 && ratio < 1;
-  const bgArc = arcPath(CENTER, CENTER, RADIUS, START_ANGLE, START_ANGLE + SWEEP);
+  const ok = v != null;
+  const n = ok ? Math.round(v) : null;
+  const ratio = ok && limit > 0 ? v / limit : 0;
+  const c = ok ? color(ratio) : '#666';
+  const over = ok && ratio >= 1;
+
+  if (variant === 'mini') {
+    const pct = Math.min(ratio, 1.15) * 100;
+    return (
+      <div className={`nx-mini-speed${over ? ' nx-mini-speed--over' : ''}`}>
+        <strong style={{ color: ok ? c : '#888' }}>{n ?? '--'}</strong>
+        <span>km/h</span>
+        <div className="nx-mini-speed__bar"><i style={{ width: `${Math.min(pct, 100)}%`, background: c }} /></div>
+        <em>{limit}</em>
+      </div>
+    );
+  }
+
+  const W = 260;
+  const H = 160;
+  const cx = W / 2;
+  const cy = H - 10;
+  const r = 110;
+  const stroke = 12;
+  const bg = arc(cx, cy, r, START, START + SWEEP);
+  const len = (SWEEP / 360) * 2 * Math.PI * r;
+  const prog = len * Math.min(ratio, 1.12);
+  const gid = `g${uid}`;
 
   return (
-    <div
-      className={`speed-gauge${overLimit ? ' speed-gauge--over' : warnZone ? ' speed-gauge--warn' : ''}`}
-      aria-label={hasSpeed ? `السرعة ${value} كيلومتر في الساعة، الحد ${limit}` : 'جاري تحديد السرعة'}
-    >
-      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="speed-gauge__svg">
+    <div className={`nx-speed${over ? ' nx-speed--over' : ''}`}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         <defs>
-          <linearGradient id="speedGaugeGlow" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor={color} stopOpacity="1" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.55" />
+          <linearGradient id={gid} x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor={c} />
+            <stop offset="100%" stopColor={c} stopOpacity="0.4" />
           </linearGradient>
-          <filter id="speedGaugeShadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.45" />
-          </filter>
         </defs>
-
-        <circle
-          cx={CENTER}
-          cy={CENTER}
-          r={RADIUS + STROKE}
-          fill="rgba(15, 23, 42, 0.72)"
-          stroke="rgba(148, 163, 184, 0.18)"
-          strokeWidth="1"
-        />
-
-        <path
-          d={bgArc}
-          fill="none"
-          stroke="rgba(51, 65, 85, 0.9)"
-          strokeWidth={STROKE}
-          strokeLinecap="round"
-        />
-
-        {hasSpeed && (
+        <path d={bg} fill="none" stroke="rgba(15,23,42,0.08)" strokeWidth={stroke} strokeLinecap="round" />
+        {ok && (
           <path
-            d={bgArc}
+            d={bg}
             fill="none"
-            stroke="url(#speedGaugeGlow)"
-            strokeWidth={STROKE}
+            stroke={`url(#${gid})`}
+            strokeWidth={stroke}
             strokeLinecap="round"
-            strokeDasharray={`${progressLength} ${arcLength}`}
-            className="speed-gauge__arc"
-            filter="url(#speedGaugeShadow)"
+            strokeDasharray={`${prog} ${len}`}
           />
         )}
       </svg>
-
-      <div className="speed-gauge__center">
-        <span
-          className="speed-gauge__value"
-          style={{ color: hasSpeed ? color : '#94a3b8' }}
-        >
-          {value ?? '--'}
-        </span>
-        <span className="speed-gauge__unit">km/h</span>
-        <span className="speed-gauge__limit">الحد {limit}</span>
+      <div className="nx-speed__read">
+        <span style={{ color: ok ? c : '#888' }}>{n ?? '--'}</span>
+        <small>KM/H</small>
       </div>
-
-      {overLimit && <span className="speed-gauge__badge">تجاوز السرعة</span>}
-      {!hasSpeed && <span className="speed-gauge__hint">GPS...</span>}
+      <div className={`nx-speed__lim${fromRoad ? ' nx-speed__lim--road' : ''}`}>
+        <b>{fromRoad ? 'G' : 'LIM'}</b>
+        {limit}
+      </div>
+      {limitLabel && <div className="nx-speed__src">{limitLabel}</div>}
+      {over && <div className="nx-speed__warn">تجاوز</div>}
     </div>
   );
 }
