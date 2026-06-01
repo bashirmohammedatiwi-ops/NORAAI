@@ -13,11 +13,13 @@ from app.core.database import get_db
 from app.core.redis_client import get_redis
 from app.models import FleetDevice, RoadEvent
 from app.models.fleet_models import RoadEventType
-from app.schemas import DriverConfigResponse, DriverDetectResponse, DriverNearbyEvent, TelemetryRequest
-from app.services.driver.detection import (
-    DRIVER_ALERT_TYPES,
-    create_events_from_detections,
-    run_detection,
+from app.schemas import DriverConfigResponse, DriverDetectResponse, DriverNearbyEvent, DriverProjectClass, TelemetryRequest
+from app.services.driver.detection import build_alert_types, create_events_from_detections, run_detection
+from app.services.driver.project_classes import (
+    allowed_detection_classes,
+    get_project_classes,
+    is_production_model,
+    model_class_names,
 )
 from app.services.models.active_model import get_active_model
 
@@ -51,20 +53,42 @@ async def _publish_events(project_id: UUID, events: list[RoadEvent]) -> None:
         pass
 
 
+def _config_message(project_classes, artifact, model_ready: bool) -> str | None:
+    if not project_classes:
+        return "Add detection classes in the dashboard first."
+    if not artifact:
+        return "No active model. Train and deploy a model from the dashboard."
+    if not model_ready:
+        return "Model weights are not ready. Complete training on the dashboard."
+    allowed = allowed_detection_classes(project_classes, artifact)
+    if not allowed:
+        return "Model classes do not match dashboard classes. Retrain the model."
+    return None
+
+
 @router.get("/config", response_model=DriverConfigResponse)
 async def driver_config(device: FleetDevice = Depends(get_fleet_device), db: AsyncSession = Depends(get_db)):
     artifact = await get_active_model(db, device.project_id)
+    project_classes = await get_project_classes(db, device.project_id)
+    model_ready = is_production_model(artifact)
+    allowed = allowed_detection_classes(project_classes, artifact) if model_ready else []
+    message = _config_message(project_classes, artifact, model_ready)
+
     return DriverConfigResponse(
         project_id=device.project_id,
         device_id=device.device_id,
         vehicle_id=device.vehicle_id,
-        model_ready=artifact is not None,
+        model_ready=model_ready,
         model_name=artifact.name if artifact else None,
-        classes=artifact.classes_used if artifact and artifact.classes_used else [
-            "pothole", "accident", "road_closed", "traffic_violation"
+        model_classes=model_class_names(artifact) if artifact else [],
+        project_classes=[
+            DriverProjectClass(id=c.id, name=c.name, color=c.color) for c in project_classes
         ],
-        alert_types=DRIVER_ALERT_TYPES,
+        classes=allowed if allowed else [c.name for c in project_classes],
+        alert_types=build_alert_types(project_classes),
         speed_limit_kmh=80,
+        detection_enabled=model_ready and bool(allowed),
+        message=message,
     )
 
 
@@ -115,17 +139,21 @@ async def driver_detect(
     if not content:
         raise HTTPException(status_code=400, detail="Empty image")
 
-    detections = await run_detection(db, device.project_id, content)
+    artifact = await get_active_model(db, device.project_id)
+    model_ready = is_production_model(artifact)
+
+    detections, infer_message = await run_detection(db, device.project_id, content)
     alerts: list[dict] = []
 
     for det in detections:
-        if det.get("event_type"):
-            alerts.append({
-                "type": det["event_type"],
-                "label": det.get("class", det["event_type"]),
-                "confidence": det.get("confidence", 0),
-                "bbox": det.get("bbox"),
-            })
+        cls_name = det.get("class", "")
+        alerts.append({
+            "type": det.get("event_type") or cls_name,
+            "label": cls_name,
+            "class_name": cls_name,
+            "confidence": det.get("confidence", 0),
+            "bbox": det.get("bbox"),
+        })
 
     events = await create_events_from_detections(
         db, device.project_id, device, latitude, longitude, detections
@@ -147,6 +175,7 @@ async def driver_detect(
         alerts.append({
             "type": "traffic_violation",
             "label": "speed_violation",
+            "class_name": "speed_violation",
             "confidence": 1.0,
             "speed": speed,
             "speed_limit": speed_limit,
@@ -158,6 +187,8 @@ async def driver_detect(
         detections=detections,
         alerts=alerts,
         events_created=len(events),
+        model_ready=model_ready,
+        message=infer_message,
     )
 
 

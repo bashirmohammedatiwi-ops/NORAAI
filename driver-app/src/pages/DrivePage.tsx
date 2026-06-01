@@ -1,22 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import CameraPanel from '../components/CameraPanel';
+import DriveMap from '../components/DriveMap';
+import SpeedGauge from '../components/SpeedGauge';
+import {
+  fetchConfig,
+  detectFrame,
+  fetchNearby,
+  sendTelemetry,
+  type NearbyEvent,
+  type ServerConfig,
+} from '../lib/api';
+import { buildClassMetaFromServer, getEventMeta, type EventMeta } from '../lib/eventMeta';
+import {
+  gpsStatusLabel,
+  startLocationWatch,
+  type DriverLocation,
+  type GpsStatus,
+} from '../lib/location';
 import type { DriverConfig } from '../lib/storage';
-import { detectFrame, fetchNearby, sendTelemetry, type NearbyEvent } from '../lib/api';
 
-const LABELS: Record<string, string> = {
-  pothole: 'حفرة',
-  accident: 'حادث',
-  road_closed: 'طريق مغلق',
-  traffic_violation: 'مخالفة سرعة',
-  speed_violation: 'تجاوز سرعة',
-};
-
-const COLORS: Record<string, string> = {
-  pothole: '#f97316',
-  accident: '#ef4444',
-  road_closed: '#dc2626',
-  traffic_violation: '#eab308',
-  speed_violation: '#eab308',
-};
+type ViewMode = 'camera' | 'map';
 
 interface Props {
   config: DriverConfig;
@@ -31,15 +34,72 @@ interface Alert {
   time: number;
 }
 
+function AlertsPanel({
+  alerts,
+  nearby,
+  overlay,
+  classMeta,
+}: {
+  alerts: Alert[];
+  nearby: NearbyEvent[];
+  overlay?: boolean;
+  classMeta: Record<string, EventMeta>;
+}) {
+  return (
+    <aside className={`drive-aside${overlay ? ' drive-aside--overlay' : ''}`}>
+      <h2 className="drive-aside__title">تنبيهات</h2>
+      {alerts.length === 0 && <p className="drive-aside__empty">لا توجد تنبيهات</p>}
+      {alerts.map((a) => {
+        const meta = getEventMeta(a.label || a.type, classMeta);
+        return (
+          <div
+            key={a.id}
+            className="drive-alert"
+            style={{ '--alert-color': meta.color } as CSSProperties}
+          >
+            <p className="drive-alert__label">{meta.labelAr}</p>
+            <p className="drive-alert__meta">{Math.round(a.confidence * 100)}%</p>
+          </div>
+        );
+      })}
+
+      <h2 className="drive-aside__title drive-aside__title--spaced">أحداث قريبة</h2>
+      {nearby.length === 0 && <p className="drive-aside__empty">لا أحداث في النطاق</p>}
+      {nearby.slice(0, 10).map((e) => {
+        const meta = getEventMeta(e.event_type, classMeta);
+        return (
+          <div key={e.id} className="drive-nearby">
+            <span style={{ color: meta.color }}>{meta.icon} {meta.labelAr}</span>
+            <span className="drive-nearby__dist">{e.distance_km} km</span>
+          </div>
+        );
+      })}
+    </aside>
+  );
+}
+
 export default function DrivePage({ config, onLogout }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('camera');
   const [online, setOnline] = useState(false);
-  const [gps, setGps] = useState<{ lat: number; lon: number; speed: number | null } | null>(null);
+  const [connectionError, setConnectionError] = useState('');
+  const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null);
+  const [location, setLocation] = useState<DriverLocation | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<GpsStatus>('loading');
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [nearby, setNearby] = useState<NearbyEvent[]>([]);
   const [scanning, setScanning] = useState(false);
   const [cameraOk, setCameraOk] = useState(false);
+
+  const classMeta = useMemo(
+    () =>
+      serverConfig
+        ? buildClassMetaFromServer(serverConfig.project_classes, serverConfig.alert_types)
+        : buildClassMetaFromServer([]),
+    [serverConfig]
+  );
 
   const pushAlert = useCallback((type: string, label: string, confidence: number) => {
     setAlerts((prev) => [
@@ -48,64 +108,98 @@ export default function DrivePage({ config, onLogout }: Props) {
     ]);
   }, []);
 
-  // Camera
+  useEffect(() => {
+    let cancelled = false;
+    const sync = async () => {
+      try {
+        const cfg = await fetchConfig(config);
+        if (!cancelled) {
+          setServerConfig(cfg);
+          setOnline(true);
+          setConnectionError('');
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setOnline(false);
+          setConnectionError(e instanceof Error ? e.message : 'فشل الاتصال بالسيرفر');
+        }
+      }
+    };
+    sync();
+    const id = window.setInterval(sync, 20000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [config]);
+
   useEffect(() => {
     let stream: MediaStream | null = null;
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: 1280, height: 720 }, audio: false })
+    navigator.mediaDevices
+      .getUserMedia({
+        video: { facingMode: 'environment', width: 1280, height: 720 },
+        audio: false,
+      })
       .then((s) => {
         stream = s;
-        if (videoRef.current) {
-          videoRef.current.srcObject = s;
-          videoRef.current.play();
+        streamRef.current = s;
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = s;
+          void video.play();
           setCameraOk(true);
         }
       })
       .catch(() => setCameraOk(false));
-    return () => { stream?.getTracks().forEach((t) => t.stop()); };
+
+    return () => {
+      streamRef.current = null;
+      stream?.getTracks().forEach((t) => t.stop());
+    };
   }, []);
 
-  // GPS + telemetry every 20s
   useEffect(() => {
-    if (!navigator.geolocation) return;
-    const watchId = navigator.geolocation.watchPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        const speed = pos.coords.speed != null ? pos.coords.speed * 3.6 : null;
-        setGps({ lat, lon, speed });
-        try {
-          await sendTelemetry(config, {
-            latitude: lat,
-            longitude: lon,
-            speed,
-            gps_status: 'ok',
-            camera_status: cameraOk ? 'ok' : 'error',
-          });
-          setOnline(true);
-        } catch {
-          setOnline(false);
-        }
-      },
-      () => setOnline(false),
-      { enableHighAccuracy: true, maximumAge: 5000 }
-    );
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, [config, cameraOk]);
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!video || !stream) return;
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+    }
+    if (video.paused) {
+      void video.play().catch(() => {});
+    }
+  }, [viewMode]);
 
-  // Nearby events every 30s
   useEffect(() => {
-    if (!gps) return;
+    return startLocationWatch(setLocation, setGpsStatus);
+  }, []);
+
+  useEffect(() => {
+    if (!location) return;
+    sendTelemetry(config, {
+      latitude: location.lat,
+      longitude: location.lon,
+      speed: location.speed,
+      gps_status: location.source === 'gps' ? 'ok' : 'approx',
+      camera_status: cameraOk ? 'ok' : 'error',
+    }).catch(() => {});
+  }, [config, location, cameraOk]);
+
+  useEffect(() => {
+    if (!location) return;
+    const radiusKm = viewMode === 'map' ? 15 : 10;
     const load = () => {
-      fetchNearby(config, gps.lat, gps.lon).then(setNearby).catch(() => {});
+      fetchNearby(config, location.lat, location.lon, radiusKm).then(setNearby).catch(() => {});
     };
     load();
-    const t = setInterval(load, 30000);
-    return () => clearInterval(t);
-  }, [config, gps]);
+    const t = window.setInterval(load, viewMode === 'map' ? 15000 : 30000);
+    return () => window.clearInterval(t);
+  }, [config, location, viewMode]);
 
-  // Frame scan every 4s
+  const detectionEnabled = serverConfig?.detection_enabled ?? false;
+
   useEffect(() => {
-    if (!gps || !cameraOk) return;
+    if (!location || !cameraOk || !detectionEnabled) return;
     const scan = async () => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -117,94 +211,156 @@ export default function DrivePage({ config, onLogout }: Props) {
       if (!ctx) return;
       ctx.drawImage(video, 0, 0);
       canvas.toBlob(async (blob) => {
-        if (!blob || !gps) return;
+        if (!blob || !location) return;
         try {
           const result = await detectFrame(config, blob, {
-            latitude: gps.lat,
-            longitude: gps.lon,
-            speed: gps.speed,
+            latitude: location.lat,
+            longitude: location.lon,
+            speed: location.speed,
             speed_limit: config.speedLimit,
           });
           for (const a of result.alerts) {
-            pushAlert(a.type, a.label, a.confidence);
+            const label = a.class_name || a.label || a.type;
+            pushAlert(a.type, label, a.confidence);
           }
-          setOnline(true);
-        } catch {
-          setOnline(false);
+          if (result.events_created > 0) {
+            fetchNearby(config, location.lat, location.lon, viewMode === 'map' ? 15 : 10)
+              .then(setNearby)
+              .catch(() => {});
+          }
         } finally {
           setScanning(false);
         }
       }, 'image/jpeg', 0.85);
     };
-    const interval = setInterval(scan, 4000);
+    const interval = window.setInterval(scan, 4000);
     scan();
-    return () => clearInterval(interval);
-  }, [config, gps, cameraOk, pushAlert]);
+    return () => window.clearInterval(interval);
+  }, [config, location, cameraOk, pushAlert, viewMode, detectionEnabled]);
+
+  const classNames = serverConfig?.classes ?? [];
+  const eventCount = nearby.filter((e) => classNames.includes(e.event_type)).length;
+  const gpsLabel = gpsStatusLabel(gpsStatus, location?.source);
+  const modelMessage = serverConfig?.message;
 
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', gridTemplateRows: 'auto 1fr auto' }}>
-      {/* Top bar */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#1e293b', borderBottom: '1px solid #334155' }}>
-        <div>
+    <div className="drive-page">
+      <header className="drive-header">
+        <div className="drive-header__brand">
           <strong>NORAAI Driver</strong>
-          <span style={{ marginRight: 12, fontSize: 13, color: '#94a3b8' }}>{config.vehicleId}</span>
-        </div>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 13 }}>
-          <span style={{ color: online ? '#4ade80' : '#f87171' }}>{online ? '● Online' : '● Offline'}</span>
-          {gps?.speed != null && (
-            <span style={{ color: gps.speed > config.speedLimit ? '#eab308' : '#94a3b8' }}>
-              {Math.round(gps.speed)} km/h / {config.speedLimit}
-            </span>
+          <span className="drive-header__vehicle">{config.vehicleId}</span>
+          {serverConfig?.model_name && (
+            <span className="drive-header__model">{serverConfig.model_name}</span>
           )}
-          {scanning && <span style={{ color: '#60a5fa' }}>Scanning...</span>}
-          <button className="secondary" onClick={onLogout} style={{ padding: '6px 12px', fontSize: 12 }}>Logout</button>
+        </div>
+
+        <div className="view-toggle">
+          <button
+            type="button"
+            className={`view-toggle__btn${viewMode === 'camera' ? ' view-toggle__btn--active' : ''}`}
+            onClick={() => setViewMode('camera')}
+          >
+            📷 كاميرا
+          </button>
+          <button
+            type="button"
+            className={`view-toggle__btn${viewMode === 'map' ? ' view-toggle__btn--active' : ''}`}
+            onClick={() => setViewMode('map')}
+          >
+            🗺 خريطة
+            {eventCount > 0 && <span className="view-toggle__badge">{eventCount}</span>}
+          </button>
+        </div>
+
+        <div className="drive-header__actions">
+          <span className={`drive-status${online ? ' drive-status--online' : ''}`} title={connectionError}>
+            {online ? '● متصل' : '● غير متصل'}
+          </span>
+          {detectionEnabled && scanning && <span className="drive-scan-label">Scanning...</span>}
+          <button type="button" className="secondary drive-logout" onClick={onLogout}>
+            خروج
+          </button>
         </div>
       </header>
 
-      <main style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 0, minHeight: 0 }}>
-        {/* Camera */}
-        <div style={{ position: 'relative', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <video ref={videoRef} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          <canvas ref={canvasRef} style={{ display: 'none' }} />
-          {!cameraOk && (
-            <p style={{ position: 'absolute', color: '#f87171' }}>Camera not available</p>
+      {!online && connectionError && (
+        <div className="drive-banner drive-banner--error">
+          {connectionError} — تحقق من Server URL و API Key
+        </div>
+      )}
+
+      {online && serverConfig && !detectionEnabled && modelMessage && (
+        <div className="drive-banner drive-banner--warn">
+          {modelMessage}
+          {serverConfig.project_classes.length > 0 && (
+            <span className="drive-banner__classes">
+              {' '}الكلاسات: {serverConfig.project_classes.map((c) => c.name).join('، ')}
+            </span>
           )}
         </div>
+      )}
 
-        {/* Alerts panel */}
-        <aside style={{ background: '#1e293b', borderRight: '1px solid #334155', overflow: 'auto', padding: 12 }}>
-          <h2 style={{ fontSize: 16, marginBottom: 12 }}>تنبيهات</h2>
-          {alerts.length === 0 && <p style={{ color: '#64748b', fontSize: 14 }}>لا توجد تنبيهات</p>}
-          {alerts.map((a) => (
-            <div key={a.id} style={{
-              marginBottom: 8, padding: 12, borderRadius: 8,
-              background: `${COLORS[a.type] ?? '#334155'}22`,
-              borderRight: `4px solid ${COLORS[a.type] ?? '#64748b'}`,
-            }}>
-              <p style={{ fontWeight: 700 }}>{LABELS[a.label] ?? LABELS[a.type] ?? a.type}</p>
-              <p style={{ fontSize: 12, color: '#94a3b8' }}>{Math.round(a.confidence * 100)}%</p>
-            </div>
-          ))}
+      {detectionEnabled && serverConfig && (
+        <div className="drive-banner drive-banner--ok">
+          النموذج نشط — يتعرف على: {serverConfig.classes.join('، ')}
+        </div>
+      )}
 
-          <h2 style={{ fontSize: 16, margin: '20px 0 12px' }}>أحداث قريبة</h2>
-          {nearby.length === 0 && <p style={{ color: '#64748b', fontSize: 14 }}>لا أحداث في النطاق</p>}
-          {nearby.slice(0, 8).map((e) => (
-            <div key={e.id} style={{ marginBottom: 6, padding: 8, background: '#0f172a', borderRadius: 6, fontSize: 13 }}>
-              <span style={{ color: COLORS[e.event_type] ?? '#94a3b8' }}>{LABELS[e.event_type] ?? e.event_type}</span>
-              <span style={{ color: '#64748b', marginRight: 8 }}>{e.distance_km} km</span>
+      {location && location.source !== 'gps' && (
+        <div className="drive-banner drive-banner--warn">
+          {gpsLabel} — فعّل «Location» في إعدادات Windows للدقة الأفضل
+        </div>
+      )}
+
+      <main className={`drive-main drive-main--${viewMode}`}>
+        {viewMode === 'map' && (
+          <div className="drive-map-layout">
+            {location ? (
+              <DriveMap
+                lat={location.lat}
+                lon={location.lon}
+                heading={location.heading}
+                events={nearby}
+                followUser={location.source === 'gps'}
+                classMeta={classMeta}
+              />
+            ) : (
+              <div className="drive-map-loading">{gpsLabel}</div>
+            )}
+            <div className="drive-map-overlay">
+              <SpeedGauge speed={location?.speed ?? null} limit={config.speedLimit} />
             </div>
-          ))}
-        </aside>
+          </div>
+        )}
+
+        <CameraPanel
+          videoRef={videoRef}
+          canvasRef={canvasRef}
+          cameraOk={cameraOk}
+          scanning={detectionEnabled && scanning}
+          speed={location?.speed ?? null}
+          speedLimit={config.speedLimit}
+          mode={viewMode === 'camera' ? 'full' : 'pip'}
+        />
+
+        <AlertsPanel
+          alerts={alerts}
+          nearby={nearby}
+          overlay={viewMode === 'map'}
+          classMeta={classMeta}
+        />
       </main>
 
-      {/* GPS footer */}
-      <footer style={{ padding: '8px 16px', background: '#0f172a', fontSize: 12, color: '#64748b', display: 'flex', gap: 16 }}>
-        {gps ? (
-          <>
-            <span>GPS: {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</span>
-          </>
+      <footer className="drive-footer">
+        {location ? (
+          <span className={location.source === 'gps' ? 'drive-footer__gps-ok' : 'drive-footer__gps-warn'}>
+            {gpsLabel}: {location.lat.toFixed(5)}, {location.lon.toFixed(5)}
+          </span>
         ) : (
-          <span>Waiting for GPS...</span>
+          <span>{gpsLabel}</span>
+        )}
+        {viewMode === 'map' && nearby.length > 0 && (
+          <span>{nearby.length} حدث في النطاق</span>
         )}
       </footer>
     </div>

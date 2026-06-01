@@ -354,6 +354,13 @@ class DriverAlertType(BaseModel):
     label: str
     label_ar: str
     color: str
+    class_name: str | None = None
+
+
+class DriverProjectClass(BaseModel):
+    id: UUID
+    name: str
+    color: str
 
 
 class DriverConfigResponse(BaseModel):
@@ -362,15 +369,21 @@ class DriverConfigResponse(BaseModel):
     vehicle_id: str
     model_ready: bool
     model_name: str | None
+    model_classes: list[str] = []
+    project_classes: list[DriverProjectClass] = []
     classes: list[str]
     alert_types: list[DriverAlertType]
     speed_limit_kmh: float = 80
+    detection_enabled: bool = False
+    message: str | None = None
 
 
 class DriverDetectResponse(BaseModel):
     detections: list[dict]
     alerts: list[dict]
     events_created: int
+    model_ready: bool = True
+    message: str | None = None
 
 
 class DriverNearbyEvent(BaseModel):

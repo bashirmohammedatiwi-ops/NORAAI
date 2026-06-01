@@ -1,7 +1,19 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, session } = require('electron');
 const path = require('path');
 
 const isDev = !app.isPackaged;
+
+const ALLOWED_PERMISSIONS = new Set(['geolocation', 'media', 'mediaKeySystem', 'notifications']);
+
+function setupPermissions() {
+  const ses = session.defaultSession;
+  ses.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(ALLOWED_PERMISSIONS.has(permission));
+  });
+  ses.setPermissionCheckHandler((_webContents, permission) => {
+    return ALLOWED_PERMISSIONS.has(permission);
+  });
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -12,6 +24,7 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
+      nodeIntegration: false,
     },
   });
 
@@ -22,5 +35,15 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.whenReady().then(() => {
+  setupPermissions();
+  createWindow();
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});

@@ -13,6 +13,13 @@ export interface AlertType {
   label: string;
   label_ar: string;
   color: string;
+  class_name?: string;
+}
+
+export interface ProjectClass {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export interface ServerConfig {
@@ -21,9 +28,13 @@ export interface ServerConfig {
   vehicle_id: string;
   model_ready: boolean;
   model_name: string | null;
+  model_classes: string[];
+  project_classes: ProjectClass[];
   classes: string[];
   alert_types: AlertType[];
   speed_limit_kmh: number;
+  detection_enabled: boolean;
+  message: string | null;
 }
 
 export interface NearbyEvent {
@@ -37,8 +48,10 @@ export interface NearbyEvent {
 
 export interface DetectResult {
   detections: { class: string; event_type: string | null; confidence: number; bbox?: number[] }[];
-  alerts: { type: string; label: string; confidence: number; speed?: number; speed_limit?: number }[];
+  alerts: { type: string; label: string; class_name?: string; confidence: number; speed?: number; speed_limit?: number }[];
   events_created: number;
+  model_ready: boolean;
+  message: string | null;
 }
 
 async function parseError(res: Response) {
