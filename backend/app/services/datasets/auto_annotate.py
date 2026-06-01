@@ -7,8 +7,6 @@ from sqlalchemy.orm import Session
 from app.core.minio_client import download_bytes
 from app.models import Annotation, AnnotationStatus, ClassLabel, Image
 from ml.detection.class_taxonomy import detection_mode, normalize_class_name
-from ml.detection.damage_localizer import localize_damage_from_bytes
-from ml.detection.dual_vehicle_damage import vehicle_to_bbox_xyxy
 from ml.detection.vehicle_localizer import detect_vehicles_from_bytes, largest_vehicle
 
 VEHICLE_CLASS_PRIORITY = ("Vehicle", "Car", "Truck", "Bus", "Motorcycle")
@@ -118,18 +116,6 @@ def resolve_vehicle_class_id(session: Session, project_id: uuid.UUID) -> uuid.UU
     return None
 
 
-def annotate_vehicle_if_present(
-    session: Session,
-    image_id: uuid.UUID,
-    project_id: uuid.UUID,
-    vehicle: dict,
-) -> Annotation | None:
-    vehicle_class_id = resolve_vehicle_class_id(session, project_id)
-    if not vehicle_class_id:
-        return None
-    return create_vehicle_class_annotation_sync(session, image_id, vehicle_class_id, vehicle)
-
-
 def create_vehicle_class_annotation_sync(
     session: Session,
     image_id: uuid.UUID,
@@ -150,33 +136,12 @@ def create_vehicle_class_annotation_sync(
     )
 
 
-def damage_region_from_vehicle(vehicle: dict, *, scale: float = 0.42) -> dict:
-    """Tight box inside the vehicle — typical crash damage on body panel."""
-    cx = float(vehicle["x_center"])
-    cy = float(vehicle["y_center"])
-    w = float(vehicle["width"]) * scale
-    h = float(vehicle["height"]) * scale
-    cy = cy - float(vehicle["height"]) * 0.06
-    return {
-        "x_center": cx,
-        "y_center": cy,
-        "width": w,
-        "height": h,
-        "confidence": float(vehicle.get("confidence", 0.85)),
-    }
-
-
 def road_defect_region(*, class_name: str) -> dict:
     """Default box on road surface (pothole/crack usually in lower half of frame)."""
     n = normalize_class_name(class_name)
     if "crack" in n:
         return {"x_center": 0.5, "y_center": 0.78, "width": 0.55, "height": 0.18, "confidence": 0.85}
     return {"x_center": 0.5, "y_center": 0.72, "width": 0.38, "height": 0.28, "confidence": 0.85}
-
-
-def damage_region_no_vehicle() -> dict:
-    """Close-up damage photo — box on visible damage in center."""
-    return {"x_center": 0.5, "y_center": 0.52, "width": 0.55, "height": 0.45, "confidence": 0.8}
 
 
 def auto_annotate_class_on_image_sync(
@@ -187,7 +152,7 @@ def auto_annotate_class_on_image_sync(
     """
     Auto-label with localized boxes:
     - Road classes (Pothole, Road_Crack): box on road surface
-    - Damage classes (Accident, Vehicle_Damage): Vehicle box + tight damage box (CV-localized)
+    - Damage/Accident classes: whole vehicle box only
     - Vehicle classes: COCO vehicle detector
     """
     cls = session.get(ClassLabel, class_id)
@@ -196,14 +161,12 @@ def auto_annotate_class_on_image_sync(
 
     image = session.get(Image, image_id)
     vehicles: list[dict] = []
-    img_bytes: bytes | None = None
     if image and image.minio_key:
         try:
             img_bytes = download_bytes(image.minio_key)
             vehicles = detect_vehicles_from_bytes(img_bytes)
         except Exception:
             vehicles = []
-            img_bytes = None
 
     vehicle = largest_vehicle(vehicles)
 
@@ -218,37 +181,17 @@ def auto_annotate_class_on_image_sync(
         )
 
     if mode == "damage":
-        vehicle_bbox = vehicle_to_bbox_xyxy(vehicle) if vehicle else None
-        if img_bytes:
-            region = localize_damage_from_bytes(
-                img_bytes,
-                vehicle_bbox=vehicle_bbox,
-            )
-        elif vehicle:
-            region = damage_region_from_vehicle(vehicle)
-        else:
-            region = damage_region_no_vehicle()
-
-        ann = create_region_annotation_sync(
-            session,
-            image_id,
-            class_id,
-            source="upload_damage_auto",
-            x_center=region["x_center"],
-            y_center=region["y_center"],
-            width=region["width"],
-            height=region["height"],
-            confidence=float(region.get("confidence", 0.85)),
-        )
-        if vehicle and image:
-            annotate_vehicle_if_present(session, image_id, image.project_id, vehicle)
-        return ann
+        if vehicle:
+            return create_vehicle_class_annotation_sync(session, image_id, class_id, vehicle)
+        return create_full_image_annotation_sync(session, image_id, class_id)
 
     if mode == "vehicle" and vehicle:
         return create_vehicle_class_annotation_sync(session, image_id, class_id, vehicle)
 
     if vehicle:
-        return create_vehicle_class_annotation_sync(session, image_id, class_id, vehicle)
+        vehicle_class_id = resolve_vehicle_class_id(session, image.project_id) if image else None
+        target_id = vehicle_class_id or class_id
+        return create_vehicle_class_annotation_sync(session, image_id, target_id, vehicle)
 
     return create_full_image_annotation_sync(session, image_id, class_id)
 

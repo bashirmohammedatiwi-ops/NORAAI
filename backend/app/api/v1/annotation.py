@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -14,7 +14,7 @@ from app.models import (
     AnnotationStatus,
     User,
 )
-from app.schemas import AnnotationCreate, AnnotationResponse, AutoLabelRequest
+from app.schemas import AnnotationCreate, AnnotationResponse, AnnotationUpdate, AutoLabelRequest
 from workers.labeling.tasks import auto_label_images
 
 router = APIRouter(prefix="/annotation", tags=["annotation"])
@@ -87,6 +87,11 @@ async def list_image_annotations(image_id: UUID, db: AsyncSession = Depends(get_
 async def create_annotation(
     image_id: UUID, data: AnnotationCreate, db: AsyncSession = Depends(get_db)
 ):
+    from app.models import Image
+
+    image = await db.get(Image, image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
     ann = Annotation(
         image_id=image_id,
         class_id=data.class_id,
@@ -100,6 +105,48 @@ async def create_annotation(
     db.add(ann)
     await db.flush()
     return ann
+
+
+@router.patch("/{annotation_id}", response_model=AnnotationResponse)
+async def update_annotation(
+    annotation_id: UUID,
+    data: AnnotationUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ann = await db.get(Annotation, annotation_id)
+    if not ann:
+        raise HTTPException(status_code=404, detail="Annotation not found")
+
+    if data.class_id is not None:
+        ann.class_id = data.class_id
+    if data.x_center is not None:
+        ann.x_center = data.x_center
+    if data.y_center is not None:
+        ann.y_center = data.y_center
+    if data.width is not None:
+        ann.width = max(0.01, min(1.0, data.width))
+    if data.height is not None:
+        ann.height = max(0.01, min(1.0, data.height))
+
+    ann.status = AnnotationStatus.EDITED
+    db.add(AnnotationReview(annotation_id=annotation_id, reviewer_id=user.id, action="edit"))
+    await db.flush()
+    return ann
+
+
+@router.delete("/{annotation_id}")
+async def delete_annotation(
+    annotation_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ann = await db.get(Annotation, annotation_id)
+    if not ann:
+        raise HTTPException(status_code=404, detail="Annotation not found")
+    await db.execute(delete(AnnotationReview).where(AnnotationReview.annotation_id == annotation_id))
+    await db.execute(delete(Annotation).where(Annotation.id == annotation_id))
+    return {"status": "deleted"}
 
 
 @router.post("/{annotation_id}/approve")

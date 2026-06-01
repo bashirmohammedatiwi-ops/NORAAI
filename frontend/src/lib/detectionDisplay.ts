@@ -13,7 +13,7 @@ export function detectionBoxClass(className: string): string {
     return 'border-orange-500 bg-orange-500/10';
   }
   if (n.includes('accident') || n.includes('damage')) {
-    return 'border-red-500 bg-red-500/10';
+    return 'border-blue-500 bg-blue-500/10';
   }
   return 'border-emerald-500 bg-emerald-500/10';
 }
@@ -27,7 +27,7 @@ export function detectionLabelClass(className: string): string {
     return 'bg-orange-600';
   }
   if (n.includes('accident') || n.includes('damage')) {
-    return 'bg-red-600';
+    return 'bg-blue-600';
   }
   return 'bg-emerald-600';
 }

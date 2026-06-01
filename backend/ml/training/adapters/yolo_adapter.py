@@ -55,8 +55,10 @@ class YOLOAdapter:
         }
         if config.get("scheduler") == "cosine":
             kwargs["cos_lr"] = True
+        if config.get("close_mosaic") is not None:
+            kwargs["close_mosaic"] = config["close_mosaic"]
         if use_cpu:
-            kwargs["workers"] = min(8, config.get("workers", os.cpu_count() or 4))
+            kwargs["workers"] = min(4, config.get("workers", os.cpu_count() or 2))
             if config.get("cache", True):
                 kwargs["cache"] = True
         return kwargs

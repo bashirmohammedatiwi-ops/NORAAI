@@ -254,24 +254,6 @@ export function DashboardManualTest({ projects, compact }: Props) {
                         className="block max-w-full max-h-64 h-auto rounded-lg border border-border"
                       />
                       {sortedPredictions.map((p, i) => (
-                        p.vehicle_bbox ? (
-                          <div
-                            key={`vehicle-${i}`}
-                            className="absolute border-2 border-dashed border-blue-500 rounded-sm pointer-events-none"
-                            style={{
-                              left: `${p.vehicle_bbox[0] * 100}%`,
-                              top: `${p.vehicle_bbox[1] * 100}%`,
-                              width: `${Math.max(0, (p.vehicle_bbox[2] - p.vehicle_bbox[0]) * 100)}%`,
-                              height: `${Math.max(0, (p.vehicle_bbox[3] - p.vehicle_bbox[1]) * 100)}%`,
-                            }}
-                          >
-                            <span className="absolute -top-5 left-0 text-[10px] font-semibold bg-blue-600 text-white px-1 rounded whitespace-nowrap">
-                              Vehicle {p.vehicle_type ?? 'car'}
-                            </span>
-                          </div>
-                        ) : null
-                      ))}
-                      {sortedPredictions.map((p, i) => (
                         <div
                           key={`${p.class}-${i}`}
                           className={cn('absolute border-2 rounded-sm pointer-events-none', detectionBoxClass(p.class))}
@@ -291,9 +273,8 @@ export function DashboardManualTest({ projects, compact }: Props) {
                         </div>
                       ))}
                       <p className="text-[10px] text-muted-foreground pt-1">
-                        <span className="inline-block w-3 h-0.5 bg-red-600 align-middle mr-1" /> Damage region
+                        <span className="inline-block w-3 h-0.5 bg-blue-500 align-middle mr-1" /> Vehicle / accident
                         <span className="inline-block w-3 h-0.5 bg-orange-500 align-middle mx-1 ml-3" /> Pothole / road
-                        <span className="inline-block w-3 h-0.5 border border-dashed border-blue-500 align-middle mx-1 ml-3" /> Vehicle (context)
                       </p>
                     </div>
                   )}

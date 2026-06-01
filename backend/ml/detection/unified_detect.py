@@ -1,4 +1,4 @@
-"""Full-image localized detection + optional two-stage fallback for legacy models."""
+"""Full-image detection with vehicle-only boxes for accident/damage classes."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from app.core.config import Settings
 from app.services.driver.project_classes import normalize_class_name
 from app.services.inference.filters import filter_detections
 from ml.detection.class_taxonomy import detection_mode, is_damage_class, is_road_class
-from ml.detection.dual_vehicle_damage import append_vehicle_predictions, enrich_damage_detections
 from ml.detection.two_stage import classify_vehicles_two_stage
+from ml.detection.vehicle_localizer import align_damage_detections_to_vehicles
 
 
 def _item_to_candidate(item: dict, class_names: list[str], allowed_norm: set[str]) -> dict | None:
@@ -31,7 +31,6 @@ def _item_to_candidate(item: dict, class_names: list[str], allowed_norm: set[str
         "event_type": event_type.value if event_type else None,
         "confidence": float(item.get("confidence", 0.0)),
         "bbox": [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2],
-        "vehicle_bbox": item.get("vehicle_bbox"),
         "vehicle_type": item.get("vehicle_type"),
         "vehicle_confidence": item.get("vehicle_confidence"),
         "pipeline": item.get("pipeline", "localized"),
@@ -49,8 +48,7 @@ def detect_with_project_model(
     min_confidence: float | None = None,
 ) -> tuple[list[dict], dict]:
     """
-    Primary: YOLO on full image (localized boxes for potholes, damage regions, etc.).
-    Fallback: two-stage vehicle crop for old single-class accident models only.
+    YOLO on full image. Accident/damage classes are snapped to full vehicle boxes only.
     """
     yolo_conf = min(0.2, settings.inference_confidence_threshold)
     raw_full = adapter.predict(
@@ -97,16 +95,13 @@ def detect_with_project_model(
             pipeline = "two_stage"
 
     if has_damage and candidates:
-        candidates, vehicles = enrich_damage_detections(
+        candidates, vehicles = align_damage_detections_to_vehicles(
             image_path,
             candidates,
-            vehicles=vehicles or None,
-            vehicle_conf=0.35,
             iou=settings.inference_iou_threshold,
         )
-        candidates = append_vehicle_predictions(candidates, class_names, allowed_norm)
-        if vehicles and pipeline == "localized":
-            pipeline = "dual_vehicle_damage"
+        if vehicles:
+            pipeline = "vehicle_only"
 
     class_count = max(len(class_names), 1)
     predictions, threshold, warnings = filter_detections(
@@ -119,8 +114,7 @@ def detect_with_project_model(
     tips: list[str] = []
     if has_damage:
         tips.append(
-            "Accident/damage: blue dashed box = vehicle, red box = damaged part (glass, bumper, panel). "
-            "Refine both in Annotation, then retrain."
+            "Accident detection uses the whole vehicle box. Adjust boxes manually in Annotation, then retrain."
         )
     if has_road:
         tips.append(
@@ -128,7 +122,7 @@ def detect_with_project_model(
         )
     if not vehicles and has_damage and not predictions:
         tips.append(
-            "No damage region detected. Retrain with boxes drawn on the damaged part of the vehicle."
+            "No vehicle detected. Draw or edit the vehicle box in Annotation, then retrain."
         )
 
     return predictions, {

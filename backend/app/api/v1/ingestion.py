@@ -160,7 +160,7 @@ async def ingestion_stats(project_id: UUID, db: AsyncSession = Depends(get_db)):
 
 @router.get("/ingestion/images/{project_id}", response_model=list[ImageResponse])
 async def list_images(project_id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Image).where(Image.project_id == project_id).limit(100))
+    result = await db.execute(select(Image).where(Image.project_id == project_id).order_by(Image.created_at.desc()).limit(300))
     images = result.scalars().all()
     responses = []
     for img in images:

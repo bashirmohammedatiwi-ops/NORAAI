@@ -1,15 +1,20 @@
-export type CpuPreset = 'fast_cpu' | 'balanced';
+export type CpuPreset = 'turbo_cpu' | 'fast_cpu' | 'balanced';
 
 export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string; epochs: number }> = {
+  turbo_cpu: {
+    label: 'Turbo CPU',
+    description: '5 epochs · 320px · minimal aug — fastest test run',
+    epochs: 5,
+  },
   fast_cpu: {
     label: 'Fast CPU',
-    description: '10 epochs · 416px · light aug — recommended on CPU-only VPS',
-    epochs: 10,
+    description: '8 epochs · 416px · light aug — recommended on CPU VPS',
+    epochs: 8,
   },
   balanced: {
     label: 'Balanced CPU',
-    description: '20 epochs · 640px · medium aug — slower, higher quality',
-    epochs: 20,
+    description: '15 epochs · 640px · medium aug — higher quality, slower',
+    epochs: 15,
   },
 };
 

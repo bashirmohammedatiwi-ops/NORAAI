@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     cuda_visible_devices: str = "0"
     training_cpu_fallback: bool = True
-    training_export_max_workers: int = 4
+    training_export_max_workers: int = 8
 
     prometheus_enabled: bool = True
 

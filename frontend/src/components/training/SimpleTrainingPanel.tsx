@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +15,8 @@ interface Props {
 
 export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
   const [architecture, setArchitecture] = useState('yolo11');
-  const [epochs, setEpochs] = useState(20);
+  const [preset, setPreset] = useState<CpuPreset>(DEFAULT_CPU_PRESET);
+  const [epochs, setEpochs] = useState(CPU_PRESETS[DEFAULT_CPU_PRESET].epochs);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -24,7 +26,7 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
     setDone(false);
     try {
       await api.post(
-        `/api/v1/training/project/${projectId}/retrain?epochs=${epochs}&architecture=${architecture}`
+        `/api/v1/training/project/${projectId}/retrain?epochs=${epochs}&architecture=${architecture}&preset=${preset}`
       );
       setDone(true);
     } catch (e) {
@@ -58,6 +60,22 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
               <option value="yolov10">YOLOv10</option>
               <option value="rt_detr">RT-DETR</option>
             </Select>
+          </div>
+          <div className="min-w-[180px]">
+            <Select
+              label="Speed preset"
+              value={preset}
+              onChange={(e) => {
+                const p = e.target.value as CpuPreset;
+                setPreset(p);
+                setEpochs(CPU_PRESETS[p].epochs);
+              }}
+            >
+              {(Object.keys(CPU_PRESETS) as CpuPreset[]).map((key) => (
+                <option key={key} value={key}>{CPU_PRESETS[key].label}</option>
+              ))}
+            </Select>
+            <p className="text-[10px] text-muted-foreground mt-1">{CPU_PRESETS[preset].description}</p>
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground block mb-1.5">Epochs</label>

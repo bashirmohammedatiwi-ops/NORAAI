@@ -269,6 +269,14 @@ class AnnotationCreate(BaseModel):
     height: float
 
 
+class AnnotationUpdate(BaseModel):
+    class_id: UUID | None = None
+    x_center: float | None = None
+    y_center: float | None = None
+    width: float | None = None
+    height: float | None = None
+
+
 class AnnotationResponse(BaseModel):
     id: UUID
     image_id: UUID
