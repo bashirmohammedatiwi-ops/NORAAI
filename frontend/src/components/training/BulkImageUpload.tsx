@@ -44,13 +44,14 @@ export function BulkImageUpload({
     setUploading(true);
     setResult(null);
     setQueuedCount(files.length);
-    setProgress({ done: 0, total: files.length, batch: 0, batches: Math.ceil(files.length / 25) });
+    setProgress({ done: 0, total: files.length, batch: 0, batches: Math.ceil(files.length / 8) });
 
     const res = await uploadImagesInBatches({
       datasetId,
       classId,
       files,
-      batchSize: 25,
+      batchSize: 8,
+      parallel: 2,
       signal: controller.signal,
       onProgress: (done, total, batch, batches) => {
         setProgress({ done, total, batch, batches });
@@ -59,7 +60,7 @@ export function BulkImageUpload({
 
     if (!controller.signal.aborted) {
       setResult(res);
-      onComplete?.(res.uploaded);
+      if (res.uploaded > 0) onComplete?.(res.uploaded);
     }
     setUploading(false);
   }, [classId, datasetId, onComplete, ready]);
@@ -133,7 +134,7 @@ export function BulkImageUpload({
                   : 'Select a class first'}
             </p>
             <p className="text-sm text-muted-foreground mt-1">
-              Bulk upload — parallel ×4 · 15 images/request · auto YOLO labels
+              Bulk upload — 8 images/request · 2 parallel · auto YOLO labels
             </p>
             {className && ready && (
               <span
@@ -195,7 +196,11 @@ export function BulkImageUpload({
                 {result.uploaded} image{result.uploaded !== 1 ? 's' : ''} uploaded
                 {result.failed > 0 && ` · ${result.failed} failed`}
               </p>
-              <p className="text-muted-foreground mt-0.5">Processing in background — stats refresh shortly</p>
+              <p className="text-muted-foreground mt-0.5">
+                {result.uploaded > 0
+                  ? 'Processing in background — stats refresh shortly'
+                  : 'Upload failed — try again with a stable connection or fewer images at once'}
+              </p>
               {result.errors.slice(0, 3).map((err) => (
                 <p key={err} className="text-xs text-destructive mt-1">{err}</p>
               ))}

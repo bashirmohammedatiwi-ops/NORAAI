@@ -73,7 +73,10 @@ async def ingest_files_parallel(
             )
         )
 
-    await asyncio.gather(*upload_tasks)
+    # Avoid saturating MinIO/disk with huge single-request bursts.
+    chunk_size = 4
+    for i in range(0, len(upload_tasks), chunk_size):
+        await asyncio.gather(*upload_tasks[i : i + chunk_size])
 
     record_ids: list[UUID] = []
     for (record, _), key in zip(pending, keys):

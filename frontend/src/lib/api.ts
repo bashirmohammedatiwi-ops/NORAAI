@@ -2,6 +2,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? '';
 const TOKEN_KEY = 'token';
 const REFRESH_KEY = 'refresh_token';
 const DEFAULT_TIMEOUT_MS = 30_000;
+const UPLOAD_TIMEOUT_MS = 180_000;
 const AUTH_PATHS = ['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/refresh'];
 
 function isAuthPath(path: string): boolean {
@@ -162,12 +163,13 @@ class ApiClient {
     return this.request<T>(path, init);
   }
 
-  post<T>(path: string, body?: unknown, init?: RequestInit) {
+  post<T>(path: string, body?: unknown, init?: RequestInit, timeoutMs?: number) {
+    const isUpload = body instanceof FormData;
     return this.request<T>(path, {
       ...init,
       method: 'POST',
-      body: body instanceof FormData ? body : JSON.stringify(body),
-    });
+      body: isUpload ? body : JSON.stringify(body),
+    }, timeoutMs ?? (isUpload ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
   }
 
   /** Login without sending stale tokens or retrying refresh on 401. */

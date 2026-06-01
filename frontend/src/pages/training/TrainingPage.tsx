@@ -299,10 +299,10 @@ export default function TrainingPage() {
                 className={selectedClass?.name}
                 classColor={selectedClass?.color}
                 disabled={!selectedDatasetId}
-                onComplete={() => {
-                  setTimeout(() => { void refetchStats(); }, 2000);
-                  setTimeout(() => { void refetchStats(); }, 6000);
-                  setTimeout(() => { void refetchStats(); }, 12000);
+                onComplete={(uploaded) => {
+                  if (uploaded <= 0) return;
+                  setTimeout(() => { void refetchStats(); }, 5000);
+                  setTimeout(() => { void refetchStats(); }, 15000);
                 }}
               />
             </CardContent>

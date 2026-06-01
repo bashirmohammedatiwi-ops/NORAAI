@@ -90,12 +90,12 @@ export default function DataHubPage() {
     setMessage(`Class "${name}" added`);
   };
 
-  const uploadComplete = () => {
-    if (!projectId || !selectedId) return;
+  const uploadComplete = (uploaded: number) => {
+    if (!projectId || !selectedId || uploaded <= 0) return;
     setMessage('Upload complete — processing images in background');
     invalidateDataset(selectedId, projectId);
-    window.setTimeout(() => refetchStats(), 2000);
-    window.setTimeout(() => { refetchHub(); refetchStats(); }, 8000);
+    window.setTimeout(() => { void refetchStats(); }, 5000);
+    window.setTimeout(() => { void refetchHub(); void refetchStats(); }, 15000);
   };
 
   const selectedClass = classes.find((c) => c.id === selectedClassId);

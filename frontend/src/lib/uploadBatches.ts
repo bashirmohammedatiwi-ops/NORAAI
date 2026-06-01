@@ -18,11 +18,16 @@ export interface BatchUploadOptions {
 }
 
 const IMAGE_TYPES = /^image\//;
-const DEFAULT_BATCH_SIZE = 15;
-const DEFAULT_PARALLEL = 4;
+const DEFAULT_BATCH_SIZE = 8;
+const DEFAULT_PARALLEL = 2;
 
 export function filterImageFiles(files: FileList | File[]): File[] {
   return Array.from(files).filter((f) => IMAGE_TYPES.test(f.type) || /\.(jpe?g|png|webp|bmp|gif)$/i.test(f.name));
+}
+
+function uploadTimeoutForBatch(batchLen: number): number {
+  // Large batches on a slow VPS need more time for MinIO writes.
+  return Math.min(300_000, 90_000 + batchLen * 12_000);
 }
 
 async function uploadOneBatch(
@@ -34,7 +39,12 @@ async function uploadOneBatch(
   batch.forEach((f) => form.append('files', f));
   form.append('source_type', 'manual_upload');
   form.append('class_id', classId);
-  await api.post<{ message: string }>(`/api/v1/datasets/${datasetId}/upload`, form);
+  await api.post<{ message: string }>(
+    `/api/v1/datasets/${datasetId}/upload`,
+    form,
+    undefined,
+    uploadTimeoutForBatch(batch.length),
+  );
 }
 
 export async function uploadImagesInBatches(opts: BatchUploadOptions): Promise<BatchUploadResult> {

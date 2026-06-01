@@ -174,6 +174,9 @@ async def upload_to_dataset(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
+    if len(files) > 12:
+        raise HTTPException(status_code=400, detail="Maximum 12 images per upload request. Upload in smaller batches.")
+
     if class_id:
         cls = await db.get(ClassLabel, class_id)
         if not cls or cls.project_id != dataset.project_id:
