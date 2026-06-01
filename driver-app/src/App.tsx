@@ -31,7 +31,11 @@ export default function App() {
   };
 
   if (!config || !ready) {
-    return <SetupPage initial={config} error={error} onSave={handleSave} />;
+    return (
+      <div className="nx-app nx-app--setup">
+        <SetupPage initial={config} error={error} onSave={handleSave} />
+      </div>
+    );
   }
 
   return <DrivePage config={config} onLogout={handleLogout} />;

@@ -26,7 +26,17 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body, #root { height: 100%; overflow: hidden; }
+html {
+  height: 100%;
+  height: -webkit-fill-available;
+}
+body, #root {
+  min-height: 100%;
+  min-height: 100dvh;
+  min-height: 100svh;
+  min-height: -webkit-fill-available;
+}
+html, body, #root { overflow: hidden; }
 
 body {
   font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif;
@@ -48,11 +58,23 @@ input:focus {
 }
 
 .nx-app {
-  height: 100vh; width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  height: 100svh;
+  width: 100vw;
   background:
     radial-gradient(ellipse 80% 60% at 10% 0%, rgba(99, 102, 241, 0.12), transparent 50%),
     radial-gradient(ellipse 70% 50% at 90% 100%, rgba(13, 148, 136, 0.14), transparent 45%),
     linear-gradient(165deg, var(--nx-bg) 0%, var(--nx-bg-2) 100%);
+}
+.nx-app--setup {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.nx-app--setup .nx-setup {
+  flex: 1;
+  min-height: 0;
 }
 
 .nx-shell {
@@ -358,22 +380,29 @@ input:focus {
 .nx-toast__gps button { padding: 8px 14px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--nx-teal-dim); border: 1px solid rgba(13,148,136,0.25); color: var(--nx-teal); }
 
 .nx-setup {
-  height: 100dvh;
+  --nx-setup-bar: calc(84px + env(safe-area-inset-bottom, 0px));
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100svh;
+  min-height: 100dvh;
   max-height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background:
     radial-gradient(ellipse 80% 50% at 15% 0%, rgba(99, 102, 241, 0.14), transparent 55%),
     radial-gradient(ellipse 70% 45% at 85% 100%, rgba(13, 148, 136, 0.16), transparent 50%),
     linear-gradient(165deg, var(--nx-bg) 0%, var(--nx-bg-2) 100%);
 }
 .nx-setup__scroll {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  padding: 20px 16px 12px;
+  overscroll-behavior: contain;
+  padding: 20px 16px calc(var(--nx-setup-bar) + 12px);
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -418,12 +447,17 @@ input:focus {
 .nx-setup__limit input { max-width: 96px; }
 .nx-setup__hint { font-size: 11px; color: var(--nx-dim); font-weight: 500; line-height: 1.4; }
 .nx-setup__bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
   flex-shrink: 0;
   padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(16px);
   border-top: 1px solid var(--nx-line);
-  box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.1);
 }
 .nx-setup__err {
   color: #b91c1c; font-size: 13px; font-weight: 600;
@@ -456,11 +490,13 @@ input:focus {
 }
 
 @media (max-width: 560px) {
-  .nx-setup__scroll { padding: 12px 12px 8px; }
+  .nx-setup { --nx-setup-bar: calc(92px + env(safe-area-inset-bottom, 0px)); }
+  .nx-setup__scroll { padding: 12px 12px calc(var(--nx-setup-bar) + 8px); }
   .nx-setup__card { padding: 22px 18px 16px; border-radius: 20px; }
   .nx-setup__head h1 { font-size: 22px; }
   .nx-setup__row { grid-template-columns: 1fr; }
   .nx-setup__bar { padding-left: 12px; padding-right: 12px; }
+  .nx-setup__submit { padding: 15px 18px; font-size: 15px; }
   .nx-map-ui__ctrl { flex-direction: row; top: auto; bottom: 100px; left: 12px; transform: none; }
   .nx-cam-float { width: 168px; }
 }
