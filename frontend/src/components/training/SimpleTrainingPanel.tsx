@@ -27,6 +27,8 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
         `/api/v1/training/project/${projectId}/retrain?epochs=${epochs}&architecture=${architecture}`
       );
       setDone(true);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Failed to start training');
     } finally {
       setLoading(false);
     }

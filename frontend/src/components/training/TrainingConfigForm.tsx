@@ -104,6 +104,8 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
       });
       onStarted();
       setName('');
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Failed to start training');
     } finally {
       setLoading(false);
     }

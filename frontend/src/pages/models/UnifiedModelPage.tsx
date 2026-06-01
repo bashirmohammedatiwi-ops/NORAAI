@@ -67,6 +67,8 @@ export default function UnifiedModelPage() {
       await api.post(`/api/v1/training/project/${projectId}/retrain?${query}`);
       await refetch();
       invalidateProject(projectId);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Failed to start training');
     } finally {
       setLoading(false);
     }
@@ -90,6 +92,8 @@ export default function UnifiedModelPage() {
       await refetch();
       loadModels();
       invalidateProject(projectId);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Failed to delete model');
     } finally {
       setDeleting(false);
     }
