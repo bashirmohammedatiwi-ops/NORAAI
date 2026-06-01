@@ -228,6 +228,29 @@ export default function DataHubPage() {
             </CardContent>
           </Card>
 
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">How to label · طريقة التسمية</CardTitle>
+              <CardDescription>
+                The model detects <strong>regions</strong>, not whole images — draw tight boxes around each target.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-sm space-y-2 text-muted-foreground">
+              <p>
+                <strong className="text-foreground">Accident / Vehicle_Damage:</strong> box around the damaged part only
+                (bumper, door, hood) — even if the photo shows only the damage.
+              </p>
+              <p>
+                <strong className="text-foreground">Pothole / Road_Crack:</strong> box on each hole or crack on the pavement.
+              </p>
+              <p className="text-xs">
+                Auto-label gives a starting box — refine in{' '}
+                <Link to={`/projects/${projectId}/annotation`} className="text-primary underline">Annotation</Link>{' '}
+                for best accuracy, then retrain.
+              </p>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Normal images (no accident) · صور سليمة</CardTitle>

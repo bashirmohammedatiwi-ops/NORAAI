@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { detectionBoxClass, detectionLabelClass } from '@/lib/detectionDisplay';
 import type { ProjectListItem } from '@/hooks/useProjects';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -273,7 +274,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
                       {sortedPredictions.map((p, i) => (
                         <div
                           key={`${p.class}-${i}`}
-                          className="absolute border-2 border-emerald-500 rounded-sm pointer-events-none"
+                          className={cn('absolute border-2 rounded-sm pointer-events-none', detectionBoxClass(p.class))}
                           style={{
                             left: `${p.bbox[0] * 100}%`,
                             top: `${p.bbox[1] * 100}%`,
@@ -281,11 +282,19 @@ export function DashboardManualTest({ projects, compact }: Props) {
                             height: `${Math.max(0, (p.bbox[3] - p.bbox[1]) * 100)}%`,
                           }}
                         >
-                          <span className="absolute -top-5 right-0 text-[10px] font-semibold bg-emerald-600 text-white px-1 rounded whitespace-nowrap">
+                          <span className={cn(
+                            'absolute -top-5 right-0 text-[10px] font-semibold text-white px-1 rounded whitespace-nowrap',
+                            detectionLabelClass(p.class),
+                          )}>
                             {p.class} {(p.confidence * 100).toFixed(0)}%
                           </span>
                         </div>
                       ))}
+                      <p className="text-[10px] text-muted-foreground pt-1">
+                        <span className="inline-block w-3 h-0.5 bg-red-600 align-middle mr-1" /> Damage region
+                        <span className="inline-block w-3 h-0.5 bg-orange-500 align-middle mx-1 ml-3" /> Pothole / road
+                        <span className="inline-block w-3 h-0.5 border border-dashed border-blue-500 align-middle mx-1 ml-3" /> Vehicle (context)
+                      </p>
                     </div>
                   )}
                 </div>

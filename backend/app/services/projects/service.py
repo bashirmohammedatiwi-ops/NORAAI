@@ -8,7 +8,13 @@ from app.models import ClassAuditLog, ClassLabel, ModelDefinition, Organization,
 
 
 DEFAULT_CLASSES = [
-    "Accident", "Vehicle", "Truck", "Bus", "Motorcycle", "Pothole",
+    "Accident",
+    "Vehicle_Damage",
+    "Vehicle",
+    "Truck",
+    "Bus",
+    "Motorcycle",
+    "Pothole",
     "Road_Crack", "Barrier", "Road_Closed", "Construction",
     "Speed_Sign", "Traffic_Light", "Flooded_Road", "Damaged_Road",
 ]

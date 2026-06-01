@@ -71,7 +71,8 @@ async def predict(
         "confidence_threshold": meta.get("confidence_threshold"),
         "raw_detection_count": meta.get("raw_detection_count", 0),
         "vehicle_count": meta.get("vehicle_count", 0),
-        "pipeline": meta.get("pipeline", "two_stage"),
+        "pipeline": meta.get("pipeline", "localized"),
+        "detection_modes": meta.get("detection_modes", []),
         "warnings": meta.get("warnings", []),
         "latency_ms": round(latency_ms, 1),
         "message": (
@@ -99,8 +100,9 @@ async def inference_status(project_id: uuid.UUID, db: AsyncSession = Depends(get
         "is_mock": bool(metrics.get("mock")),
         "endpoint": f"/api/v1/inference/project/{project_id}/predict",
         "retrain_tip": (
-            "Add normal car images without accidents (no labels) and retrain to avoid false alarms."
+            "Label tight boxes: damage on the car body, potholes on the road. "
+            "Use Annotation to draw precise regions, then retrain."
             if len(classes) <= 1
-            else None
+            else "Use multiple classes with tight boxes per object (damage region, pothole, crack)."
         ),
     }
