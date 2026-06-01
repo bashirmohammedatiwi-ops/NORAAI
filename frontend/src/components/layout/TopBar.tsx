@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 
 const routeTitles: Record<string, string> = {
   '/': 'Dashboard',
+  '/test': 'Manual Test',
   '/builder': 'Quick Start',
   '/projects': 'Projects',
   '/ingestion': 'Ingestion',

@@ -22,6 +22,7 @@ import RoadIntelligencePage from '@/pages/road-intelligence/RoadIntelligencePage
 import FleetPage from '@/pages/fleet/FleetPage';
 import ReportsPage from '@/pages/reports/ReportsPage';
 import SettingsPage from '@/pages/settings/SettingsPage';
+import ManualTestPage from '@/pages/ManualTestPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="road-intelligence" element={<RoadIntelligencePage />} />
             <Route path="fleet" element={<FleetPage />} />
             <Route path="reports" element={<ReportsPage />} />
+            <Route path="test" element={<ManualTestPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>

@@ -3,7 +3,7 @@
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ router = APIRouter(prefix="/inference", tags=["inference"])
 async def predict(
     project_id: uuid.UUID,
     file: UploadFile = File(...),
+    min_confidence: float | None = Form(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -35,7 +36,9 @@ async def predict(
         raise HTTPException(status_code=400, detail="Empty image")
 
     start = time.perf_counter()
-    predictions, error = await run_detection(db, project_id, content)
+    predictions, error, meta = await run_detection(
+        db, project_id, content, min_confidence=min_confidence,
+    )
     latency_ms = (time.perf_counter() - start) * 1000
 
     if error:
@@ -52,7 +55,7 @@ async def predict(
         log = InferenceLog(
             deployment_id=deployment.id,
             input_hash=str(hash(content))[:16],
-            predictions={"detections": predictions},
+            predictions={"detections": predictions, "meta": meta},
             confidence=primary["confidence"] if primary else 0.0,
             latency_ms=latency_ms,
         )
@@ -65,6 +68,9 @@ async def predict(
         "predictions": predictions,
         "primary_class": primary["class"] if primary else None,
         "primary_confidence": primary["confidence"] if primary else None,
+        "confidence_threshold": meta.get("confidence_threshold"),
+        "raw_detection_count": meta.get("raw_detection_count", 0),
+        "warnings": meta.get("warnings", []),
         "latency_ms": round(latency_ms, 1),
         "message": (
             f"Detected: {primary['class']}"
@@ -80,11 +86,19 @@ async def inference_status(project_id: uuid.UUID, db: AsyncSession = Depends(get
     if not artifact:
         return {"ready": False, "endpoint": f"/api/v1/inference/project/{project_id}/predict"}
     metrics = artifact.metrics or {}
+    classes = artifact.classes_used or []
     return {
         "ready": True,
         "model_id": str(artifact.id),
         "model_name": artifact.name,
-        "classes": artifact.classes_used or [],
+        "classes": classes,
+        "class_count": len(classes),
+        "single_class_model": len(classes) <= 1,
         "is_mock": bool(metrics.get("mock")),
         "endpoint": f"/api/v1/inference/project/{project_id}/predict",
+        "retrain_tip": (
+            "Add normal car images without accidents (no labels) and retrain to avoid false alarms."
+            if len(classes) <= 1
+            else None
+        ),
     }

@@ -163,7 +163,7 @@ async def driver_detect(
     artifact = await get_active_model(db, device.project_id)
     model_ready = is_production_model(artifact)
 
-    detections, infer_message = await run_detection(db, device.project_id, content)
+    detections, infer_message, _meta = await run_detection(db, device.project_id, content)
     alerts: list[dict] = []
 
     for det in detections:

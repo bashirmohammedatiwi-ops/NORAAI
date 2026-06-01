@@ -292,11 +292,18 @@ class YOLOAdapter:
             Path(output_path).write_bytes(b"mock_onnx")
             return output_path
 
-    def predict(self, weights_path: str, image_path: str) -> list[dict]:
+    def predict(
+        self,
+        weights_path: str,
+        image_path: str,
+        *,
+        conf: float = 0.25,
+        iou: float = 0.45,
+    ) -> list[dict]:
         try:
             from ultralytics import YOLO
             model = YOLO(weights_path)
-            results = model.predict(image_path, verbose=False)
+            results = model.predict(image_path, verbose=False, conf=conf, iou=iou)
             predictions = []
             for r in results:
                 for box in r.boxes:

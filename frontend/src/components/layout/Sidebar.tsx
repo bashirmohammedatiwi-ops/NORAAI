@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, FolderKanban, Sparkles, Database, Map, Truck, FileText, Settings, X,
+  LayoutDashboard, FolderKanban, Sparkles, Database, Map, Truck, FileText, Settings, X, ScanSearch,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -8,6 +8,7 @@ const navGroups = [
   {
     items: [
       { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/test', icon: ScanSearch, label: 'Manual Test' },
       { to: '/projects', icon: FolderKanban, label: 'Projects' },
       { to: '/builder', icon: Sparkles, label: 'Quick Start' },
     ],

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.minio_client import download_bytes
 from app.models import FleetDevice, RoadEvent, RoadEventType
 from app.services.driver.project_classes import (
@@ -16,6 +17,7 @@ from app.services.driver.project_classes import (
     is_production_model,
     normalize_class_name,
 )
+from app.services.inference.filters import filter_detections
 from app.services.models.active_model import get_active_model
 
 # YOLO / dataset alias -> road event type
@@ -59,32 +61,35 @@ async def run_detection(
     db: AsyncSession,
     project_id: uuid.UUID,
     image_bytes: bytes,
-) -> tuple[list[dict], str | None]:
+    min_confidence: float | None = None,
+) -> tuple[list[dict], str | None, dict]:
     """
     Run YOLO using the project's active model and dashboard-defined classes only.
-    Returns (predictions, error_message).
+    Returns (predictions, error_message, meta).
     """
+    settings = get_settings()
     artifact = await get_active_model(db, project_id)
     project_classes = await get_project_classes(db, project_id)
 
     if not project_classes:
-        return [], "No classes defined in dashboard. Add classes in the project first."
+        return [], "No classes defined in dashboard. Add classes in the project first.", {}
 
     if not is_production_model(artifact):
-        return [], "No trained model deployed. Train and activate a model from the dashboard."
+        return [], "No trained model deployed. Train and activate a model from the dashboard.", {}
 
     assert artifact is not None
     allowed = allowed_detection_classes(project_classes, artifact)
     if not allowed:
-        return [], "Model classes do not match dashboard classes. Retrain after updating classes."
+        return [], "Model classes do not match dashboard classes. Retrain after updating classes.", {}
 
     allowed_norm = {normalize_class_name(n) for n in allowed}
     class_names = list(artifact.classes_used or [])
+    class_count = max(len(class_names), 1)
 
     try:
         weights_data = download_bytes(artifact.minio_weights_key)
         if not weights_data or weights_data == b"mock_weights":
-            return [], "Model weights missing or invalid. Run training again from the dashboard."
+            return [], "Model weights missing or invalid. Run training again from the dashboard.", {}
 
         with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as wf:
             wf.write(weights_data)
@@ -96,16 +101,22 @@ async def run_detection(
         from ml.training.adapters import get_adapter
 
         adapter = get_adapter(artifact.architecture or "yolo11")
-        raw = adapter.predict(weights_path, image_path)
+        yolo_conf = min(0.2, settings.inference_confidence_threshold)
+        raw = adapter.predict(
+            weights_path,
+            image_path,
+            conf=yolo_conf,
+            iou=settings.inference_iou_threshold,
+        )
 
-        predictions: list[dict] = []
+        candidates: list[dict] = []
         for item in raw:
             idx = item.get("class_id", 0)
             name = class_names[idx] if idx < len(class_names) else f"class_{idx}"
             if normalize_class_name(name) not in allowed_norm:
                 continue
             event_type = map_class_to_event(name)
-            predictions.append({
+            candidates.append({
                 "class": name,
                 "event_type": event_type.value if event_type else None,
                 "confidence": item.get("confidence", 0.0),
@@ -117,11 +128,23 @@ async def run_detection(
                 ],
             })
 
+        predictions, threshold, warnings = filter_detections(
+            candidates,
+            class_count=class_count,
+            min_confidence=min_confidence,
+            settings=settings,
+        )
+
         Path(weights_path).unlink(missing_ok=True)
         Path(image_path).unlink(missing_ok=True)
-        return predictions, None
+        return predictions, None, {
+            "confidence_threshold": threshold,
+            "class_count": class_count,
+            "raw_detection_count": len(candidates),
+            "warnings": warnings,
+        }
     except Exception as exc:
-        return [], f"Inference failed: {exc}"
+        return [], f"Inference failed: {exc}", {}
 
 
 async def create_events_from_detections(

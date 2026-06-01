@@ -8,7 +8,9 @@ import {
 
 interface Props {
   datasetId: string;
-  classId: string;
+  classId?: string;
+  /** Upload without labels — for normal/background images to reduce false positives */
+  backgroundMode?: boolean;
   className?: string;
   classColor?: string;
   disabled?: boolean;
@@ -18,6 +20,7 @@ interface Props {
 export function BulkImageUpload({
   datasetId,
   classId,
+  backgroundMode = false,
   className,
   classColor,
   disabled,
@@ -32,7 +35,7 @@ export function BulkImageUpload({
   const [progress, setProgress] = useState({ done: 0, total: 0, batch: 0, batches: 0 });
   const [result, setResult] = useState<{ uploaded: number; failed: number; errors: string[] } | null>(null);
 
-  const ready = Boolean(datasetId && classId && !disabled);
+  const ready = Boolean(datasetId && !disabled && (backgroundMode || classId));
 
   const startUpload = useCallback(async (files: File[]) => {
     if (!ready || !files.length) return;
@@ -48,7 +51,7 @@ export function BulkImageUpload({
 
     const res = await uploadImagesInBatches({
       datasetId,
-      classId,
+      classId: backgroundMode ? null : classId,
       files,
       batchSize: 8,
       parallel: 2,
@@ -63,7 +66,7 @@ export function BulkImageUpload({
       if (res.uploaded > 0) onComplete?.(res.uploaded);
     }
     setUploading(false);
-  }, [classId, datasetId, onComplete, ready]);
+  }, [backgroundMode, classId, datasetId, onComplete, ready]);
 
   const handleFiles = (fileList: FileList | null) => {
     if (!fileList?.length) return;
@@ -131,10 +134,14 @@ export function BulkImageUpload({
                 ? `Uploading ${progress.done} / ${progress.total} images`
                 : ready
                   ? 'Drop images here or click to browse'
-                  : 'Select a class first'}
+                  : backgroundMode
+                    ? 'Select a dataset first'
+                    : 'Select a class first'}
             </p>
             <p className="text-sm text-muted-foreground mt-1">
-              Bulk upload — 8 images/request · 2 parallel · auto YOLO labels
+              {backgroundMode
+                ? 'Background upload — no labels (reduces false accident alerts)'
+                : 'Bulk upload — 8 images/request · 2 parallel · auto YOLO labels'}
             </p>
             {className && ready && (
               <span

@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     quality_score_threshold: int = 40
     active_learning_confidence_threshold: float = 0.70
 
+    # Inference — reduce false positives (especially single-class accident models)
+    inference_confidence_threshold: float = 0.55
+    inference_single_class_confidence: float = 0.72
+    inference_iou_threshold: float = 0.45
+    inference_full_frame_area_threshold: float = 0.45
+    inference_full_frame_min_confidence: float = 0.94
+
     cuda_visible_devices: str = "0"
     training_cpu_fallback: bool = True
 

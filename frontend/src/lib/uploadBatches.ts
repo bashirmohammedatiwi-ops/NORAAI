@@ -8,7 +8,7 @@ export interface BatchUploadResult {
 
 export interface BatchUploadOptions {
   datasetId: string;
-  classId: string;
+  classId?: string | null;
   files: File[];
   batchSize?: number;
   /** How many HTTP upload requests run at the same time */
@@ -32,13 +32,13 @@ function uploadTimeoutForBatch(batchLen: number): number {
 
 async function uploadOneBatch(
   datasetId: string,
-  classId: string,
+  classId: string | null | undefined,
   batch: File[],
 ): Promise<void> {
   const form = new FormData();
   batch.forEach((f) => form.append('files', f));
   form.append('source_type', 'manual_upload');
-  form.append('class_id', classId);
+  if (classId) form.append('class_id', classId);
   await api.post<{ message: string }>(
     `/api/v1/datasets/${datasetId}/upload`,
     form,

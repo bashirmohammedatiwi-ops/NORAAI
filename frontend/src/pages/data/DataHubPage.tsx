@@ -228,6 +228,23 @@ export default function DataHubPage() {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Normal images (no accident) · صور سليمة</CardTitle>
+              <CardDescription>
+                Upload cars without accidents — no labels. Add at least 30–50% of your accident count, then retrain.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <BulkImageUpload
+                datasetId={selectedId}
+                backgroundMode
+                disabled={!selectedId}
+                onComplete={uploadComplete}
+              />
+            </CardContent>
+          </Card>
+
           {stats && (
             <Card>
               <CardHeader><CardTitle>Summary</CardTitle></CardHeader>

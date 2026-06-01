@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
-  AlertCircle, ImagePlus, Loader2, ScanSearch, Target, Upload, X,
+  AlertCircle, AlertTriangle, ImagePlus, Loader2, ScanSearch, Target, Upload, X,
 } from 'lucide-react';
 
 interface Prediction {
@@ -22,6 +22,9 @@ interface PredictResponse {
   predictions: Prediction[];
   primary_class: string | null;
   primary_confidence: number | null;
+  confidence_threshold?: number;
+  raw_detection_count?: number;
+  warnings?: string[];
   latency_ms: number;
   message: string;
 }
@@ -30,13 +33,17 @@ interface InferenceStatus {
   ready: boolean;
   model_name?: string;
   classes?: string[];
+  class_count?: number;
+  single_class_model?: boolean;
+  retrain_tip?: string | null;
 }
 
 interface Props {
   projects: ProjectListItem[];
+  compact?: boolean;
 }
 
-export function DashboardManualTest({ projects }: Props) {
+export function DashboardManualTest({ projects, compact }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [projectId, setProjectId] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -46,6 +53,7 @@ export function DashboardManualTest({ projects }: Props) {
   const [status, setStatus] = useState<InferenceStatus | null>(null);
   const [result, setResult] = useState<PredictResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [minConfidence, setMinConfidence] = useState(0.72);
 
   const modelProjects = useMemo(
     () => projects.filter((p) => p.has_model),
@@ -65,7 +73,11 @@ export function DashboardManualTest({ projects }: Props) {
     }
     let cancelled = false;
     api.get<InferenceStatus>(`/api/v1/inference/project/${projectId}/status`)
-      .then((data) => { if (!cancelled) setStatus(data); })
+      .then((data) => {
+        if (cancelled) return;
+        setStatus(data);
+        if (data.single_class_model) setMinConfidence(0.85);
+      })
       .catch(() => { if (!cancelled) setStatus({ ready: false }); });
     return () => { cancelled = true; };
   }, [projectId]);
@@ -106,6 +118,7 @@ export function DashboardManualTest({ projects }: Props) {
     try {
       const form = new FormData();
       form.append('file', file);
+      form.append('min_confidence', String(minConfidence));
       const data = await api.post<PredictResponse>(
         `/api/v1/inference/project/${projectId}/predict`,
         form,
@@ -116,22 +129,24 @@ export function DashboardManualTest({ projects }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [file, projectId]);
+  }, [file, minConfidence, projectId]);
 
   const sortedPredictions = useMemo(
     () => [...(result?.predictions ?? [])].sort((a, b) => b.confidence - a.confidence),
     [result],
   );
 
+  const filteredNote = result && (result.raw_detection_count ?? 0) > sortedPredictions.length;
+
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <ScanSearch className="h-5 w-5 text-primary" />
-          Manual Test
+          Manual Test · اختبار يدوي
         </CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
-          Upload an image to detect which class the model assigns to it
+          Upload an image to test detection. Use confidence threshold to reduce false alarms.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -142,6 +157,16 @@ export function DashboardManualTest({ projects }: Props) {
           </div>
         ) : (
           <>
+            {status?.single_class_model && (
+              <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>
+                  نموذج بصنف واحد فقط — إذا ظهر «حادث» على صورة سليمة، أضف 500+ صورة سيارات بدون حادث
+                  (بدون تسمية) وأعد التدريب.
+                </span>
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center gap-3">
               <label className="text-sm text-muted-foreground shrink-0">Project</label>
               <select
@@ -162,6 +187,22 @@ export function DashboardManualTest({ projects }: Props) {
               )}
             </div>
 
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Confidence threshold</span>
+                <span className="font-mono">{(minConfidence * 100).toFixed(0)}%</span>
+              </div>
+              <input
+                type="range"
+                min={0.5}
+                max={0.99}
+                step={0.01}
+                value={minConfidence}
+                onChange={(e) => setMinConfidence(Number(e.target.value))}
+                className="w-full accent-primary"
+              />
+            </div>
+
             {status?.classes && status.classes.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {status.classes.map((cls) => (
@@ -174,7 +215,7 @@ export function DashboardManualTest({ projects }: Props) {
               className={cn(
                 'relative rounded-xl border-2 border-dashed transition-colors',
                 dragOver ? 'border-primary bg-primary/5' : 'border-border',
-                file ? 'p-3' : 'p-8',
+                file ? 'p-3' : compact ? 'p-6' : 'p-8',
               )}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
@@ -268,8 +309,19 @@ export function DashboardManualTest({ projects }: Props) {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No objects detected in this image.</p>
+                  <div>
+                    <p className="text-sm font-medium text-emerald-700">No detection above threshold</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {filteredNote
+                        ? `Model saw ${result.raw_detection_count} box(es) but all were below ${((result.confidence_threshold ?? minConfidence) * 100).toFixed(0)}% or filtered as full-frame false positives.`
+                        : 'Nothing detected in this image.'}
+                    </p>
+                  </div>
                 )}
+
+                {result.warnings?.map((w) => (
+                  <p key={w} className="text-xs text-amber-800 dark:text-amber-200 bg-amber-500/10 rounded px-2 py-1.5">{w}</p>
+                ))}
 
                 {sortedPredictions.length > 1 && (
                   <div>
@@ -286,7 +338,7 @@ export function DashboardManualTest({ projects }: Props) {
                 )}
 
                 <p className="text-[10px] text-muted-foreground">
-                  {result.model_name} · {result.architecture} · {result.latency_ms.toFixed(0)} ms
+                  {result.model_name} · threshold {((result.confidence_threshold ?? minConfidence) * 100).toFixed(0)}% · {result.latency_ms.toFixed(0)} ms
                 </p>
               </div>
             )}
