@@ -15,6 +15,7 @@ import {
   Brain, RefreshCw, Link2, Map, Truck, PenTool, Activity, Database, Play, Loader2, Trash2, Cpu, AlertTriangle, Zap,
 } from 'lucide-react';
 import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
+import { cancelTrainingJob } from '@/lib/cancelTraining';
 
 const serviceIcons: Record<string, typeof Map> = {
   road_intelligence: Map,
@@ -48,6 +49,7 @@ export default function UnifiedModelPage() {
   const [models, setModels] = useState<ModelArtifact[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<'model' | 'all' | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [stopping, setStopping] = useState(false);
 
   const loadModels = useCallback(() => {
     if (!projectId) return;
@@ -89,6 +91,22 @@ export default function UnifiedModelPage() {
       invalidateProject(projectId);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const stopTraining = async () => {
+    const jobId = status?.training.job_id ?? runningJob?.id;
+    if (!jobId) return;
+    if (!window.confirm('Stop training? Progress will be lost.')) return;
+    setStopping(true);
+    try {
+      await cancelTrainingJob(jobId);
+      await refetch();
+      invalidateProject(projectId!);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Failed to stop training');
+    } finally {
+      setStopping(false);
     }
   };
 
@@ -134,6 +152,8 @@ export default function UnifiedModelPage() {
           message={message}
           batch={batch}
           totalBatches={totalBatches}
+          onStop={stopTraining}
+          stopping={stopping}
         />
       )}
 

@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { cancelTrainingJob } from '@/lib/cancelTraining';
 import {
   Activity, BarChart3, Brain, ChevronDown, ChevronUp, Database, ImageIcon, Plus, RefreshCw, StopCircle,
 } from 'lucide-react';
@@ -66,6 +67,7 @@ export default function TrainingPage() {
 
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
   const { job, chartMetrics, connected, refresh } = useTrainingJob(selectedJobId);
 
   const loadDatasets = useCallback(async () => {
@@ -131,9 +133,17 @@ export default function TrainingPage() {
 
   const cancelJob = async () => {
     if (!job?.id) return;
-    await api.post(`/api/v1/training/${job.id}/cancel`);
-    loadJobs();
-    refresh();
+    if (!window.confirm('Stop this training run? Progress will be lost.')) return;
+    setStopping(true);
+    try {
+      await cancelTrainingJob(job.id);
+      loadJobs();
+      refresh();
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Failed to stop training');
+    } finally {
+      setStopping(false);
+    }
   };
 
   const selectedClass = classes.find((c) => c.id === selectedClassId);
@@ -202,6 +212,8 @@ export default function TrainingPage() {
           message={job.message}
           batch={job.batch}
           totalBatches={job.total_batches}
+          onStop={job.status === 'running' || job.status === 'pending' ? cancelJob : undefined}
+          stopping={stopping}
         />
       )}
 
@@ -349,9 +361,9 @@ export default function TrainingPage() {
                     <option key={j.id} value={j.id}>{j.name} ({j.status})</option>
                   ))}
                 </select>
-                {job.status === 'running' && (
-                  <Button size="sm" variant="destructive" onClick={cancelJob}>
-                    <StopCircle className="h-3.5 w-3.5" /> Cancel
+                {(job.status === 'running' || job.status === 'pending') && (
+                  <Button size="sm" variant="destructive" onClick={cancelJob} disabled={stopping}>
+                    <StopCircle className="h-3.5 w-3.5" /> {stopping ? 'Stopping…' : 'Stop'}
                   </Button>
                 )}
               </div>

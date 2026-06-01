@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
-import { Cpu, Loader2, Timer } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Cpu, Loader2, StopCircle, Timer } from 'lucide-react';
 
 interface Props {
   progress: number;
@@ -14,6 +15,8 @@ interface Props {
   message?: string | null;
   batch?: number | null;
   totalBatches?: number | null;
+  onStop?: () => void;
+  stopping?: boolean;
 }
 
 function formatDuration(seconds: number): string {
@@ -41,6 +44,8 @@ export function TrainingProgressCard({
   message,
   batch,
   totalBatches,
+  onStop,
+  stopping,
 }: Props) {
   const pct = Math.min(100, Math.max(0, progress));
   const isActive = status === 'running' || status === 'pending';
@@ -123,6 +128,24 @@ export function TrainingProgressCard({
             <div className="h-full bg-primary transition-all duration-700 rounded-full" style={{ width: `${pct}%` }} />
           </div>
         </div>
+
+        {isActive && onStop && (
+          <Button
+            type="button"
+            variant="destructive"
+            size={compact ? 'sm' : 'default'}
+            className="shrink-0"
+            disabled={stopping}
+            onClick={onStop}
+          >
+            {stopping ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <StopCircle className="h-4 w-4" />
+            )}
+            {stopping ? 'Stopping…' : 'Stop Training'}
+          </Button>
+        )}
       </div>
     </div>
   );

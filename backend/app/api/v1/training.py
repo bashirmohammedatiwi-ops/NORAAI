@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,7 +16,9 @@ from app.services.models.deletion import delete_all_project_models, delete_model
 from app.schemas import DeleteResultResponse, ModelArtifactResponse, ModelCompareRequest, PasswordConfirmRequest, TrainingJobCreate, TrainingJobResponse
 from app.services.evaluation.compare import compare_models
 from app.services.training.cpu_presets import DEFAULT_CPU_PRESET, build_retrain_config
+from app.services.training.cancellation import request_training_cancel
 from app.services.training.service import TRAINING_OPTIONS, get_job_detail, job_to_summary
+from workers.celery_app import celery_app
 from workers.training.tasks import cancel_training_job, run_training_job
 
 router = APIRouter(tags=["training", "models"])
@@ -88,9 +92,16 @@ async def cancel_job(job_id: UUID, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Job not found")
     if job.status not in (TrainingStatus.PENDING, TrainingStatus.RUNNING):
         raise HTTPException(status_code=400, detail=f"Cannot cancel job in status {job.status.value}")
-    cancel_training_job.delay(str(job_id))
+
+    request_training_cancel(str(job_id))
+    if job.celery_task_id:
+        celery_app.control.revoke(job.celery_task_id, terminate=True, signal="SIGTERM")
+
     job.status = TrainingStatus.CANCELLED
-    return {"status": "cancelled"}
+    job.completed_at = datetime.now(timezone.utc)
+    await db.flush()
+    cancel_training_job.delay(str(job_id))
+    return {"status": "cancelled", "job_id": str(job_id)}
 
 
 @router.get("/training/{job_id}/metrics")

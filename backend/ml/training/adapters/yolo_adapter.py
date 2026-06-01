@@ -67,6 +67,7 @@ class YOLOAdapter:
         output_dir: str,
         config: dict[str, Any],
         metrics_callback: Callable | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
         start = time.time()
         train_kwargs = self._build_train_kwargs(config)
@@ -86,6 +87,19 @@ class YOLOAdapter:
                     return min(99, 15 + int(train_frac * 85))
 
                 def on_train_batch_end(trainer):
+                    if cancel_check and cancel_check():
+                        trainer.stop = True
+                        metrics_callback({
+                            "phase": "train",
+                            "message": "Stopping training…",
+                            "status": "cancelled",
+                            "progress": training_progress(
+                                int(getattr(trainer, "epoch", 0)),
+                                int(getattr(trainer, "ni", 0)) + 1,
+                                max(int(getattr(trainer, "nb", 1)), 1),
+                            ),
+                        })
+                        return
                     now = time.time()
                     batch_i = int(getattr(trainer, "ni", 0)) + 1
                     nb = max(int(getattr(trainer, "nb", 1)), 1)
@@ -137,7 +151,15 @@ class YOLOAdapter:
                 model.add_callback("on_train_batch_end", on_train_batch_end)
                 model.add_callback("on_train_epoch_end", on_train_epoch_end)
 
+            if cancel_check and cancel_check():
+                from app.services.training.cancellation import TrainingCancelled
+                raise TrainingCancelled("Training cancelled before start")
+
             results = model.train(data=dataset_path, project=output_dir, name="train", **train_kwargs)
+
+            if cancel_check and cancel_check():
+                from app.services.training.cancellation import TrainingCancelled
+                raise TrainingCancelled("Training cancelled")
 
             csv_path = Path(output_dir) / "train" / "results.csv"
             if csv_path.exists() and metrics_callback:

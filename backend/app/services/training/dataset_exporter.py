@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.minio_client import download_bytes
 from app.models import Annotation, AnnotationStatus, ClassLabel, DatasetImage, DatasetVersion, Image
+from app.services.training.cancellation import TrainingCancelled
 
 
 def export_yolo_dataset_sync(
@@ -18,6 +19,7 @@ def export_yolo_dataset_sync(
     output_dir: str,
     val_split: float = 0.2,
     progress_callback: Callable[[dict], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
     max_workers: int = 8,
 ) -> tuple[str, list[str]]:
     """Export dataset version to YOLO format with parallel MinIO downloads."""
@@ -106,6 +108,10 @@ def export_yolo_dataset_sync(
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(export_one, img_id): img_id for img_id in image_ids}
         for future in as_completed(futures):
+            if cancel_check and cancel_check():
+                for pending in futures:
+                    pending.cancel()
+                raise TrainingCancelled("Dataset export cancelled")
             done += 1
             if future.result():
                 exported += 1

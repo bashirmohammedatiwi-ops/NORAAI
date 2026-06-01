@@ -19,6 +19,12 @@ from app.models import (
     TrainingMetric,
     TrainingStatus,
 )
+from app.services.training.cancellation import (
+    TrainingCancelled,
+    clear_training_cancel,
+    is_training_cancelled,
+    request_training_cancel,
+)
 from app.services.training.dataset_exporter import export_yolo_dataset_sync
 from ml.training.adapters import get_adapter
 from ml.training.hpo import run_hpo
@@ -34,6 +40,13 @@ def publish_metric(job_id: str, metrics: dict):
         **metrics,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
+
+
+def _job_was_cancelled(session, job_id: str) -> bool:
+    if is_training_cancelled(job_id):
+        return True
+    job = session.get(TrainingJob, uuid.UUID(job_id))
+    return bool(job and job.status == TrainingStatus.CANCELLED)
 
 
 @celery_app.task(name="workers.training.tasks.run_training_job")
@@ -53,6 +66,9 @@ def run_training_job(job_id: str):
         from ml.training.adapters.yolo_adapter import resolve_training_device
         config["device"] = resolve_training_device(config)
         adapter = get_adapter(job.architecture.value)
+
+        def cancel_check() -> bool:
+            return _job_was_cancelled(session, job_id)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             def progress_callback(m: dict):
@@ -90,6 +106,7 @@ def run_training_job(job_id: str):
                     tmpdir,
                     config.get("val_split", 0.2),
                     progress_callback=progress_callback,
+                    cancel_check=cancel_check,
                 )
             else:
                 yaml_path = os.path.join(tmpdir, "data.yaml")
@@ -100,10 +117,15 @@ def run_training_job(job_id: str):
                     os.makedirs(os.path.join(tmpdir, "images", split), exist_ok=True)
                 class_names = ["object"]
 
+            if cancel_check():
+                raise TrainingCancelled("Training cancelled")
+
             if job.hpo_enabled:
                 def hpo_train_fn(params):
+                    if cancel_check():
+                        raise TrainingCancelled("Training cancelled")
                     trial_config = {**config, **params}
-                    result = adapter.train(yaml_path, tmpdir, trial_config, metrics_callback)
+                    result = adapter.train(yaml_path, tmpdir, trial_config, metrics_callback, cancel_check)
                     trial_num = session.query(HyperparameterTrial).filter_by(training_job_id=job.id).count() + 1
                     trial = HyperparameterTrial(
                         training_job_id=job.id,
@@ -128,7 +150,13 @@ def run_training_job(job_id: str):
                     config = {**config, **best_trial.params}
                     session.commit()
 
-            result = adapter.train(yaml_path, tmpdir, config, metrics_callback)
+            if cancel_check():
+                raise TrainingCancelled("Training cancelled")
+
+            result = adapter.train(yaml_path, tmpdir, config, metrics_callback, cancel_check)
+
+            if cancel_check():
+                raise TrainingCancelled("Training cancelled")
 
             weights_path = result["weights_path"]
             weights_bytes = Path(weights_path).read_bytes() if Path(weights_path).exists() else b"mock"
@@ -173,7 +201,17 @@ def run_training_job(job_id: str):
         job.completed_at = datetime.now(timezone.utc)
         session.commit()
         publish_metric(job_id, {"epoch": config.get("epochs", 50), "status": "completed", "artifact_id": str(artifact.id)})
+        clear_training_cancel(job_id)
         return {"status": "completed", "artifact_id": str(artifact.id)}
+    except TrainingCancelled:
+        job = session.get(TrainingJob, uuid.UUID(job_id))
+        if job:
+            job.status = TrainingStatus.CANCELLED
+            job.completed_at = datetime.now(timezone.utc)
+            session.commit()
+        publish_metric(job_id, {"status": "cancelled", "message": "Training stopped"})
+        clear_training_cancel(job_id)
+        return {"status": "cancelled"}
     except Exception as exc:
         job = session.get(TrainingJob, uuid.UUID(job_id))
         if job:
@@ -190,12 +228,16 @@ def run_training_job(job_id: str):
 def cancel_training_job(job_id: str):
     session = SessionLocal()
     try:
+        request_training_cancel(job_id)
         job = session.get(TrainingJob, uuid.UUID(job_id))
-        if job and job.status in (TrainingStatus.PENDING, TrainingStatus.RUNNING):
-            job.status = TrainingStatus.CANCELLED
-            job.completed_at = datetime.now(timezone.utc)
-            session.commit()
-            publish_metric(job_id, {"status": "cancelled"})
+        if job:
+            if job.celery_task_id:
+                celery_app.control.revoke(job.celery_task_id, terminate=True, signal="SIGTERM")
+            if job.status in (TrainingStatus.PENDING, TrainingStatus.RUNNING):
+                job.status = TrainingStatus.CANCELLED
+                job.completed_at = datetime.now(timezone.utc)
+                session.commit()
+                publish_metric(job_id, {"status": "cancelled", "message": "Training stopped"})
         return {"status": "cancelled"}
     finally:
         session.close()
