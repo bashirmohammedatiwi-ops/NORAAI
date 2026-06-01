@@ -24,6 +24,24 @@ class FasterRCNNAdapter:
         metrics_callback: Callable | None = None,
         cancel_check: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
+        start = time.time()
+        try:
+            import torch
+            from torchvision.models.detection import fasterrcnn_resnet50_fpn, FasterRCNN_ResNet50_FPN_Weights
+            from app.services.training.cancellation import TrainingCancelled
+
+            weights_dir = Path(output_dir) / "train" / "weights"
+            weights_dir.mkdir(parents=True, exist_ok=True)
+            weights_path = weights_dir / "best.pt"
+
+            model = fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT)
+            epochs = config.get("epochs", 10)
+            device = "cpu" if settings.training_cpu_fallback else "cuda" if torch.cuda.is_available() else "cpu"
+            model.to(device)
+
+            for i in range(1, epochs + 1):
+                if cancel_check and cancel_check():
+                    raise TrainingCancelled("Training cancelled")
                 if metrics_callback:
                     metrics_callback({
                         "epoch": i,
@@ -61,9 +79,10 @@ class EfficientDetAdapter:
         output_dir: str,
         config: dict[str, Any],
         metrics_callback: Callable | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
         adapter = YOLOAdapter("yolo11n.pt")
-        result = adapter.train(dataset_path, output_dir, config, metrics_callback)
+        result = adapter.train(dataset_path, output_dir, config, metrics_callback, cancel_check)
         result["metrics"]["framework"] = "efficientdet-compat"
         return result
 
