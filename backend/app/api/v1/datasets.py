@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+import logging
+
+from sqlalchemy.exc import IntegrityError
+
+from app.api.deps import get_current_user, verify_user_password
 from app.core.database import get_db
 from app.models import ClassLabel, Dataset, DatasetVersion, Image, ImageQualityScore, IngestionSourceType, User
 from app.schemas import (
@@ -37,6 +41,7 @@ from app.services.datasets.versioning import compare_versions, create_dataset, c
 from app.services.ingestion.batch_upload import FilePayload, ingest_files_parallel
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/project/{project_id}")
@@ -307,6 +312,12 @@ async def delete_dataset(
         result = await delete_dataset_permanently(db, dataset_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        logger.exception("Failed to delete dataset %s due to database constraint", dataset_id)
+        raise HTTPException(
+            status_code=409,
+            detail="Dataset could not be deleted because it is still referenced by other records.",
+        ) from exc
     return DeleteResultResponse(
         deleted=result["deleted"],
         message=(

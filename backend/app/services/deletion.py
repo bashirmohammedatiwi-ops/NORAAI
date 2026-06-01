@@ -55,11 +55,57 @@ async def _collect_dataset_image_ids(db: AsyncSession, dataset_id: uuid.UUID) ->
     image_ids: set[uuid.UUID] = set()
     versions = await db.execute(select(DatasetVersion).where(DatasetVersion.dataset_id == dataset_id))
     for version in versions.scalars().all():
-        for raw in version.manifest.get("image_ids", []):
+        manifest = version.manifest or {}
+        for raw in manifest.get("image_ids", []):
             image_ids.add(uuid.UUID(str(raw)))
         links = await db.execute(select(DatasetImage.image_id).where(DatasetImage.version_id == version.id))
         image_ids.update(row[0] for row in links.all())
     return image_ids
+
+
+async def _dataset_version_ids(db: AsyncSession, dataset_id: uuid.UUID) -> list[uuid.UUID]:
+    return [
+        row[0]
+        for row in (
+            await db.execute(select(DatasetVersion.id).where(DatasetVersion.dataset_id == dataset_id))
+        ).all()
+    ]
+
+
+async def _clear_dataset_version_references(
+    db: AsyncSession, dataset_id: uuid.UUID, version_ids: list[uuid.UUID]
+) -> None:
+    if version_ids:
+        await db.execute(
+            update(TrainingJob)
+            .where(TrainingJob.dataset_version_id.in_(version_ids))
+            .values(dataset_version_id=None)
+        )
+        await db.execute(
+            update(ModelArtifact)
+            .where(ModelArtifact.dataset_version_id.in_(version_ids))
+            .values(dataset_version_id=None)
+        )
+    await db.execute(
+        update(DatasetBranch)
+        .where(DatasetBranch.dataset_id == dataset_id)
+        .values(head_version_id=None)
+    )
+
+
+async def _filter_unlinked_images(db: AsyncSession, image_ids: set[uuid.UUID]) -> set[uuid.UUID]:
+    if not image_ids:
+        return set()
+
+    still_linked = {
+        row[0]
+        for row in (
+            await db.execute(
+                select(DatasetImage.image_id).where(DatasetImage.image_id.in_(list(image_ids)))
+            )
+        ).all()
+    }
+    return image_ids - still_linked
 
 
 async def _delete_images(db: AsyncSession, image_ids: set[uuid.UUID]) -> int:
@@ -86,20 +132,15 @@ async def _delete_images(db: AsyncSession, image_ids: set[uuid.UUID]) -> int:
     return result.rowcount or 0
 
 
-async def _delete_dataset_structure(db: AsyncSession, dataset_id: uuid.UUID) -> None:
+async def _delete_dataset_structure(
+    db: AsyncSession, dataset_id: uuid.UUID, version_ids: list[uuid.UUID]
+) -> None:
     dataset = await db.get(Dataset, dataset_id)
     if not dataset:
         return
 
     dataset.head_version_id = None
     await db.flush()
-
-    version_ids = [
-        row[0]
-        for row in (
-            await db.execute(select(DatasetVersion.id).where(DatasetVersion.dataset_id == dataset_id))
-        ).all()
-    ]
 
     if version_ids:
         await db.execute(delete(DatasetImage).where(DatasetImage.version_id.in_(version_ids)))
@@ -150,8 +191,11 @@ async def delete_dataset_permanently(db: AsyncSession, dataset_id: uuid.UUID) ->
         raise ValueError("Dataset not found")
 
     image_ids = await _collect_dataset_image_ids(db, dataset_id)
-    images_removed = await _delete_images(db, image_ids)
-    await _delete_dataset_structure(db, dataset_id)
+    version_ids = await _dataset_version_ids(db, dataset_id)
+    await _clear_dataset_version_references(db, dataset_id, version_ids)
+    await _delete_dataset_structure(db, dataset_id, version_ids)
+    deletable_image_ids = await _filter_unlinked_images(db, image_ids)
+    images_removed = await _delete_images(db, deletable_image_ids)
     await db.flush()
 
     return {
