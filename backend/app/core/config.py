@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     inference_full_frame_area_threshold: float = 0.45
     inference_full_frame_min_confidence: float = 0.94
 
+    vehicle_detector_weights: str = "yolo11s.pt"
+    vehicle_detector_imgsz: int = 640
+    vehicle_detector_conf: float = 0.25
+
     cuda_visible_devices: str = "0"
     training_cpu_fallback: bool = True
     training_export_max_workers: int = 8

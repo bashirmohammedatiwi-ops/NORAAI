@@ -148,12 +148,12 @@ def auto_annotate_class_on_image_sync(
     session: Session,
     image_id: uuid.UUID,
     class_id: uuid.UUID,
-) -> Annotation:
+) -> Annotation | None:
     """
     Auto-label with localized boxes:
     - Road classes (Pothole, Road_Crack): box on road surface
-    - Damage/Accident classes: whole vehicle box only
-    - Vehicle classes: COCO vehicle detector
+    - Damage/Accident/Vehicle: COCO vehicle box only when a vehicle is detected
+    - No full-image fallback for vehicle-related classes
     """
     cls = session.get(ClassLabel, class_id)
     class_name = cls.name if cls else ""
@@ -164,7 +164,7 @@ def auto_annotate_class_on_image_sync(
     if image and image.minio_key:
         try:
             img_bytes = download_bytes(image.minio_key)
-            vehicles = detect_vehicles_from_bytes(img_bytes)
+            vehicles = detect_vehicles_from_bytes(img_bytes, conf=0.25)
         except Exception:
             vehicles = []
 
@@ -180,12 +180,9 @@ def auto_annotate_class_on_image_sync(
             **region,
         )
 
-    if mode == "damage":
-        if vehicle:
-            return create_vehicle_class_annotation_sync(session, image_id, class_id, vehicle)
-        return create_full_image_annotation_sync(session, image_id, class_id)
-
-    if mode == "vehicle" and vehicle:
+    if mode in ("damage", "vehicle"):
+        if not vehicle:
+            return None
         return create_vehicle_class_annotation_sync(session, image_id, class_id, vehicle)
 
     if vehicle:
@@ -193,7 +190,7 @@ def auto_annotate_class_on_image_sync(
         target_id = vehicle_class_id or class_id
         return create_vehicle_class_annotation_sync(session, image_id, target_id, vehicle)
 
-    return create_full_image_annotation_sync(session, image_id, class_id)
+    return None
 
 
 def link_image_to_dataset_and_class_sync(

@@ -244,9 +244,8 @@ export default function DataHubPage() {
                 <strong className="text-foreground">Pothole / Road_Crack:</strong> box on each hole or crack on the pavement.
               </p>
               <p className="text-xs">
-                Auto-label places a vehicle box — refine in{' '}
-                <Link to={`/projects/${projectId}/annotation`} className="text-primary underline">Annotation</Link>{' '}
-                (draw / move / resize), then retrain with Fast or Turbo CPU preset.
+                Auto-label adds a vehicle box only when a car/truck is detected — otherwise annotate manually in{' '}
+                <Link to={`/projects/${projectId}/annotation`} className="text-primary underline">Annotation</Link>.
               </p>
             </CardContent>
           </Card>

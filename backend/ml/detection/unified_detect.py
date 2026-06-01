@@ -1,4 +1,4 @@
-"""Full-image detection with vehicle-only boxes for accident/damage classes."""
+"""Full-image detection with precise vehicle-only boxes."""
 
 from __future__ import annotations
 
@@ -7,7 +7,11 @@ from app.services.driver.project_classes import normalize_class_name
 from app.services.inference.filters import filter_detections
 from ml.detection.class_taxonomy import detection_mode, is_damage_class, is_road_class
 from ml.detection.two_stage import classify_vehicles_two_stage
-from ml.detection.vehicle_localizer import align_damage_detections_to_vehicles
+from ml.detection.vehicle_localizer import (
+    align_damage_detections_to_vehicles,
+    detect_vehicles,
+    snap_candidates_to_vehicles,
+)
 
 
 def _item_to_candidate(item: dict, class_names: list[str], allowed_norm: set[str]) -> dict | None:
@@ -31,10 +35,18 @@ def _item_to_candidate(item: dict, class_names: list[str], allowed_norm: set[str
         "event_type": event_type.value if event_type else None,
         "confidence": float(item.get("confidence", 0.0)),
         "bbox": [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2],
+        "x_center": cx,
+        "y_center": cy,
+        "width": w,
+        "height": h,
         "vehicle_type": item.get("vehicle_type"),
         "vehicle_confidence": item.get("vehicle_confidence"),
         "pipeline": item.get("pipeline", "localized"),
     }
+
+
+def _needs_precise_vehicles(class_names: list[str]) -> bool:
+    return any(detection_mode(name) in ("damage", "vehicle") for name in class_names)
 
 
 def detect_with_project_model(
@@ -48,60 +60,70 @@ def detect_with_project_model(
     min_confidence: float | None = None,
 ) -> tuple[list[dict], dict]:
     """
-    YOLO on full image. Accident/damage classes are snapped to full vehicle boxes only.
+    Road defects: project model boxes on full image.
+    Accident/vehicle: precise COCO vehicle boxes only when a vehicle is found.
     """
     yolo_conf = min(0.2, settings.inference_confidence_threshold)
+    class_modes = {detection_mode(n) for n in class_names}
+    has_road = "road" in class_modes or any(is_road_class(n) for n in class_names)
+    has_damage = "damage" in class_modes or any(is_damage_class(n) for n in class_names)
+    needs_vehicles = _needs_precise_vehicles(class_names)
+
+    vehicles: list[dict] = []
+    if needs_vehicles:
+        vehicles = detect_vehicles(
+            image_path,
+            conf=settings.vehicle_detector_conf,
+            iou=settings.inference_iou_threshold,
+            imgsz=settings.vehicle_detector_imgsz,
+        )
+
+    candidates: list[dict] = []
+    pipeline = "localized"
+
     raw_full = adapter.predict(
         weights_path,
         image_path,
         conf=yolo_conf,
         iou=settings.inference_iou_threshold,
     )
-
-    candidates: list[dict] = []
     for item in raw_full:
         cand = _item_to_candidate(item, class_names, allowed_norm)
-        if cand:
-            candidates.append(cand)
+        if not cand:
+            continue
+        if cand["detection_mode"] in ("damage", "vehicle") and needs_vehicles:
+            continue
+        candidates.append(cand)
 
-    vehicles: list[dict] = []
-    pipeline = "localized"
-
-    class_modes = {detection_mode(n) for n in class_names}
-    has_road = "road" in class_modes or any(is_road_class(n) for n in class_names)
-    has_damage = "damage" in class_modes or any(is_damage_class(n) for n in class_names)
-
-    use_two_stage_fallback = (
-        not candidates
-        and len(class_names) <= 2
-        and (has_damage or "accident" in {normalize_class_name(n) for n in class_names})
-    )
-
-    if use_two_stage_fallback:
+    if needs_vehicles and vehicles:
         ts_items, vehicles = classify_vehicles_two_stage(
             image_path,
             weights_path,
             adapter,
             yolo_conf=yolo_conf,
             iou=settings.inference_iou_threshold,
-            vehicle_conf=0.35,
+            vehicle_conf=settings.vehicle_detector_conf,
+            vehicles=vehicles,
         )
         for item in ts_items:
             cand = _item_to_candidate(item, class_names, allowed_norm)
-            if cand:
-                cand["pipeline"] = "two_stage"
+            if cand and cand["detection_mode"] in ("damage", "vehicle"):
                 candidates.append(cand)
-        if candidates:
-            pipeline = "two_stage"
+        if ts_items:
+            pipeline = "two_stage_vehicle"
 
-    if has_damage and candidates:
+    if needs_vehicles:
+        candidates = snap_candidates_to_vehicles(candidates, vehicles, require_vehicle=True)
+        if vehicles and pipeline == "localized":
+            pipeline = "vehicle_precise"
+    elif has_damage and candidates:
         candidates, vehicles = align_damage_detections_to_vehicles(
             image_path,
             candidates,
             iou=settings.inference_iou_threshold,
+            vehicle_conf=settings.vehicle_detector_conf,
+            vehicles=vehicles or None,
         )
-        if vehicles:
-            pipeline = "vehicle_only"
 
     class_count = max(len(class_names), 1)
     predictions, threshold, warnings = filter_detections(
@@ -112,18 +134,18 @@ def detect_with_project_model(
     )
 
     tips: list[str] = []
-    if has_damage:
+    if needs_vehicles:
         tips.append(
-            "Accident detection uses the whole vehicle box. Adjust boxes manually in Annotation, then retrain."
+            "Vehicle / accident boxes come from the vehicle detector — only shown when a car/truck is found."
         )
     if has_road:
         tips.append(
             "Potholes/road defects: label each pothole or crack with its own box on the road surface."
         )
-    if not vehicles and has_damage and not predictions:
-        tips.append(
-            "No vehicle detected. Draw or edit the vehicle box in Annotation, then retrain."
-        )
+    if needs_vehicles and not vehicles:
+        tips.append("No vehicle found in this image.")
+    elif needs_vehicles and not predictions:
+        tips.append("Vehicle found but the model did not classify it as accident/vehicle at the current threshold.")
 
     return predictions, {
         "confidence_threshold": threshold,
