@@ -216,8 +216,17 @@ KEEP_MONITORING=1 docker compose -f docker-compose.prod.yml --profile monitoring
 
 ```bash
 cd /opt/aiops
-chmod +x scripts/update_vps.sh
-./scripts/update_vps.sh
+git checkout -- scripts/ systemd/ backend/entrypoint.sh
+git pull origin main
+chmod +x scripts/*.sh
+./scripts/cleanup_orphans.sh
+```
+
+أو:
+
+```bash
+cd /opt/aiops
+./scripts/update_vps.sh --force
 ```
 
 ### API unhealthy

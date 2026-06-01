@@ -6,13 +6,16 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
 NO_CACHE=""
+FORCE_GIT=""
 for arg in "$@"; do
   case "$arg" in
     --no-cache) NO_CACHE="--no-cache" ;;
+    --force) FORCE_GIT="1" ;;
     -h|--help)
-      echo "Usage: $0 [--no-cache]"
+      echo "Usage: $0 [--no-cache] [--force]"
       echo "  default    Rebuild using Docker layer cache (recommended — saves ~5-10 GB per update)"
       echo "  --no-cache Force full rebuild (use only if UI changes do not appear)"
+      echo "  --force    Discard ALL local git changes and match origin/main (fixes pull conflicts on VPS)"
       exit 0
       ;;
   esac
@@ -20,12 +23,23 @@ done
 
 echo "=== AI Ops VPS Update ==="
 
-echo "Resetting local edits to tracked scripts..."
-git checkout -- scripts/ 2>/dev/null || true
-git checkout -- backend/entrypoint.sh 2>/dev/null || true
+echo "Resetting local edits to tracked deploy files..."
+git checkout -- scripts/ systemd/ backend/entrypoint.sh DEPLOY.md .env.production.example 2>/dev/null || true
 
 echo "Pulling latest code..."
-git pull origin main
+if ! git pull origin main; then
+  if [ "$FORCE_GIT" = "1" ]; then
+    echo "Pull failed — hard reset to origin/main (--force)..."
+    git fetch origin main
+    git reset --hard origin/main
+  else
+    echo ""
+    echo "ERROR: git pull blocked by local changes on the VPS."
+    echo "Re-run with:  ./scripts/update_vps.sh --force"
+    echo "Or manually:   git checkout -- scripts/ systemd/ && git pull"
+    exit 1
+  fi
+fi
 
 for f in backend/entrypoint.sh scripts/*.sh; do
   [ -f "$f" ] && sed -i 's/\r$//' "$f" && chmod +x "$f"
