@@ -20,6 +20,19 @@ ROAD_PROJECT = {
     "domain": "road_infrastructure",
 }
 
+PERFORMANCE_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS ix_projects_organization_id ON projects (organization_id)",
+    "CREATE INDEX IF NOT EXISTS ix_training_jobs_project_id ON training_jobs (project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_training_jobs_status ON training_jobs (status)",
+    "CREATE INDEX IF NOT EXISTS ix_training_metrics_job_epoch ON training_metrics (training_job_id, epoch)",
+    "CREATE INDEX IF NOT EXISTS ix_deployments_project_id ON deployments (project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_deployments_status ON deployments (status)",
+    "CREATE INDEX IF NOT EXISTS ix_fleet_devices_project_id ON fleet_devices (project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_fleet_devices_is_online ON fleet_devices (is_online)",
+    "CREATE INDEX IF NOT EXISTS ix_drift_alerts_deployment_id ON drift_alerts (deployment_id)",
+    "CREATE INDEX IF NOT EXISTS ix_drift_alerts_is_acknowledged ON drift_alerts (is_acknowledged)",
+)
+
 
 async def init_db():
     async with engine.begin() as conn:
@@ -31,6 +44,8 @@ async def init_db():
                 "REFERENCES model_artifacts(id)"
             )
         )
+        for index_sql in PERFORMANCE_INDEXES:
+            await conn.execute(text(index_sql))
 
     async with async_session() as db:
         org_result = await db.execute(select(Organization).limit(1))

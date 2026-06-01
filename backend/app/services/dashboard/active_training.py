@@ -1,13 +1,40 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models import Project, TrainingJob, TrainingMetric, TrainingStatus
 from app.services.training.progress import get_training_progress, merge_live_progress
 from app.services.training.service import _job_progress
+
+
+async def _latest_metrics_by_job(
+    db: AsyncSession,
+    job_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, TrainingMetric]:
+    if not job_ids:
+        return {}
+
+    max_epoch = (
+        select(
+            TrainingMetric.training_job_id.label("job_id"),
+            func.max(TrainingMetric.epoch).label("max_epoch"),
+        )
+        .where(TrainingMetric.training_job_id.in_(job_ids))
+        .group_by(TrainingMetric.training_job_id)
+        .subquery()
+    )
+    result = await db.execute(
+        select(TrainingMetric)
+        .join(
+            max_epoch,
+            (TrainingMetric.training_job_id == max_epoch.c.job_id)
+            & (TrainingMetric.epoch == max_epoch.c.max_epoch),
+        )
+    )
+    return {metric.training_job_id: metric for metric in result.scalars().all()}
 
 
 async def fetch_active_training_jobs(db: AsyncSession, org_id: uuid.UUID) -> list[dict]:
@@ -22,15 +49,15 @@ async def fetch_active_training_jobs(db: AsyncSession, org_id: uuid.UUID) -> lis
         .order_by(TrainingJob.started_at.desc().nullslast(), TrainingJob.created_at.desc())
     )
 
+    rows = result.all()
+    if not rows:
+        return []
+
+    latest_by_job = await _latest_metrics_by_job(db, [job.id for job, _ in rows])
+
     jobs: list[dict] = []
-    for job, project_name in result.all():
-        latest_metric = await db.execute(
-            select(TrainingMetric)
-            .where(TrainingMetric.training_job_id == job.id)
-            .order_by(TrainingMetric.epoch.desc())
-            .limit(1)
-        )
-        latest = latest_metric.scalar_one_or_none()
+    for job, project_name in rows:
+        latest = latest_by_job.get(job.id)
         progress, current_epoch, total_epochs = _job_progress(job, latest)
         live = get_training_progress(job.id)
 

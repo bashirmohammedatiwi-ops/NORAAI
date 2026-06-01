@@ -47,7 +47,43 @@ function DashboardTrainingJobCard({
   onStopped?: () => void;
 }) {
   const [stopping, setStopping] = useState(false);
-  const { job: liveJob, progressDetail, activityLog, connected } = useTrainingJob(job.job_id);
+  const { job: liveJob, progressDetail, activityLog, connected } = useTrainingJob(job.job_id, {
+    pollRest: false,
+    baseline: {
+      name: job.name,
+      architecture: job.architecture,
+      training_mode: 'single_gpu',
+      status: job.status,
+      hpo_enabled: false,
+      config: {},
+      progress: job.progress,
+      current_epoch: job.current_epoch,
+      total_epochs: job.total_epochs,
+      duration_seconds: job.duration_seconds ?? null,
+      error_message: null,
+      phase: job.phase,
+      message: job.message,
+      batch: job.batch,
+      total_batches: job.total_batches,
+      epoch_progress: job.epoch_progress,
+      export_current: job.export_current,
+      export_total: job.export_total,
+      current_step: job.current_step,
+      total_steps: job.total_steps,
+      eta_seconds: job.eta_seconds,
+      latest_metrics: job.latest_metrics
+        ? {
+            loss: job.latest_metrics.loss ?? null,
+            precision: job.latest_metrics.precision ?? null,
+            recall: null,
+            f1: null,
+            map50: job.latest_metrics.map50 ?? null,
+            map50_95: null,
+          }
+        : null,
+      artifact: null,
+    },
+  });
   const display = liveJob ?? {
     id: job.job_id,
     name: job.name,

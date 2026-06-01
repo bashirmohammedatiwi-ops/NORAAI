@@ -157,23 +157,33 @@ export function useDashboardStats() {
 }
 
 export function useDashboardHome() {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: dashboardKeys.home,
-    queryFn: ({ signal }) => api.get<DashboardHomeData>('/api/v1/dashboard/home', { signal }),
-    staleTime: 15_000,
+    queryFn: async ({ signal }) => {
+      const data = await api.get<DashboardHomeData>('/api/v1/dashboard/home', { signal });
+      queryClient.setQueryData(projectKeys.list(), data.projects);
+      return data;
+    },
+    staleTime: 20_000,
     retry: 1,
     placeholderData: (prev) => prev,
-    refetchInterval: (query) => ((query.state.data?.active_training?.length ?? 0) > 0 ? 4000 : 30_000),
+    refetchIntervalInBackground: false,
+    refetchInterval: (query) => ((query.state.data?.active_training?.length ?? 0) > 0 ? 6000 : 60_000),
   });
 }
 
 export function useInvalidateProjects() {
   const queryClient = useQueryClient();
   return {
-    invalidateList: () => queryClient.invalidateQueries({ queryKey: projectKeys.all }),
+    invalidateList: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.home });
+    },
     invalidateProject: (id: string) => {
       queryClient.invalidateQueries({ queryKey: projectKeys.overview(id) });
       queryClient.invalidateQueries({ queryKey: projectKeys.activeModel(id) });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.home });
     },
   };
 }

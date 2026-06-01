@@ -50,9 +50,3 @@ async def health():
 async def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
-
-@app.get("/api/v1/dashboard/stats")
-async def dashboard_stats_legacy():
-    from app.services.dashboard.service import fetch_dashboard_stats
-
-    return await fetch_dashboard_stats()

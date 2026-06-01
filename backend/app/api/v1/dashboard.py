@@ -11,8 +11,11 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/stats")
-async def dashboard_stats():
-    return await fetch_dashboard_stats()
+async def dashboard_stats(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await fetch_dashboard_stats(db, user.organization_id)
 
 
 @router.get("/home", response_model=DashboardHomeResponse)

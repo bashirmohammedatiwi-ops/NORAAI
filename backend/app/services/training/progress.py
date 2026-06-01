@@ -1,8 +1,35 @@
+import json
+import uuid
+
+from app.core.redis_client import get_sync_redis
+
+
 def compute_eta_seconds(elapsed_seconds: int | float, progress: int) -> int | None:
     if progress <= 0 or progress >= 100 or elapsed_seconds <= 0:
         return None
     total_est = elapsed_seconds / (progress / 100)
     return max(0, int(total_est - elapsed_seconds))
+
+
+def _progress_key(job_id: str | uuid.UUID) -> str:
+    return f"training:progress:{str(job_id)}"
+
+
+def publish_training_progress(job_id: str | uuid.UUID, payload: dict) -> None:
+    redis = get_sync_redis()
+    data = json.dumps(payload)
+    redis.setex(_progress_key(job_id), 3600, data)
+    redis.publish(f"training:{job_id}", data)
+
+
+def get_training_progress(job_id: str | uuid.UUID) -> dict | None:
+    raw = get_sync_redis().get(_progress_key(job_id))
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
 
 
 def merge_live_progress(

@@ -56,32 +56,40 @@ export interface TrainingMetricPoint {
   [key: string]: unknown;
 }
 
-export function useTrainingJob(jobId: string | null) {
-  const [job, setJob] = useState<TrainingJobDetail | null>(null);
+export function useTrainingJob(
+  jobId: string | null,
+  options?: { pollRest?: boolean; baseline?: Partial<TrainingJobDetail> },
+) {
+  const pollRest = options?.pollRest ?? true;
+  const baseline = options?.baseline;
+  const [job, setJob] = useState<TrainingJobDetail | null>(
+    baseline && jobId ? ({ ...baseline, id: jobId } as TrainingJobDetail) : null,
+  );
   const [historicalMetrics, setHistoricalMetrics] = useState<TrainingMetricPoint[]>([]);
   const { metrics: liveMetrics, connected } = useTrainingMetrics(jobId);
 
   const refresh = useCallback(async () => {
-    if (!jobId) return;
+    if (!jobId || !pollRest) return;
     const [detail, metrics] = await Promise.all([
       api.get<TrainingJobDetail>(`/api/v1/training/${jobId}`),
       api.get<TrainingMetricPoint[]>(`/api/v1/training/${jobId}/metrics`),
     ]);
     setJob(detail);
     setHistoricalMetrics(metrics);
-  }, [jobId]);
+  }, [jobId, pollRest]);
 
   useEffect(() => {
+    if (!pollRest || !jobId) return;
     refresh();
-    if (!jobId) return;
-    const interval = setInterval(refresh, 3000);
+    const interval = setInterval(refresh, 5000);
     return () => clearInterval(interval);
-  }, [jobId, refresh]);
+  }, [jobId, refresh, pollRest]);
 
   const chartMetrics = mergeMetrics(historicalMetrics, liveMetrics as unknown as TrainingMetricPoint[]);
 
   const liveJob = useMemo(() => {
-    if (!job) return null;
+    const base = job ?? (baseline && jobId ? ({ ...baseline, id: jobId } as TrainingJobDetail) : null);
+    if (!base) return null;
     const latestLive = liveMetrics.length ? liveMetrics[liveMetrics.length - 1] : null;
     const hasLive = latestLive && (
       latestLive.progress != null
@@ -89,38 +97,38 @@ export function useTrainingJob(jobId: string | null) {
       || latestLive.phase
       || latestLive.message
     );
-    if (!hasLive) return job;
+    if (!hasLive) return base;
 
-    const epoch = Number(latestLive.epoch ?? job.current_epoch);
-    const total = Number(latestLive.total_epochs ?? job.total_epochs) || job.total_epochs;
-    const progress = Number(latestLive.progress ?? job.progress);
-    const duration = job.duration_seconds;
+    const epoch = Number(latestLive.epoch ?? base.current_epoch);
+    const total = Number(latestLive.total_epochs ?? base.total_epochs) || base.total_epochs;
+    const progress = Number(latestLive.progress ?? base.progress);
+    const duration = base.duration_seconds;
 
     return {
-      ...job,
+      ...base,
       current_epoch: epoch,
       total_epochs: total,
       progress: Math.min(100, Math.max(0, progress)),
-      phase: (latestLive.phase as string | undefined) ?? job.phase,
-      message: (latestLive.message as string | undefined) ?? job.message,
-      batch: num(latestLive.batch, job.batch),
-      total_batches: num(latestLive.total_batches, job.total_batches),
-      epoch_progress: num(latestLive.epoch_progress, job.epoch_progress),
-      export_current: num(latestLive.export_current, job.export_current),
-      export_total: num(latestLive.export_total, job.export_total),
-      current_step: num(latestLive.current_step, job.current_step),
-      total_steps: num(latestLive.total_steps, job.total_steps),
-      eta_seconds: num(latestLive.eta_seconds, job.eta_seconds) ?? computeEtaSeconds(duration, progress),
+      phase: (latestLive.phase as string | undefined) ?? base.phase,
+      message: (latestLive.message as string | undefined) ?? base.message,
+      batch: num(latestLive.batch, base.batch),
+      total_batches: num(latestLive.total_batches, base.total_batches),
+      epoch_progress: num(latestLive.epoch_progress, base.epoch_progress),
+      export_current: num(latestLive.export_current, base.export_current),
+      export_total: num(latestLive.export_total, base.export_total),
+      current_step: num(latestLive.current_step, base.current_step),
+      total_steps: num(latestLive.total_steps, base.total_steps),
+      eta_seconds: num(latestLive.eta_seconds, base.eta_seconds) ?? computeEtaSeconds(duration, progress),
       latest_metrics: {
-        loss: num(latestLive.loss, job.latest_metrics?.loss),
-        precision: num(latestLive.precision, job.latest_metrics?.precision),
-        recall: num(latestLive.recall, job.latest_metrics?.recall),
-        f1: num(latestLive.f1, job.latest_metrics?.f1),
-        map50: num(latestLive.map50, job.latest_metrics?.map50),
-        map50_95: num(latestLive.map50_95, job.latest_metrics?.map50_95),
+        loss: num(latestLive.loss, base.latest_metrics?.loss),
+        precision: num(latestLive.precision, base.latest_metrics?.precision),
+        recall: num(latestLive.recall, base.latest_metrics?.recall),
+        f1: num(latestLive.f1, base.latest_metrics?.f1),
+        map50: num(latestLive.map50, base.latest_metrics?.map50),
+        map50_95: num(latestLive.map50_95, base.latest_metrics?.map50_95),
       },
     };
-  }, [job, liveMetrics]);
+  }, [job, baseline, jobId, liveMetrics]);
 
   const progressDetail: TrainingProgressDetail | undefined = useMemo(() => {
     if (!liveJob) return undefined;

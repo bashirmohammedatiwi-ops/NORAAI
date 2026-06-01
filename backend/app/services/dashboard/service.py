@@ -1,15 +1,27 @@
+import uuid
+
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import async_session
 from app.models import Deployment, DeploymentStatus, DriftAlert, FleetDevice, Image, Project, TrainingJob, TrainingStatus
 from app.schemas import ProjectListItemResponse
 from app.services.dashboard.active_training import fetch_active_training_jobs
 from app.services.projects.service import list_projects, project_has_model
 
 
-async def _fast_image_count(db: AsyncSession) -> int:
-    """Use PostgreSQL estimate for large tables; exact count for small ones."""
+async def _fast_image_count(db: AsyncSession, org_id: uuid.UUID) -> int:
+    """Exact org-scoped count; use global estimate only when org owns most data."""
+    org_count = (
+        await db.execute(
+            select(func.count(Image.id))
+            .join(Project, Project.id == Image.project_id)
+            .where(Project.organization_id == org_id)
+        )
+    ).scalar() or 0
+
+    if org_count < 10_000:
+        return org_count
+
     try:
         estimate = (
             await db.execute(text("SELECT reltuples::bigint FROM pg_class WHERE relname = 'images'"))
@@ -18,33 +30,55 @@ async def _fast_image_count(db: AsyncSession) -> int:
             return int(estimate)
     except Exception:
         pass
-    return (await db.execute(select(func.count(Image.id)))).scalar() or 0
+    return org_count
 
 
-async def fetch_dashboard_stats() -> dict:
-    async with async_session() as db:
-        total_projects = (await db.execute(select(func.count(Project.id)))).scalar() or 0
-        active_training = (
-            await db.execute(
-                select(func.count(TrainingJob.id)).where(TrainingJob.status == TrainingStatus.RUNNING)
+async def fetch_dashboard_stats(db: AsyncSession, org_id: uuid.UUID) -> dict:
+    total_projects = (
+        await db.execute(select(func.count(Project.id)).where(Project.organization_id == org_id))
+    ).scalar() or 0
+    active_training = (
+        await db.execute(
+            select(func.count(TrainingJob.id))
+            .join(Project, Project.id == TrainingJob.project_id)
+            .where(
+                Project.organization_id == org_id,
+                TrainingJob.status == TrainingStatus.RUNNING,
             )
-        ).scalar() or 0
-        deployed = (
-            await db.execute(
-                select(func.count(Deployment.id)).where(Deployment.status == DeploymentStatus.ACTIVE)
+        )
+    ).scalar() or 0
+    deployed = (
+        await db.execute(
+            select(func.count(Deployment.id))
+            .join(Project, Project.id == Deployment.project_id)
+            .where(
+                Project.organization_id == org_id,
+                Deployment.status == DeploymentStatus.ACTIVE,
             )
-        ).scalar() or 0
-        fleet = (
-            await db.execute(
-                select(func.count(FleetDevice.id)).where(FleetDevice.is_online == True)
+        )
+    ).scalar() or 0
+    fleet = (
+        await db.execute(
+            select(func.count(FleetDevice.id))
+            .join(Project, Project.id == FleetDevice.project_id)
+            .where(
+                Project.organization_id == org_id,
+                FleetDevice.is_online == True,
             )
-        ).scalar() or 0
-        images = await _fast_image_count(db)
-        alerts = (
-            await db.execute(
-                select(func.count(DriftAlert.id)).where(DriftAlert.is_acknowledged == False)
+        )
+    ).scalar() or 0
+    images = await _fast_image_count(db, org_id)
+    alerts = (
+        await db.execute(
+            select(func.count(DriftAlert.id))
+            .join(Deployment, Deployment.id == DriftAlert.deployment_id)
+            .join(Project, Project.id == Deployment.project_id)
+            .where(
+                Project.organization_id == org_id,
+                DriftAlert.is_acknowledged == False,
             )
-        ).scalar() or 0
+        )
+    ).scalar() or 0
 
     return {
         "total_projects": total_projects,
@@ -56,7 +90,7 @@ async def fetch_dashboard_stats() -> dict:
     }
 
 
-async def fetch_dashboard_home(db: AsyncSession, org_id) -> dict:
+async def fetch_dashboard_home(db: AsyncSession, org_id: uuid.UUID) -> dict:
     projects = await list_projects(db, org_id)
     project_items = [
         ProjectListItemResponse(
@@ -69,6 +103,6 @@ async def fetch_dashboard_home(db: AsyncSession, org_id) -> dict:
         )
         for p in projects
     ]
-    stats = await fetch_dashboard_stats()
+    stats = await fetch_dashboard_stats(db, org_id)
     active_training = await fetch_active_training_jobs(db, org_id)
     return {"stats": stats, "projects": project_items, "active_training": active_training}
