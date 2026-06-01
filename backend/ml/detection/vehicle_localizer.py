@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 from app.core.config import get_settings
+from ml.detection.class_taxonomy import detection_mode
 
 # COCO indices in Ultralytics YOLO
 COCO_VEHICLE_CLASS_IDS = {2, 3, 5, 7}  # car, motorcycle, bus, truck
@@ -228,6 +229,66 @@ def snap_candidates_to_vehicles(
         apply_vehicle_box(candidate, vehicle)
         output.append(candidate)
     return output
+
+
+def format_detected_vehicles(vehicles: list[dict]) -> list[dict]:
+    """API/UI overlay for COCO vehicle boxes (always when vehicles are found)."""
+    return [
+        {
+            "bbox": vehicle_to_bbox_xyxy(vehicle),
+            "confidence": float(vehicle.get("confidence", 0.0)),
+            "vehicle_type": vehicle.get("vehicle_type", "vehicle"),
+            "label": "Vehicle",
+        }
+        for vehicle in vehicles
+    ]
+
+
+def pick_vehicle_display_class(class_names: list[str], allowed_norm: set[str]) -> str | None:
+    from app.services.driver.project_classes import normalize_class_name
+
+    priority = ("Vehicle", "Car", "Truck", "Bus", "Motorcycle")
+    by_norm = {normalize_class_name(name): name for name in class_names}
+    for pref in priority:
+        key = normalize_class_name(pref)
+        if key in allowed_norm and key in by_norm:
+            return by_norm[key]
+    for name in class_names:
+        if detection_mode(name) in ("vehicle", "damage") and normalize_class_name(name) in allowed_norm:
+            return name
+    return None
+
+
+def build_vehicle_detector_predictions(
+    vehicles: list[dict],
+    *,
+    class_name: str = "Vehicle",
+) -> list[dict]:
+    from app.services.driver.detection import map_class_to_event
+
+    mode = detection_mode(class_name)
+    event_type = map_class_to_event(class_name)
+    if mode == "damage":
+        event_type = None
+    predictions: list[dict] = []
+    for vehicle in vehicles:
+        bbox = vehicle_to_bbox_xyxy(vehicle)
+        predictions.append({
+            "class": class_name,
+            "detection_mode": mode,
+            "event_type": event_type.value if event_type else None,
+            "confidence": float(vehicle.get("confidence", 0.0)),
+            "bbox": bbox,
+            "x_center": float(vehicle["x_center"]),
+            "y_center": float(vehicle["y_center"]),
+            "width": float(vehicle["width"]),
+            "height": float(vehicle["height"]),
+            "vehicle_type": vehicle.get("vehicle_type", "vehicle"),
+            "vehicle_confidence": float(vehicle.get("confidence", 0.0)),
+            "pipeline": "vehicle_detector",
+            "vehicle_only": True,
+        })
+    return predictions
 
 
 def align_damage_detections_to_vehicles(

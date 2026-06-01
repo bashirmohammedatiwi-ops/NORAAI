@@ -49,7 +49,14 @@ def filter_detections(
     kept: list[dict] = []
     for det in detections:
         conf = float(det.get("confidence") or 0)
-        if conf < threshold:
+        item_threshold = threshold
+        pipeline = det.get("pipeline", "")
+        if pipeline == "vehicle_detector" or det.get("vehicle_only"):
+            item_threshold = max(0.15, cfg.vehicle_detector_conf - 0.08)
+        elif pipeline in ("vehicle_precise", "two_stage_vehicle"):
+            item_threshold = min(threshold, max(cfg.vehicle_detector_conf, threshold * 0.75))
+
+        if conf < item_threshold:
             continue
 
         area = bbox_area(det.get("bbox") or [])

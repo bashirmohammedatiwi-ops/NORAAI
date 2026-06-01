@@ -29,6 +29,8 @@ interface PredictResponse {
   primary_confidence: number | null;
   confidence_threshold?: number;
   raw_detection_count?: number;
+  vehicle_count?: number;
+  detected_vehicles?: { bbox: number[]; confidence: number; vehicle_type?: string; label: string }[];
   warnings?: string[];
   latency_ms: number;
   message: string;
@@ -319,6 +321,15 @@ export function DashboardManualTest({ projects, compact }: Props) {
                         {(result.primary_confidence! * 100).toFixed(1)}% confidence
                       </Badge>
                     </div>
+                  </div>
+                ) : result.vehicle_count && result.vehicle_count > 0 ? (
+                  <div>
+                    <p className="text-sm font-medium text-blue-700">
+                      {result.vehicle_count} vehicle(s) detected
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Model did not confirm accident class at the current threshold — vehicle boxes shown from detector.
+                    </p>
                   </div>
                 ) : (
                   <div>

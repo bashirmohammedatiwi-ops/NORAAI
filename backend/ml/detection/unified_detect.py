@@ -9,7 +9,10 @@ from ml.detection.class_taxonomy import detection_mode, is_damage_class, is_road
 from ml.detection.two_stage import classify_vehicles_two_stage
 from ml.detection.vehicle_localizer import (
     align_damage_detections_to_vehicles,
+    build_vehicle_detector_predictions,
     detect_vehicles,
+    format_detected_vehicles,
+    pick_vehicle_display_class,
     snap_candidates_to_vehicles,
 )
 
@@ -60,10 +63,10 @@ def detect_with_project_model(
     min_confidence: float | None = None,
 ) -> tuple[list[dict], dict]:
     """
-    Road defects: project model boxes on full image.
-    Accident/vehicle: precise COCO vehicle boxes only when a vehicle is found.
+    Road defects: project model on full image.
+    Accident/vehicle: COCO vehicle boxes; show vehicles even when model confidence is low.
     """
-    yolo_conf = min(0.2, settings.inference_confidence_threshold)
+    yolo_conf = min(0.15, settings.inference_confidence_threshold)
     class_modes = {detection_mode(n) for n in class_names}
     has_road = "road" in class_modes or any(is_road_class(n) for n in class_names)
     has_damage = "damage" in class_modes or any(is_damage_class(n) for n in class_names)
@@ -89,18 +92,15 @@ def detect_with_project_model(
     )
     for item in raw_full:
         cand = _item_to_candidate(item, class_names, allowed_norm)
-        if not cand:
-            continue
-        if cand["detection_mode"] in ("damage", "vehicle") and needs_vehicles:
-            continue
-        candidates.append(cand)
+        if cand:
+            candidates.append(cand)
 
     if needs_vehicles and vehicles:
         ts_items, vehicles = classify_vehicles_two_stage(
             image_path,
             weights_path,
             adapter,
-            yolo_conf=yolo_conf,
+            yolo_conf=0.08,
             iou=settings.inference_iou_threshold,
             vehicle_conf=settings.vehicle_detector_conf,
             vehicles=vehicles,
@@ -112,9 +112,9 @@ def detect_with_project_model(
         if ts_items:
             pipeline = "two_stage_vehicle"
 
-    if needs_vehicles:
-        candidates = snap_candidates_to_vehicles(candidates, vehicles, require_vehicle=True)
-        if vehicles and pipeline == "localized":
+    if needs_vehicles and vehicles:
+        candidates = snap_candidates_to_vehicles(candidates, vehicles, require_vehicle=False)
+        if pipeline == "localized":
             pipeline = "vehicle_precise"
     elif has_damage and candidates:
         candidates, vehicles = align_damage_detections_to_vehicles(
@@ -133,25 +133,38 @@ def detect_with_project_model(
         settings=settings,
     )
 
+    vehicle_display_class = pick_vehicle_display_class(class_names, allowed_norm) or "Vehicle"
+    detected_vehicles = format_detected_vehicles(vehicles)
+
+    if needs_vehicles and vehicles and not predictions:
+        vehicle_preds = build_vehicle_detector_predictions(vehicles, class_name=vehicle_display_class)
+        v_floor = max(0.15, settings.vehicle_detector_conf - 0.08)
+        predictions = [p for p in vehicle_preds if float(p["confidence"]) >= v_floor]
+        if predictions:
+            pipeline = "vehicle_detector"
+            warnings = [
+                w for w in warnings
+                if "did not classify" not in w and "Vehicle / accident boxes come" not in w
+            ]
+            warnings.append(
+                f"Showing {len(predictions)} vehicle(s) from detector. "
+                f"Accident class did not reach {threshold * 100:.0f}% — refine labels or retrain."
+            )
+
     tips: list[str] = []
-    if needs_vehicles:
-        tips.append(
-            "Vehicle / accident boxes come from the vehicle detector — only shown when a car/truck is found."
-        )
     if has_road:
         tips.append(
             "Potholes/road defects: label each pothole or crack with its own box on the road surface."
         )
     if needs_vehicles and not vehicles:
         tips.append("No vehicle found in this image.")
-    elif needs_vehicles and not predictions:
-        tips.append("Vehicle found but the model did not classify it as accident/vehicle at the current threshold.")
 
     return predictions, {
         "confidence_threshold": threshold,
         "class_count": class_count,
         "raw_detection_count": len(candidates),
         "vehicle_count": len(vehicles),
+        "detected_vehicles": detected_vehicles,
         "pipeline": pipeline,
         "warnings": list(warnings) + tips,
         "detection_modes": sorted(class_modes),

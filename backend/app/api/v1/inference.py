@@ -71,6 +71,7 @@ async def predict(
         "confidence_threshold": meta.get("confidence_threshold"),
         "raw_detection_count": meta.get("raw_detection_count", 0),
         "vehicle_count": meta.get("vehicle_count", 0),
+        "detected_vehicles": meta.get("detected_vehicles", []),
         "pipeline": meta.get("pipeline", "localized"),
         "detection_modes": meta.get("detection_modes", []),
         "warnings": meta.get("warnings", []),
