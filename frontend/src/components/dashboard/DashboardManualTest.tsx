@@ -1,0 +1,298 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { api } from '@/lib/api';
+import type { ProjectListItem } from '@/hooks/useProjects';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import {
+  AlertCircle, ImagePlus, Loader2, ScanSearch, Target, Upload, X,
+} from 'lucide-react';
+
+interface Prediction {
+  class: string;
+  confidence: number;
+  bbox: number[];
+}
+
+interface PredictResponse {
+  model_id: string;
+  model_name: string;
+  architecture: string;
+  predictions: Prediction[];
+  primary_class: string | null;
+  primary_confidence: number | null;
+  latency_ms: number;
+  message: string;
+}
+
+interface InferenceStatus {
+  ready: boolean;
+  model_name?: string;
+  classes?: string[];
+}
+
+interface Props {
+  projects: ProjectListItem[];
+}
+
+export function DashboardManualTest({ projects }: Props) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [projectId, setProjectId] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<InferenceStatus | null>(null);
+  const [result, setResult] = useState<PredictResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const modelProjects = useMemo(
+    () => projects.filter((p) => p.has_model),
+    [projects],
+  );
+
+  useEffect(() => {
+    if (!projectId && modelProjects.length) {
+      setProjectId(modelProjects[0].id);
+    }
+  }, [modelProjects, projectId]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setStatus(null);
+      return;
+    }
+    let cancelled = false;
+    api.get<InferenceStatus>(`/api/v1/inference/project/${projectId}/status`)
+      .then((data) => { if (!cancelled) setStatus(data); })
+      .catch(() => { if (!cancelled) setStatus({ ready: false }); });
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const clearImage = () => {
+    setFile(null);
+    setResult(null);
+    setError(null);
+    if (inputRef.current) inputRef.current.value = '';
+  };
+
+  const pickFile = (list: FileList | null) => {
+    const picked = list?.[0];
+    if (!picked || !picked.type.startsWith('image/')) {
+      setError('Please select a valid image file');
+      return;
+    }
+    setFile(picked);
+    setResult(null);
+    setError(null);
+  };
+
+  const runTest = useCallback(async () => {
+    if (!projectId || !file) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const data = await api.post<PredictResponse>(
+        `/api/v1/inference/project/${projectId}/predict`,
+        form,
+      );
+      setResult(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Prediction failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [file, projectId]);
+
+  const sortedPredictions = useMemo(
+    () => [...(result?.predictions ?? [])].sort((a, b) => b.confidence - a.confidence),
+    [result],
+  );
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <ScanSearch className="h-5 w-5 text-primary" />
+          Manual Test
+        </CardTitle>
+        <p className="text-xs text-muted-foreground mt-1">
+          Upload an image to detect which class the model assigns to it
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {modelProjects.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
+            <Target className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            No trained models yet. Train a model on a project first.
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-sm text-muted-foreground shrink-0">Project</label>
+              <select
+                className="h-9 flex-1 min-w-[180px] rounded-md border border-border bg-background px-3 text-sm"
+                value={projectId}
+                onChange={(e) => {
+                  setProjectId(e.target.value);
+                  setResult(null);
+                  setError(null);
+                }}
+              >
+                {modelProjects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              {status?.ready && status.model_name && (
+                <Badge variant="success" className="shrink-0">{status.model_name}</Badge>
+              )}
+            </div>
+
+            {status?.classes && status.classes.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {status.classes.map((cls) => (
+                  <Badge key={cls} variant="outline" className="text-[10px]">{cls}</Badge>
+                ))}
+              </div>
+            )}
+
+            <div
+              className={cn(
+                'relative rounded-xl border-2 border-dashed transition-colors',
+                dragOver ? 'border-primary bg-primary/5' : 'border-border',
+                file ? 'p-3' : 'p-8',
+              )}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                pickFile(e.dataTransfer.files);
+              }}
+            >
+              {!file ? (
+                <div className="text-center space-y-3">
+                  <ImagePlus className="h-10 w-10 mx-auto text-muted-foreground/60" />
+                  <p className="text-sm text-muted-foreground">Drop an image here or browse</p>
+                  <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
+                    <Upload className="h-4 w-4" /> Choose image
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs text-muted-foreground truncate">{file.name}</p>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={clearImage}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {previewUrl && (
+                    <div className="relative inline-block max-w-full">
+                      <img
+                        src={previewUrl}
+                        alt="Test"
+                        className="block max-w-full max-h-64 h-auto rounded-lg border border-border"
+                      />
+                      {sortedPredictions.map((p, i) => (
+                        <div
+                          key={`${p.class}-${i}`}
+                          className="absolute border-2 border-emerald-500 rounded-sm pointer-events-none"
+                          style={{
+                            left: `${p.bbox[0] * 100}%`,
+                            top: `${p.bbox[1] * 100}%`,
+                            width: `${Math.max(0, (p.bbox[2] - p.bbox[0]) * 100)}%`,
+                            height: `${Math.max(0, (p.bbox[3] - p.bbox[1]) * 100)}%`,
+                          }}
+                        >
+                          <span className="absolute -top-5 left-0 text-[10px] font-semibold bg-emerald-600 text-white px-1 rounded whitespace-nowrap">
+                            {p.class} {(p.confidence * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => pickFile(e.target.files)}
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={runTest} disabled={!file || !projectId || loading || !status?.ready}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanSearch className="h-4 w-4" />}
+                {loading ? 'Analyzing…' : 'Run test'}
+              </Button>
+              {file && (
+                <Button type="button" variant="outline" onClick={clearImage} disabled={loading}>
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            {error && (
+              <div className="flex gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                {error}
+              </div>
+            )}
+
+            {result && (
+              <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
+                {result.primary_class ? (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Detected class</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-2xl font-bold text-primary">{result.primary_class}</span>
+                      <Badge variant="success">
+                        {(result.primary_confidence! * 100).toFixed(1)}% confidence
+                      </Badge>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No objects detected in this image.</p>
+                )}
+
+                {sortedPredictions.length > 1 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">All detections</p>
+                    <div className="space-y-1.5">
+                      {sortedPredictions.map((p, i) => (
+                        <div key={`${p.class}-${i}`} className="flex items-center justify-between text-sm rounded-md bg-background/80 px-3 py-2">
+                          <span className="font-medium">{p.class}</span>
+                          <span className="text-muted-foreground font-mono">{(p.confidence * 100).toFixed(1)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-[10px] text-muted-foreground">
+                  {result.model_name} · {result.architecture} · {result.latency_ms.toFixed(0)} ms
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

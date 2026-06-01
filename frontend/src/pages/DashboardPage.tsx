@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useDashboardHome } from '@/hooks/useProjects';
 import { DashboardActiveTraining } from '@/components/dashboard/DashboardActiveTraining';
+import { DashboardManualTest } from '@/components/dashboard/DashboardManualTest';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,7 +59,10 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <Card>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <DashboardManualTest projects={projects} />
+
+        <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base flex items-center gap-2">
             Projects
@@ -113,7 +117,8 @@ export default function DashboardPage() {
             </div>
           )}
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }

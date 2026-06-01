@@ -1,13 +1,16 @@
 """Inference using the project's single active model."""
 
+import time
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
-from app.models import InferenceLog, User
+from app.models import Deployment, InferenceLog, User
+from app.services.driver.detection import run_detection
 from app.services.models.active_model import get_active_model
 
 router = APIRouter(prefix="/inference", tags=["inference"])
@@ -31,17 +34,14 @@ async def predict(
     if not content:
         raise HTTPException(status_code=400, detail="Empty image")
 
-    classes = artifact.classes_used or ["object"]
-    predictions = [
-        {
-            "class": classes[0],
-            "confidence": 0.85,
-            "bbox": [0.1, 0.1, 0.9, 0.9],
-        }
-    ]
+    start = time.perf_counter()
+    predictions, error = await run_detection(db, project_id, content)
+    latency_ms = (time.perf_counter() - start) * 1000
 
-    from app.models import Deployment
-    from sqlalchemy import select
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+
+    primary = max(predictions, key=lambda p: p["confidence"]) if predictions else None
 
     dep_result = await db.execute(
         select(Deployment).where(Deployment.project_id == project_id, Deployment.name == "Live Model")
@@ -53,8 +53,8 @@ async def predict(
             deployment_id=deployment.id,
             input_hash=str(hash(content))[:16],
             predictions={"detections": predictions},
-            confidence=predictions[0]["confidence"],
-            latency_ms=42.0,
+            confidence=primary["confidence"] if primary else 0.0,
+            latency_ms=latency_ms,
         )
         db.add(log)
 
@@ -63,7 +63,14 @@ async def predict(
         "model_name": artifact.name,
         "architecture": artifact.architecture,
         "predictions": predictions,
-        "message": "Using project's active model (continuous training pipeline)",
+        "primary_class": primary["class"] if primary else None,
+        "primary_confidence": primary["confidence"] if primary else None,
+        "latency_ms": round(latency_ms, 1),
+        "message": (
+            f"Detected: {primary['class']}"
+            if primary
+            else "No objects detected"
+        ),
     }
 
 
@@ -72,10 +79,12 @@ async def inference_status(project_id: uuid.UUID, db: AsyncSession = Depends(get
     artifact = await get_active_model(db, project_id)
     if not artifact:
         return {"ready": False, "endpoint": f"/api/v1/inference/project/{project_id}/predict"}
+    metrics = artifact.metrics or {}
     return {
         "ready": True,
         "model_id": str(artifact.id),
         "model_name": artifact.name,
         "classes": artifact.classes_used or [],
+        "is_mock": bool(metrics.get("mock")),
         "endpoint": f"/api/v1/inference/project/{project_id}/predict",
     }
