@@ -61,6 +61,10 @@ for i in $(seq 1 48); do
     OK=1
     break
   fi
+  if curl -sf "http://localhost:${PORT_API:-6001}/health/ready" >/dev/null 2>&1; then
+    OK=1
+    break
+  fi
   if curl -sf "http://localhost:${PORT_API:-6001}/health" >/dev/null 2>&1; then
     OK=1
     break
@@ -70,13 +74,19 @@ done
 
 if [ "$OK" -eq 0 ]; then
   echo ""
-  echo "API still unhealthy. Running diagnose..."
-  ./scripts/diagnose.sh
-  exit 1
+  echo "API still unhealthy — running recover..."
+  ./scripts/ensure_services.sh recover || {
+    ./scripts/diagnose.sh
+    exit 1
+  }
+else
+  docker compose -f docker-compose.prod.yml up -d gateway worker-ingestion worker-labeling worker-training worker-deploy worker-monitor worker-reports 2>/dev/null || \
+    docker compose -f docker-compose.prod.yml up -d
 fi
 
-docker compose -f docker-compose.prod.yml up -d gateway worker-ingestion worker-labeling worker-training worker-deploy worker-monitor worker-reports 2>/dev/null || \
-  docker compose -f docker-compose.prod.yml up -d
+echo ""
+echo "Running post-update health check..."
+./scripts/ensure_services.sh recover
 
 echo ""
 echo "Reclaiming disk from old Docker layers..."
@@ -86,8 +96,12 @@ echo ""
 echo "Update complete."
 echo "  App: http://$(curl -4 -s --max-time 3 ifconfig.me 2>/dev/null || echo localhost):${PORT_APP:-8080}"
 echo ""
-echo "After VPS reboot, stack should start automatically if you ran:"
-echo "  sudo ./scripts/install_boot_service.sh"
-echo "If connection fails: sudo ./scripts/ensure_services.sh recover"
-echo ""
-echo "Disk usage: ./scripts/disk_usage.sh"
+if command -v systemctl &>/dev/null && systemctl list-unit-files aiops-health.timer 2>/dev/null | grep -q enabled; then
+  echo "Watchdog timer: enabled (checks every 3 min)"
+else
+  echo "IMPORTANT — install auto-recovery (once):"
+  echo "  sudo ./scripts/install_boot_service.sh"
+fi
+echo "Manual recover: ./scripts/ensure_services.sh recover"
+echo "Watchdog log:   tail -f logs/watchdog.log"
+echo "Disk usage:     ./scripts/disk_usage.sh"

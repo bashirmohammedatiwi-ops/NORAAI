@@ -39,6 +39,12 @@ class Settings(BaseSettings):
 
     prometheus_enabled: bool = True
 
+    # Production tuning (small VPS)
+    api_uvicorn_workers: int = 1
+    celery_ingestion_concurrency: int = 2
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+
     admin_email: str = "admin@aiops.com"
     admin_password: str = "admin123"
 

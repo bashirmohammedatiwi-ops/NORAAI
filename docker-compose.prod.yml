@@ -14,6 +14,7 @@ services:
   postgres:
     image: postgis/postgis:16-3.4
     restart: always
+    mem_limit: 512m
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-aiops}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aiops_secret}
@@ -31,7 +32,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
-    command: redis-server --appendonly yes
+    mem_limit: 128m
+    command: redis-server --appendonly yes --maxmemory 96mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     healthcheck:
@@ -68,8 +70,9 @@ services:
       dockerfile: Dockerfile
     image: aiops-backend:latest
     restart: always
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_UVICORN_WORKERS:-1}
     env_file: .env
+    mem_limit: 768m
     ports:
       - "${PORT_API:-6001}:8000"
     depends_on:
@@ -80,18 +83,19 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 15s
       timeout: 10s
-      retries: 18
-      start_period: 180s
+      retries: 12
+      start_period: 120s
     networks:
       - aiops
 
   worker-ingestion:
     image: aiops-backend:latest
     restart: always
-    command: celery -A workers.celery_app worker -Q ingestion -c 6 --loglevel=info
+    mem_limit: 512m
+    command: celery -A workers.celery_app worker -Q ingestion -c ${CELERY_INGESTION_CONCURRENCY:-2} --loglevel=info
     env_file: .env
     depends_on:
       api:
@@ -116,6 +120,7 @@ services:
       dockerfile: ${TRAINING_DOCKERFILE:-Dockerfile}
     image: aiops-backend-training:latest
     restart: always
+    mem_limit: 1536m
     command: celery -A workers.celery_app worker -Q training -c 1 --loglevel=info
     env_file: .env
     volumes:
@@ -213,10 +218,11 @@ services:
       api:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
       interval: 30s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 20s
     networks:
       - aiops
 

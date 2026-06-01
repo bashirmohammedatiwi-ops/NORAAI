@@ -46,6 +46,22 @@ async def health():
     return {"status": "healthy", "service": settings.app_name}
 
 
+@app.get("/health/ready")
+async def health_ready():
+    """Deep check used by VPS watchdog (DB must respond)."""
+    from fastapi import HTTPException
+    from sqlalchemy import text
+
+    from app.core.database import engine
+
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"status": "ready", "service": settings.app_name, "database": "ok"}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"not ready: {exc}") from exc
+
+
 @app.get("/metrics")
 async def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
