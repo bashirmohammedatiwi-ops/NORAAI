@@ -175,6 +175,36 @@ async def get_active_model_status(db: AsyncSession, project_id: uuid.UUID) -> di
     )
     dep = deployment.scalar_one_or_none()
 
+    from app.core.config import get_settings
+    from app.models import TrainingMetric
+
+    settings = get_settings()
+    training_info: dict = {
+        "is_running": job is not None,
+        "job_id": str(job.id) if job else None,
+        "status": job.status.value if job else None,
+        "name": job.name if job else None,
+        "progress": 0,
+        "current_epoch": 0,
+        "total_epochs": 0,
+        "device": "cpu" if settings.training_cpu_fallback else "gpu",
+        "device_label": "CPU Training" if settings.training_cpu_fallback else "GPU Training",
+    }
+    if job:
+        total_epochs = (job.config or {}).get("epochs", 50)
+        training_info["total_epochs"] = total_epochs
+        training_info["device"] = (job.config or {}).get("device", training_info["device"])
+        latest_metric = await db.execute(
+            select(TrainingMetric)
+            .where(TrainingMetric.training_job_id == job.id)
+            .order_by(TrainingMetric.epoch.desc())
+            .limit(1)
+        )
+        latest = latest_metric.scalar_one_or_none()
+        current_epoch = latest.epoch if latest else 0
+        training_info["current_epoch"] = current_epoch
+        training_info["progress"] = min(100, int((current_epoch / total_epochs) * 100)) if total_epochs else 0
+
     return {
         "project_id": str(project_id),
         "project_name": project.name,
@@ -187,16 +217,13 @@ async def get_active_model_status(db: AsyncSession, project_id: uuid.UUID) -> di
             "metrics": artifact.metrics or {},
             "classes_used": artifact.classes_used or [],
             "model_size_mb": artifact.model_size_mb,
+            "gpu_used": artifact.gpu_used,
             "updated_at": artifact.created_at.isoformat(),
+            "is_mock": bool((artifact.metrics or {}).get("mock")),
         }
         if artifact
         else None,
-        "training": {
-            "is_running": job is not None,
-            "job_id": str(job.id) if job else None,
-            "status": job.status.value if job else None,
-            "name": job.name if job else None,
-        },
+        "training": training_info,
         "live_endpoint": dep.endpoint_url if dep else None,
         "connected_services": [
             {"id": "dataset_builder", "name": "Dataset Builder", "uses": "training data"},

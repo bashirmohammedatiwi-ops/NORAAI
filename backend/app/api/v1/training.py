@@ -4,14 +4,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, verify_user_password
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import ClassLabel, HyperparameterTrial, ModelArchitecture, ModelArtifact, TrainingJob, TrainingMetric, TrainingMode, TrainingStatus, User
 from app.services.datasets.dataset_images import ensure_default_dataset, get_dataset_summary
 from app.services.models.active_model import get_active_model_status
-from app.schemas import ModelArtifactResponse, ModelCompareRequest, TrainingJobCreate, TrainingJobResponse
+from app.services.models.deletion import delete_all_project_models, delete_model_artifact
+from app.schemas import DeleteResultResponse, ModelArtifactResponse, ModelCompareRequest, PasswordConfirmRequest, TrainingJobCreate, TrainingJobResponse
 from app.services.evaluation.compare import compare_models
-from app.services.training.service import TRAINING_OPTIONS, get_job_detail
+from app.services.training.service import TRAINING_OPTIONS, get_job_detail, job_to_summary
 from workers.training.tasks import cancel_training_job, run_training_job
 
 router = APIRouter(tags=["training", "models"])
@@ -28,18 +30,11 @@ async def list_training_jobs(project_id: UUID, db: AsyncSession = Depends(get_db
         select(TrainingJob).where(TrainingJob.project_id == project_id).order_by(TrainingJob.created_at.desc())
     )
     jobs = result.scalars().all()
-    return [
-        TrainingJobResponse(
-            id=j.id,
-            name=j.name,
-            architecture=j.architecture.value,
-            status=j.status.value,
-            hpo_enabled=j.hpo_enabled,
-            created_at=j.created_at,
-            error_message=j.error_message,
-        )
-        for j in jobs
-    ]
+    summaries = []
+    for j in jobs:
+        summary = await job_to_summary(db, j)
+        summaries.append(TrainingJobResponse(**summary))
+    return summaries
 
 
 @router.get("/training/{job_id}")
@@ -152,6 +147,53 @@ async def get_model(model_id: UUID, db: AsyncSession = Depends(get_db)):
     return model
 
 
+@router.get("/training/project/{project_id}/environment")
+async def training_environment(project_id: UUID):
+    settings = get_settings()
+    return {
+        "project_id": str(project_id),
+        "device": "cpu" if settings.training_cpu_fallback else "gpu",
+        "cpu_fallback": settings.training_cpu_fallback,
+        "label": "CPU Training" if settings.training_cpu_fallback else "GPU Training",
+    }
+
+
+@router.delete("/models/{model_id}", response_model=DeleteResultResponse)
+async def remove_model(
+    model_id: UUID,
+    data: PasswordConfirmRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await verify_user_password(user, data.password)
+    try:
+        result = await delete_model_artifact(db, model_id, user.organization_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return DeleteResultResponse(deleted=result["deleted"], message=f"Model '{result['model_name']}' deleted.")
+
+
+@router.delete("/projects/{project_id}/models", response_model=DeleteResultResponse)
+async def remove_all_project_models(
+    project_id: UUID,
+    data: PasswordConfirmRequest,
+    delete_jobs: bool = Query(False),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await verify_user_password(user, data.password)
+    try:
+        result = await delete_all_project_models(
+            db, project_id, user.organization_id, delete_jobs=delete_jobs
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    msg = f"Removed {result['models_removed']} model(s) from project."
+    if result.get("jobs_removed"):
+        msg += f" Deleted {result['jobs_removed']} training job(s)."
+    return DeleteResultResponse(deleted=result["deleted"], message=msg)
+
+
 @router.patch("/models/{model_id}/lifecycle")
 async def update_model_lifecycle(model_id: UUID, lifecycle: str, db: AsyncSession = Depends(get_db)):
     from app.models import ModelLifecycle
@@ -222,6 +264,7 @@ async def retrain_project_model(
             "mixed_precision": False,
             "val_split": 0.2,
             "continuous": True,
+            "device": "cpu",
         },
         created_by=user.id,
     )

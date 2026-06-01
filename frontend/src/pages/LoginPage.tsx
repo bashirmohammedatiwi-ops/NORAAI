@@ -16,8 +16,8 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.post<{ access_token: string }>('/api/v1/auth/login', { username, password });
-      api.setToken(res.access_token);
+      const res = await api.post<{ access_token: string; refresh_token: string }>('/api/v1/auth/login', { username, password });
+      api.setSession(res.access_token, res.refresh_token);
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');

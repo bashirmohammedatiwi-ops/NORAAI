@@ -2,16 +2,17 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { Loader2, Play, Settings2 } from 'lucide-react';
+import { Loader2, Play, Settings2, Cpu } from 'lucide-react';
 
 interface Props {
   projectId: string;
   datasetId: string;
   imageCount: number;
   ready: boolean;
-  onStarted: () => void;
+  onStarted: (jobId?: string) => void;
   showAdvanced?: boolean;
   onToggleAdvanced?: () => void;
 }
@@ -28,13 +29,19 @@ export function SimpleTrainCard({
   const [architecture, setArchitecture] = useState('yolo11');
   const [epochs, setEpochs] = useState(30);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const start = async () => {
     if (!ready || !datasetId) return;
     setLoading(true);
+    setError('');
     try {
-      await api.post(`/api/v1/training/project/${projectId}/retrain?epochs=${epochs}&architecture=${architecture}`);
-      onStarted();
+      const job = await api.post<{ id: string }>(
+        `/api/v1/training/project/${projectId}/retrain?epochs=${epochs}&architecture=${architecture}`,
+      );
+      onStarted(job.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start training');
     } finally {
       setLoading(false);
     }
@@ -54,6 +61,11 @@ export function SimpleTrainCard({
                 ? `${imageCount} images ready · YOLO auto-labels applied`
                 : 'Upload images first to enable training'}
             </CardDescription>
+            <div className="mt-2">
+              <Badge variant="secondary" className="gap-1 text-[10px]">
+                <Cpu className="h-3 w-3" /> CPU Training
+              </Badge>
+            </div>
           </div>
           {onToggleAdvanced && (
             <Button type="button" variant="ghost" size="sm" onClick={onToggleAdvanced}>
@@ -63,7 +75,7 @@ export function SimpleTrainCard({
           )}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
         <div className="flex flex-wrap items-end gap-4">
           <div className="min-w-[140px] flex-1">
             <Select label="Model" value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
@@ -96,6 +108,9 @@ export function SimpleTrainCard({
             )}
           </Button>
         </div>
+        {error && (
+          <p className="text-sm text-destructive rounded-lg bg-destructive/10 px-3 py-2">{error}</p>
+        )}
       </CardContent>
     </Card>
   );

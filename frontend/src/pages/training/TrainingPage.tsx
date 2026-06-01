@@ -6,6 +6,7 @@ import { BulkImageUpload } from '@/components/training/BulkImageUpload';
 import { SimpleTrainCard } from '@/components/training/SimpleTrainCard';
 import { TrainingConfigForm } from '@/components/training/TrainingConfigForm';
 import { TrainingMetricsPanel } from '@/components/training/TrainingMetricsPanel';
+import { TrainingProgressCard } from '@/components/training/TrainingProgressCard';
 import { MetricChart } from '@/components/training/MetricChart';
 import { ArchitectureBadge, TrainingStatusBadge } from '@/components/training/TrainingStatusBadge';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,9 @@ interface JobSummary {
   architecture: string;
   status: string;
   created_at: string;
+  progress?: number;
+  current_epoch?: number;
+  total_epochs?: number;
 }
 
 interface DatasetSummary {
@@ -134,7 +138,8 @@ export default function TrainingPage() {
 
   const selectedClass = classes.find((c) => c.id === selectedClassId);
   const displayMetrics = job?.latest_metrics ?? job?.artifact?.metrics ?? null;
-  const runningJob = jobs.find((j) => j.status === 'running');
+  const runningJob = jobs.find((j) => j.status === 'running' || j.status === 'pending');
+  const showProgress = job && (job.status === 'running' || job.status === 'pending');
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -146,7 +151,7 @@ export default function TrainingPage() {
             Training Studio
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Upload images · Train YOLO · Track Accuracy &amp; quality metrics
+            Upload images · Train on CPU · Track epoch progress &amp; quality metrics
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -168,7 +173,11 @@ export default function TrainingPage() {
           { label: 'Images', value: stats?.image_count ?? 0, icon: ImageIcon },
           { label: 'Labeled', value: stats?.annotated_count ?? 0, icon: Database },
           { label: 'Jobs', value: jobs.length, icon: Activity },
-          { label: 'Running', value: jobs.filter((j) => j.status === 'running').length, icon: BarChart3 },
+          {
+            label: 'Epoch',
+            value: showProgress ? `${job?.current_epoch ?? 0}/${job?.total_epochs ?? '—'}` : runningJob ? '…' : '—',
+            icon: BarChart3,
+          },
         ].map(({ label, value, icon: Icon }) => (
           <div key={label} className="rounded-xl border border-border bg-card px-4 py-3 flex items-center gap-3">
             <Icon className="h-5 w-5 text-primary shrink-0" />
@@ -179,6 +188,18 @@ export default function TrainingPage() {
           </div>
         ))}
       </div>
+
+      {showProgress && job && (
+        <TrainingProgressCard
+          progress={job.progress}
+          currentEpoch={job.current_epoch}
+          totalEpochs={job.total_epochs}
+          durationSeconds={job.duration_seconds}
+          deviceLabel={(job.config?.device as string) === 'cpu' || !job.config?.device ? 'CPU Training' : String(job.config.device)}
+          status={job.status}
+          jobName={job.name}
+        />
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border">
@@ -289,7 +310,10 @@ export default function TrainingPage() {
                 datasetId={selectedDatasetId}
                 imageCount={stats?.image_count ?? 0}
                 ready={Boolean(stats?.ready_for_training && stats.head_version_id)}
-                onStarted={loadJobs}
+                onStarted={(jobId) => {
+                  loadJobs();
+                  if (jobId) setSelectedJobId(jobId);
+                }}
                 showAdvanced={showAdvanced}
                 onToggleAdvanced={() => setShowAdvanced(true)}
               />

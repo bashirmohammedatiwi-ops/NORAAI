@@ -43,6 +43,17 @@ TRAINING_OPTIONS = {
 }
 
 
+def _job_progress(job: TrainingJob, latest: TrainingMetric | None) -> tuple[int, int, int]:
+    epochs_total = (job.config or {}).get("epochs", 50)
+    current_epoch = latest.epoch if latest else 0
+    progress = min(100, int((current_epoch / epochs_total) * 100)) if epochs_total else 0
+    if job.status == TrainingStatus.COMPLETED:
+        progress = 100
+    elif job.status == TrainingStatus.PENDING:
+        progress = 0
+    return progress, current_epoch, epochs_total
+
+
 async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
     job = await db.get(TrainingJob, job_id)
     if not job:
@@ -66,14 +77,7 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
         select(func.count(HyperparameterTrial.id)).where(HyperparameterTrial.training_job_id == job_id)
     )
 
-    epochs_total = (job.config or {}).get("epochs", 50)
-    current_epoch = latest.epoch if latest else 0
-    progress = min(100, int((current_epoch / epochs_total) * 100)) if epochs_total else 0
-
-    if job.status == TrainingStatus.COMPLETED:
-        progress = 100
-    elif job.status == TrainingStatus.PENDING:
-        progress = 0
+    progress, current_epoch, epochs_total = _job_progress(job, latest)
 
     duration = None
     if job.started_at:
@@ -117,4 +121,28 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
             "model_size_mb": art.model_size_mb,
             "lifecycle": art.lifecycle.value,
         } if art else None,
+        "device": (job.config or {}).get("device", "cpu"),
+    }
+
+
+async def job_to_summary(db: AsyncSession, job: TrainingJob) -> dict:
+    latest_metric = await db.execute(
+        select(TrainingMetric)
+        .where(TrainingMetric.training_job_id == job.id)
+        .order_by(TrainingMetric.epoch.desc())
+        .limit(1)
+    )
+    latest = latest_metric.scalar_one_or_none()
+    progress, current_epoch, total_epochs = _job_progress(job, latest)
+    return {
+        "id": job.id,
+        "name": job.name,
+        "architecture": job.architecture.value,
+        "status": job.status.value,
+        "hpo_enabled": job.hpo_enabled,
+        "created_at": job.created_at,
+        "error_message": job.error_message,
+        "progress": progress,
+        "current_epoch": current_epoch,
+        "total_epochs": total_epochs,
     }

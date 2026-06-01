@@ -51,6 +51,8 @@ def run_training_job(job_id: str):
         session.commit()
 
         config = dict(job.config or {})
+        from ml.training.adapters.yolo_adapter import resolve_training_device
+        config["device"] = resolve_training_device(config)
         adapter = get_adapter(job.architecture.value)
 
         with tempfile.TemporaryDirectory() as tmpdir:

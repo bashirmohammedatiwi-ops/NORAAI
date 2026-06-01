@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import create_access_token, create_refresh_token, hash_password, verify_password
 from app.models import Organization, User
 from app.models.base_models import UserRole
-from app.schemas import LoginRequest, TokenResponse, UserCreate, UserResponse
+from app.schemas import LoginRequest, RefreshRequest, TokenResponse, UserCreate, UserResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -20,6 +20,27 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = result.scalar_one_or_none()
     if not user or not verify_password(data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    token_data = {"sub": str(user.id), "role": user.role.value}
+    return TokenResponse(
+        access_token=create_access_token(token_data),
+        refresh_token=create_refresh_token(token_data),
+    )
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_tokens(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    from app.core.security import decode_token
+
+    payload = decode_token(data.refresh_token)
+    if not payload or payload.get("type") != "refresh":
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    user_id = payload.get("sub")
+    result = await db.execute(select(User).where(User.id == UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found")
+
     token_data = {"sub": str(user.id), "role": user.role.value}
     return TokenResponse(
         access_token=create_access_token(token_data),

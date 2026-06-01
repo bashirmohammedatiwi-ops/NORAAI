@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { useTrainingMetrics } from './useTrainingMetrics';
 
@@ -15,6 +15,7 @@ export interface TrainingJobDetail {
   total_epochs: number;
   duration_seconds: number | null;
   error_message: string | null;
+  device?: string;
   latest_metrics: {
     loss: number | null;
     precision: number | null;
@@ -40,6 +41,7 @@ export interface TrainingMetricPoint {
   f1?: number;
   map50?: number;
   map50_95?: number;
+  progress?: number;
   [key: string]: unknown;
 }
 
@@ -67,7 +69,37 @@ export function useTrainingJob(jobId: string | null) {
 
   const chartMetrics = mergeMetrics(historicalMetrics, liveMetrics as unknown as TrainingMetricPoint[]);
 
-  return { job, chartMetrics, connected, refresh };
+  const liveJob = useMemo(() => {
+    if (!job) return null;
+    const latestLive = [...liveMetrics].reverse().find((m) => m.epoch);
+    if (!latestLive?.epoch) return job;
+
+    const epoch = Number(latestLive.epoch);
+    const total = Number(latestLive.total_epochs ?? job.total_epochs) || job.total_epochs;
+    const progress = Number(latestLive.progress ?? Math.min(100, Math.round((epoch / total) * 100)));
+
+    return {
+      ...job,
+      current_epoch: epoch,
+      total_epochs: total,
+      progress,
+      latest_metrics: {
+        loss: num(latestLive.loss, job.latest_metrics?.loss),
+        precision: num(latestLive.precision, job.latest_metrics?.precision),
+        recall: num(latestLive.recall, job.latest_metrics?.recall),
+        f1: num(latestLive.f1, job.latest_metrics?.f1),
+        map50: num(latestLive.map50, job.latest_metrics?.map50),
+        map50_95: num(latestLive.map50_95, job.latest_metrics?.map50_95),
+      },
+    };
+  }, [job, liveMetrics]);
+
+  return { job: liveJob, chartMetrics, connected, refresh };
+}
+
+function num(value: unknown, fallback: number | null | undefined): number | null {
+  if (typeof value === 'number' && !Number.isNaN(value)) return value;
+  return fallback ?? null;
 }
 
 function mergeMetrics(historical: TrainingMetricPoint[], live: TrainingMetricPoint[]): TrainingMetricPoint[] {

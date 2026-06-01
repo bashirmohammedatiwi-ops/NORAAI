@@ -6,9 +6,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Sparkles, Plus, ArrowRight, FolderKanban, RefreshCw, AlertCircle } from 'lucide-react';
 
 export default function DatasetBuilderLandingPage() {
-  const { data: projects = [], isPending, isError, error, refetch, isFetching } = useProjectsList();
+  const { projects, isInitialLoading, isError, error, refetch, isFetching } = useProjectsList();
 
-  if (isPending) {
+  if (isInitialLoading) {
     return (
       <div className="py-12 text-center text-muted-foreground space-y-2">
         <p>Loading projects...</p>
@@ -17,7 +17,7 @@ export default function DatasetBuilderLandingPage() {
     );
   }
 
-  if (isError) {
+  if (isError && !projects.length) {
     return (
       <div className="py-12 text-center space-y-4 max-w-md mx-auto">
         <AlertCircle className="h-10 w-10 mx-auto text-destructive/80" />

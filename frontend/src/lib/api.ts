@@ -1,4 +1,7 @@
 const API_URL = import.meta.env.VITE_API_URL ?? '';
+const TOKEN_KEY = 'token';
+const REFRESH_KEY = 'refresh_token';
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 function wsBaseUrl(): string {
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
@@ -27,48 +30,116 @@ function formatApiError(detail: unknown, fallback = 'Request failed'): string {
   return fallback;
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+function readToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function readRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_KEY);
+}
 
 class ApiClient {
-  private token: string | null = localStorage.getItem('token');
+  private refreshPromise: Promise<boolean> | null = null;
+
+  setSession(accessToken: string, refreshToken?: string) {
+    localStorage.setItem(TOKEN_KEY, accessToken);
+    if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
+  }
 
   setToken(token: string) {
-    this.token = token;
-    localStorage.setItem('token', token);
+    localStorage.setItem(TOKEN_KEY, token);
   }
 
   clearToken() {
-    this.token = null;
-    localStorage.removeItem('token');
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_KEY);
   }
 
-  private async request<T>(path: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  async refreshSession(): Promise<boolean> {
+    if (this.refreshPromise) return this.refreshPromise;
+
+    this.refreshPromise = (async () => {
+      const refreshToken = readRefreshToken();
+      if (!refreshToken) return false;
+
+      try {
+        const url = API_URL ? `${API_URL}/api/v1/auth/refresh` : '/api/v1/auth/refresh';
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (!res.ok) return false;
+        const data = await res.json() as { access_token: string; refresh_token: string };
+        this.setSession(data.access_token, data.refresh_token);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
+  }
+
+  private redirectToLogin() {
+    this.clearToken();
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
+  }
+
+  private async request<T>(
+    path: string,
+    options: RequestInit = {},
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    allowRefresh = true,
+  ): Promise<T> {
+    const token = readToken();
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string>),
     };
-    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
 
     const url = API_URL ? `${API_URL}${path}` : path;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutController = new AbortController();
+    const timer = setTimeout(() => timeoutController.abort(), timeoutMs);
+
+    let signal = timeoutController.signal;
+    if (options.signal) {
+      if (options.signal.aborted) timeoutController.abort();
+      options.signal.addEventListener('abort', () => timeoutController.abort(), { once: true });
+    }
 
     let res: Response;
     try {
-      res = await fetch(url, { ...options, headers, signal: controller.signal });
+      res = await fetch(url, { ...options, headers, signal });
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
+        if (options.signal?.aborted) throw err;
         throw new Error('Request timed out — API may be busy or unreachable. Try again.');
       }
       throw err;
     } finally {
       clearTimeout(timer);
     }
-    if (res.status === 401) {
-      this.clearToken();
-      window.location.href = '/login';
-      throw new Error('Unauthorized');
+
+    if (res.status === 401 && allowRefresh && path !== '/api/v1/auth/refresh') {
+      const refreshed = await this.refreshSession();
+      if (refreshed) {
+        return this.request<T>(path, options, timeoutMs, false);
+      }
+      this.redirectToLogin();
+      throw new Error('Session expired — please sign in again.');
     }
+
+    if (res.status === 401) {
+      this.redirectToLogin();
+      throw new Error('Session expired — please sign in again.');
+    }
+
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(formatApiError(err.detail, res.statusText || 'Request failed'));
@@ -77,20 +148,29 @@ class ApiClient {
     return res.json();
   }
 
-  get<T>(path: string) { return this.request<T>(path); }
+  get<T>(path: string, init?: RequestInit) {
+    return this.request<T>(path, init);
+  }
 
-  post<T>(path: string, body?: unknown) {
+  post<T>(path: string, body?: unknown, init?: RequestInit) {
     return this.request<T>(path, {
+      ...init,
       method: 'POST',
       body: body instanceof FormData ? body : JSON.stringify(body),
     });
   }
 
-  patch<T>(path: string, body?: unknown) {
-    return this.request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined });
+  patch<T>(path: string, body?: unknown, init?: RequestInit) {
+    return this.request<T>(path, {
+      ...init,
+      method: 'PATCH',
+      body: body ? JSON.stringify(body) : undefined,
+    });
   }
 
-  delete<T>(path: string) { return this.request<T>(path, { method: 'DELETE' }); }
+  delete<T>(path: string, init?: RequestInit) {
+    return this.request<T>(path, { ...init, method: 'DELETE' });
+  }
 
   deleteWithBody<T>(path: string, body: { password: string }) {
     return this.request<T>(path, { method: 'DELETE', body: JSON.stringify(body) });
@@ -105,14 +185,16 @@ class ApiClient {
   }
 
   async fetchBlob(path: string): Promise<Blob> {
+    const token = readToken();
     const headers: Record<string, string> = {};
-    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const url = API_URL ? `${API_URL}${path}` : path;
     const res = await fetch(url, { headers });
     if (res.status === 401) {
-      this.clearToken();
-      window.location.href = '/login';
-      throw new Error('Unauthorized');
+      const refreshed = await this.refreshSession();
+      if (refreshed) return this.fetchBlob(path);
+      this.redirectToLogin();
+      throw new Error('Session expired');
     }
     if (!res.ok) throw new Error('Failed to load image');
     return res.blob();
@@ -120,4 +202,4 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
-export { API_URL, wsBaseUrl };
+export { API_URL, wsBaseUrl, readToken };

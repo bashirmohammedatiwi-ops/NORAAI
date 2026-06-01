@@ -20,6 +20,10 @@ class LoginRequest(BaseModel):
         return v.strip()
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
 class UserCreate(BaseModel):
     email: str
     password: str
@@ -277,6 +281,9 @@ class TrainingJobResponse(BaseModel):
     hpo_enabled: bool
     created_at: datetime
     error_message: str | None = None
+    progress: int | None = None
+    current_epoch: int | None = None
+    total_epochs: int | None = None
 
     model_config = {"from_attributes": True}
 

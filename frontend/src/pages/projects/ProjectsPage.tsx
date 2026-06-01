@@ -11,7 +11,7 @@ import { api } from '@/lib/api';
 import { Plus, ArrowRight, Trash2, RefreshCw, AlertCircle } from 'lucide-react';
 
 export default function ProjectsPage() {
-  const { data: projects = [], isPending, isError, error, refetch, isFetching } = useProjectsList();
+  const { projects, isInitialLoading, isError, error, refetch, isFetching } = useProjectsList();
   const { invalidateList } = useInvalidateProjects();
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
@@ -52,11 +52,11 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {isPending && (
+      {isInitialLoading && (
         <div className="py-12 text-center text-sm text-muted-foreground">Loading projects...</div>
       )}
 
-      {isError && (
+      {isError && !projects.length && (
         <div className="surface py-10 text-center space-y-3">
           <AlertCircle className="h-8 w-8 mx-auto text-destructive/80" />
           <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : 'Failed to load projects'}</p>
@@ -66,7 +66,7 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {!isPending && !isError && (
+      {!isInitialLoading && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {projects.map((p) => (
           <Card key={p.id} className="hover:border-primary/30 transition-colors">
@@ -99,7 +99,7 @@ export default function ProjectsPage() {
       </div>
       )}
 
-      {!isPending && !isError && projects.length === 0 && !showCreate && (
+      {!isInitialLoading && projects.length === 0 && !showCreate && (
         <div className="surface py-12 text-center text-sm text-muted-foreground">
           <p>No projects yet</p>
           <Button className="mt-3" size="sm" onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" /> New project</Button>
