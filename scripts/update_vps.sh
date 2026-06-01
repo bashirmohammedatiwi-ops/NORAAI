@@ -66,7 +66,11 @@ else
 fi
 
 echo "Restarting stack..."
-docker compose -f docker-compose.prod.yml up -d --remove-orphans
+if ! docker compose -f docker-compose.prod.yml up -d --remove-orphans; then
+  echo "Compose up failed (container conflict) — stopping stack and retrying..."
+  docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
+  docker compose -f docker-compose.prod.yml up -d --remove-orphans
+fi
 ./scripts/cleanup_orphans.sh
 
 echo "Waiting for API (up to 4 min)..."
