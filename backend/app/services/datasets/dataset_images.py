@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -220,12 +220,22 @@ async def get_dataset_summary(db: AsyncSession, dataset_id: uuid.UUID) -> dict |
         version = await db.get(DatasetVersion, dataset.head_version_id)
         if version:
             version_tag = version.version_tag
-            image_ids = await _image_ids_from_version_rows_async(db, dataset.head_version_id)
-            image_count = len(image_ids)
-            if version.image_count != image_count:
-                version.manifest = {"image_ids": image_ids}
-                version.image_count = image_count
-                await db.flush()
+            if version.image_count and version.image_count > 0:
+                image_count = version.image_count
+            else:
+                from sqlalchemy import func
+                from app.models import DatasetImage
+
+                image_count = (
+                    await db.execute(
+                        select(func.count(DatasetImage.id)).where(
+                            DatasetImage.version_id == dataset.head_version_id
+                        )
+                    )
+                ).scalar() or 0
+                if version.image_count != image_count:
+                    version.image_count = image_count
+                    await db.flush()
 
     return {
         "id": str(dataset.id),

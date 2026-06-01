@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import datetime, timezone
 
@@ -105,7 +106,7 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
     )
 
     progress, current_epoch, epochs_total = _job_progress(job, latest)
-    live = get_training_progress(job_id)
+    live = await asyncio.to_thread(get_training_progress, job_id)
 
     duration = None
     if job.started_at:

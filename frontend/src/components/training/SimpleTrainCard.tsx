@@ -46,6 +46,9 @@ export function SimpleTrainCard({
       const query = buildRetrainQuery({ epochs, architecture, preset });
       const job = await api.post<{ id: string }>(
         `/api/v1/training/project/${projectId}/retrain?${query}`,
+        undefined,
+        undefined,
+        120_000,
       );
       onStarted(job.id);
     } catch (e) {

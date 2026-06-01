@@ -110,8 +110,8 @@ services:
       dockerfile: ${TRAINING_DOCKERFILE:-Dockerfile}
     image: aiops-backend-training:latest
     restart: always
-    mem_limit: 1024m
-    command: celery -A workers.celery_app worker -Q training -c 1 --loglevel=info
+    mem_limit: 2048m
+    command: celery -A workers.celery_app worker -Q training -c 1 --prefetch-multiplier=1 --loglevel=info
     env_file: .env
     volumes:
       - training_data:/tmp/training

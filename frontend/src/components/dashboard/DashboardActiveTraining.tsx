@@ -48,7 +48,7 @@ function DashboardTrainingJobCard({
 }) {
   const [stopping, setStopping] = useState(false);
   const { job: liveJob, progressDetail, activityLog, connected } = useTrainingJob(job.job_id, {
-    pollRest: false,
+    pollRest: true,
     baseline: {
       name: job.name,
       architecture: job.architecture,

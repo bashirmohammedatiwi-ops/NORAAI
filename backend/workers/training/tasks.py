@@ -51,6 +51,14 @@ def _job_was_cancelled(session, job_id: str) -> bool:
 
 @celery_app.task(name="workers.training.tasks.run_training_job")
 def run_training_job(job_id: str):
+    publish_metric(job_id, {
+        "epoch": 0,
+        "status": "running",
+        "phase": "export",
+        "message": "Training worker started",
+        "progress": 1,
+    })
+
     session = SessionLocal()
     artifact = None
     try:
@@ -96,7 +104,7 @@ def run_training_job(job_id: str):
                 "status": "running",
                 "phase": "export",
                 "message": "Preparing dataset",
-                "progress": 0,
+                "progress": 2,
             })
 
             if job.dataset_version_id:
@@ -107,6 +115,7 @@ def run_training_job(job_id: str):
                     config.get("val_split", 0.2),
                     progress_callback=progress_callback,
                     cancel_check=cancel_check,
+                    max_workers=settings.training_export_max_workers,
                 )
             else:
                 yaml_path = os.path.join(tmpdir, "data.yaml")

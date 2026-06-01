@@ -71,7 +71,16 @@ async def create_training_job(
     db.add(job)
     await db.flush()
 
-    task = run_training_job.delay(str(job.id))
+    try:
+        task = run_training_job.delay(str(job.id))
+    except Exception as exc:
+        job.status = TrainingStatus.FAILED
+        job.error_message = f"Training worker unavailable: {exc}"
+        await db.flush()
+        raise HTTPException(
+            status_code=503,
+            detail="Training worker is not available. Check worker-training container and Redis.",
+        ) from exc
     job.celery_task_id = task.id
     await db.flush()
 
@@ -274,7 +283,16 @@ async def retrain_project_model(
     db.add(job)
     await db.flush()
 
-    task = run_training_job.delay(str(job.id))
+    try:
+        task = run_training_job.delay(str(job.id))
+    except Exception as exc:
+        job.status = TrainingStatus.FAILED
+        job.error_message = f"Training worker unavailable: {exc}"
+        await db.flush()
+        raise HTTPException(
+            status_code=503,
+            detail="Training worker is not available. Check worker-training container and Redis.",
+        ) from exc
     job.celery_task_id = task.id
     await db.flush()
 

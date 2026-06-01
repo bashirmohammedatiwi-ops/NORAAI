@@ -73,8 +73,8 @@ export function useTrainingJob(
   const refresh = useCallback(async () => {
     if (!jobId || !pollRest) return;
     const [detail, metrics] = await Promise.all([
-      api.get<TrainingJobDetail>(`/api/v1/training/${jobId}`),
-      api.get<TrainingMetricPoint[]>(`/api/v1/training/${jobId}/metrics`),
+      api.get<TrainingJobDetail>(`/api/v1/training/${jobId}`, undefined, 45_000),
+      api.get<TrainingMetricPoint[]>(`/api/v1/training/${jobId}/metrics`, undefined, 45_000),
     ]);
     setJob(detail);
     setHistoricalMetrics(metrics);
