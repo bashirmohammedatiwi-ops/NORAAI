@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { useDatasetGallery } from '@/hooks/useDatasets';
+import { DatasetLoadError } from '@/components/datasets/DatasetLoadError';
 import { AuthenticatedImage } from '@/components/datasets/AuthenticatedImage';
 import { ImageAnnotationOverlay } from '@/components/datasets/ImageAnnotationOverlay';
 import { Button } from '@/components/ui/button';
@@ -62,56 +63,55 @@ interface DatasetGalleryProps {
 }
 
 export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader = true }: DatasetGalleryProps) {
-  const [gallery, setGallery] = useState<DatasetGalleryData | null>(null);
   const [classFilter, setClassFilter] = useState<string | null>(null);
   const [unlabeledOnly, setUnlabeledOnly] = useState(false);
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<GalleryImageItem | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  const loadGallery = useCallback(async () => {
-    setLoading(true);
-    const params = new URLSearchParams({
-      limit: String(pageSize),
-      offset: String(offset),
-    });
-    if (classFilter) params.set('class_id', classFilter);
-    if (unlabeledOnly) params.set('unlabeled_only', 'true');
+  const {
+    data: gallery,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = useDatasetGallery(datasetId, {
+    limit: pageSize,
+    offset,
+    classId: classFilter,
+    unlabeledOnly,
+  });
 
-    try {
-      const data = await api.get<DatasetGalleryData>(
-        `/api/v1/datasets/${datasetId}/gallery?${params.toString()}`
-      );
-      setGallery(data);
-    } catch {
-      setGallery(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [datasetId, classFilter, unlabeledOnly, offset, pageSize]);
-
-  useEffect(() => {
-    loadGallery();
-  }, [loadGallery]);
+  const loading = isLoading && !gallery;
+  const typedGallery = gallery as DatasetGalleryData | undefined;
 
   useEffect(() => {
     setOffset(0);
   }, [classFilter, unlabeledOnly]);
 
-  const total = gallery?.total ?? 0;
+  const total = typedGallery?.total ?? 0;
   const page = Math.floor(offset / pageSize) + 1;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
+  if (isError && !typedGallery) {
+    return (
+      <DatasetLoadError
+        message="Failed to load gallery images. Your data is still saved — try again."
+        onRetry={() => refetch()}
+        retrying={isFetching}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {showHeader && gallery && (
+      {showHeader && typedGallery && (
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold">{gallery.dataset_name}</h2>
-            {gallery.description && <p className="text-sm text-muted-foreground">{gallery.description}</p>}
+            <h2 className="text-xl font-semibold">{typedGallery.dataset_name}</h2>
+            {typedGallery.description && <p className="text-sm text-muted-foreground">{typedGallery.description}</p>}
             <p className="text-sm text-muted-foreground mt-1">
               {total} image{total !== 1 ? 's' : ''}
-              {gallery.unlabeled_count > 0 && ` · ${gallery.unlabeled_count} unlabeled`}
+              {typedGallery.unlabeled_count > 0 && ` · ${typedGallery.unlabeled_count} unlabeled`}
             </p>
           </div>
           {projectId && (
@@ -123,7 +123,7 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
       )}
 
       {/* Class filters */}
-      {gallery && gallery.per_class.length > 0 && (
+      {typedGallery && typedGallery.per_class.length > 0 && (
         <div className="flex flex-wrap gap-2 items-center">
           <Filter className="h-4 w-4 text-muted-foreground" />
           <button
@@ -136,7 +136,7 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
           >
             All ({total})
           </button>
-          {gallery.per_class.map((c) => (
+          {typedGallery.per_class.map((c) => (
             <button
               key={c.class_id}
               type="button"
@@ -150,7 +150,7 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
               {c.name} ({c.image_count})
             </button>
           ))}
-          {gallery.unlabeled_count > 0 && (
+          {typedGallery.unlabeled_count > 0 && (
             <button
               type="button"
               onClick={() => { setUnlabeledOnly(true); setClassFilter(null); }}
@@ -159,7 +159,7 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
                 unlabeledOnly ? 'bg-yellow-500/10 border-yellow-500/40 text-yellow-700' : 'border-border'
               )}
             >
-              Unlabeled ({gallery.unlabeled_count})
+              Unlabeled ({typedGallery.unlabeled_count})
             </button>
           )}
         </div>
@@ -167,7 +167,7 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
 
       {loading && <p className="text-sm text-muted-foreground">Loading images...</p>}
 
-      {!loading && gallery && gallery.items.length === 0 && (
+      {!loading && typedGallery && typedGallery.items.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <ImageIcon className="h-10 w-10 mx-auto mb-3 opacity-50" />
@@ -177,9 +177,9 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
       )}
 
       {/* Image grid */}
-      {gallery && gallery.items.length > 0 && (
+      {typedGallery && typedGallery.items.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          {gallery.items.map((img) => (
+          {(typedGallery.items as GalleryImageItem[]).map((img) => (
             <button
               key={img.id}
               type="button"

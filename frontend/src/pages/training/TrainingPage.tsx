@@ -2,6 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useTrainingJob } from '@/hooks/useTrainingJob';
+import {
+  useDatasetBuilderStats,
+  useDatasetHub,
+  useProjectClasses,
+} from '@/hooks/useDatasets';
 import { BulkImageUpload } from '@/components/training/BulkImageUpload';
 import { SimpleTrainCard } from '@/components/training/SimpleTrainCard';
 import { TrainingConfigForm } from '@/components/training/TrainingConfigForm';
@@ -45,26 +50,19 @@ interface ProjectClass {
   color: string;
 }
 
-interface BuilderStats {
-  image_count: number;
-  annotated_count: number;
-  ready_for_training: boolean;
-  head_version_id: string | null;
-  per_class: { class_id: string; name: string; color: string; count: number }[];
-}
-
 export default function TrainingPage() {
   const { id: projectId } = useParams();
   const [tab, setTab] = useState<Tab>('studio');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showCharts, setShowCharts] = useState(false);
 
-  const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
-  const [classes, setClasses] = useState<ProjectClass[]>([]);
+  const { data: hub, refetch: refetchHub } = useDatasetHub(projectId);
+  const datasets: DatasetSummary[] = hub?.datasets ?? [];
+  const { data: classes = [], refetch: refetchClasses } = useProjectClasses(projectId);
   const [selectedDatasetId, setSelectedDatasetId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
   const [newClassName, setNewClassName] = useState('');
-  const [stats, setStats] = useState<BuilderStats | null>(null);
+  const { data: stats, refetch: refetchStats } = useDatasetBuilderStats(selectedDatasetId || undefined);
 
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -72,28 +70,26 @@ export default function TrainingPage() {
   const { job, chartMetrics, connected, refresh, progressDetail, activityLog } = useTrainingJob(selectedJobId);
 
   const loadDatasets = useCallback(async () => {
-    if (!projectId) return;
-    let list = await api.get<DatasetSummary[]>(`/api/v1/datasets/project/${projectId}`).catch(() => []);
-    if (!list.length) {
-      const created = await api.post<DatasetSummary>(`/api/v1/datasets/project/${projectId}/default`).catch(() => null);
-      if (created) list = [created];
-    }
-    setDatasets(list);
-    setSelectedDatasetId((prev) => prev || list[0]?.id || '');
-  }, [projectId]);
+    await refetchHub();
+  }, [refetchHub]);
 
   const loadClasses = useCallback(async () => {
-    if (!projectId) return;
-    const list = await api.get<ProjectClass[]>(`/api/v1/projects/${projectId}/classes`).catch(() => []);
-    setClasses(list);
-    setSelectedClassId((prev) => prev || list[0]?.id || '');
-  }, [projectId]);
+    await refetchClasses();
+  }, [refetchClasses]);
 
-  const loadStats = useCallback(async () => {
-    if (!selectedDatasetId) return;
-    const s = await api.get<BuilderStats>(`/api/v1/datasets/${selectedDatasetId}/builder-stats`).catch(() => null);
-    setStats(s);
-  }, [selectedDatasetId]);
+  useEffect(() => {
+    if (!selectedDatasetId && hub?.default_dataset_id) {
+      setSelectedDatasetId(hub.default_dataset_id);
+    } else if (!selectedDatasetId && datasets[0]?.id) {
+      setSelectedDatasetId(datasets[0].id);
+    }
+  }, [hub?.default_dataset_id, datasets, selectedDatasetId]);
+
+  useEffect(() => {
+    if (!selectedClassId && classes[0]?.id) {
+      setSelectedClassId(classes[0].id);
+    }
+  }, [classes, selectedClassId]);
 
   const loadJobs = useCallback(() => {
     if (!projectId) return;
@@ -108,18 +104,16 @@ export default function TrainingPage() {
     }).catch(() => {});
   }, [projectId]);
 
-  useEffect(() => { loadDatasets(); loadClasses(); loadJobs(); }, [loadDatasets, loadClasses, loadJobs]);
-  useEffect(() => { loadStats(); }, [loadStats]);
+  useEffect(() => { loadJobs(); }, [loadJobs]);
 
   useEffect(() => {
-    const t = setInterval(() => { loadStats(); loadJobs(); }, 8000);
+    const t = setInterval(() => { loadJobs(); }, 8000);
     return () => clearInterval(t);
-  }, [loadStats, loadJobs]);
+  }, [loadJobs]);
 
   const refreshAll = () => {
     loadDatasets();
     loadClasses();
-    loadStats();
     loadJobs();
     refresh();
   };
@@ -306,9 +300,9 @@ export default function TrainingPage() {
                 classColor={selectedClass?.color}
                 disabled={!selectedDatasetId}
                 onComplete={() => {
-                  setTimeout(loadStats, 2000);
-                  setTimeout(loadStats, 6000);
-                  setTimeout(loadStats, 12000);
+                  setTimeout(() => { void refetchStats(); }, 2000);
+                  setTimeout(() => { void refetchStats(); }, 6000);
+                  setTimeout(() => { void refetchStats(); }, 12000);
                 }}
               />
             </CardContent>

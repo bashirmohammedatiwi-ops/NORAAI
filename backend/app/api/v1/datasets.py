@@ -26,6 +26,11 @@ from app.services.datasets.dataset_images import (
     ensure_default_dataset,
     get_dataset_summary,
 )
+from app.services.datasets.list_datasets import (
+    fetch_project_dataset_hub,
+    list_project_datasets,
+    list_project_datasets_with_stats,
+)
 from app.services.datasets.gallery import get_dataset_gallery
 from app.services.deletion import delete_dataset_permanently
 from app.services.datasets.versioning import compare_versions, create_dataset, create_version, rollback_dataset
@@ -35,14 +40,19 @@ router = APIRouter(prefix="/datasets", tags=["datasets"])
 
 
 @router.get("/project/{project_id}")
-async def list_datasets(project_id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Dataset).where(Dataset.project_id == project_id))
-    datasets = result.scalars().all()
-    summaries = []
-    for d in datasets:
-        summary = await get_dataset_summary(db, d.id)
-        summaries.append(summary or {"id": str(d.id), "name": d.name, "image_count": 0})
-    return summaries
+async def list_datasets(
+    project_id: UUID,
+    include_stats: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    if include_stats:
+        return await list_project_datasets_with_stats(db, project_id)
+    return await list_project_datasets(db, project_id)
+
+
+@router.get("/project/{project_id}/hub")
+async def project_dataset_hub(project_id: UUID, db: AsyncSession = Depends(get_db)):
+    return await fetch_project_dataset_hub(db, project_id)
 
 
 @router.post("/project/{project_id}/default", response_model=DatasetSummaryResponse)

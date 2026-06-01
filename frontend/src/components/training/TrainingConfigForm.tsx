@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { useProjectDatasets } from '@/hooks/useDatasets';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -21,7 +22,7 @@ interface Props {
 
 export function TrainingConfigForm({ projectId, onStarted }: Props) {
   const [options, setOptions] = useState<TrainingOptions | null>(null);
-  const [datasets, setDatasets] = useState<{ id: string; name: string; head_version_id?: string | null }[]>([]);
+  const { data: datasets = [] } = useProjectDatasets(projectId);
   const [versions, setVersions] = useState<{ id: string; version_tag: string }[]>([]);
   const [models, setModels] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,15 +56,16 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
       setImageSize(o.defaults.image_size as number);
       setHpoTrials(o.defaults.hpo_trials as number);
     }).catch(() => {});
-    api.get<{ id: string; name: string; head_version_id?: string | null }[]>(`/api/v1/datasets/project/${projectId}`).then((ds) => {
-      setDatasets(ds);
-      if (ds.length) {
-        setDatasetId(ds[0].id);
-        if (ds[0].head_version_id) setVersionId(ds[0].head_version_id);
-      }
-    }).catch(() => {});
     api.get<{ id: string; name: string }[]>(`/api/v1/projects/${projectId}/models`).then(setModels).catch(() => {});
   }, [projectId]);
+
+  useEffect(() => {
+    if (!datasets.length) return;
+    setDatasetId((prev) => prev || datasets[0].id);
+    if (datasets[0].head_version_id) {
+      setVersionId((prev) => prev || datasets[0].head_version_id!);
+    }
+  }, [datasets]);
 
   useEffect(() => {
     if (!datasetId) { setVersions([]); setVersionId(''); return; }

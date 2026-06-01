@@ -1,69 +1,47 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { useInvalidateDatasets, useProjectDatasets } from '@/hooks/useDatasets';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
+import { DatasetLoadError } from '@/components/datasets/DatasetLoadError';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Database, Eye, ImageIcon, Tag, Trash2 } from 'lucide-react';
-
-interface DatasetSummary {
-  id: string;
-  name: string;
-  description: string | null;
-  head_version_id: string | null;
-  version_tag: string | null;
-  image_count: number;
-}
-
-interface BuilderStats {
-  annotated_count: number;
-  unlabeled_count: number;
-  ready_for_training: boolean;
-  per_class: { class_id: string; name: string; color: string; image_count: number }[];
-}
+import { Database, Eye, ImageIcon, Tag, Trash2, RefreshCw } from 'lucide-react';
 
 export default function DatasetsPage() {
   const { id: projectId } = useParams();
-  const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
-  const [statsMap, setStatsMap] = useState<Record<string, BuilderStats>>({});
+  const { invalidateProject } = useInvalidateDatasets();
+  const {
+    data: datasets = [],
+    isLoading,
+    isError,
+    error,
+    isFetching,
+    refetch,
+  } = useProjectDatasets(projectId, { includeStats: true });
+
   const [newName, setNewName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  const reload = async () => {
-    if (!projectId) return;
-    const list = await api.get<DatasetSummary[]>(`/api/v1/datasets/project/${projectId}`).catch(() => []);
-    setDatasets(list);
-    const stats: Record<string, BuilderStats> = {};
-    await Promise.all(
-      list.map(async (d) => {
-        const s = await api.get<BuilderStats>(`/api/v1/datasets/${d.id}/builder-stats`).catch(() => null);
-        if (s) stats[d.id] = s;
-      })
-    );
-    setStatsMap(stats);
-  };
-
-  useEffect(() => {
-    reload().catch(() => {});
-  }, [projectId]);
 
   const createDataset = async () => {
     if (!projectId || !newName.trim()) return;
     await api.post(`/api/v1/datasets/project/${projectId}`, { name: newName.trim() });
     setNewName('');
-    await reload();
+    invalidateProject(projectId);
+    await refetch();
   };
 
   const deleteDataset = async (password: string) => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !projectId) return;
     setDeleting(true);
     try {
       await api.deleteWithBody(`/api/v1/datasets/${deleteTarget.id}`, { password });
       setDeleteTarget(null);
-      await reload();
+      invalidateProject(projectId);
+      await refetch();
     } finally {
       setDeleting(false);
     }
@@ -76,9 +54,14 @@ export default function DatasetsPage() {
         description="Browse all datasets — view images, class labels, and annotation status."
       >
         {projectId && (
-          <Link to={`/projects/${projectId}/data`}>
-            <Button><Database className="h-4 w-4" /> Dataset Builder</Button>
-          </Link>
+          <>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            </Button>
+            <Link to={`/projects/${projectId}/data`}>
+              <Button><Database className="h-4 w-4" /> Dataset Builder</Button>
+            </Link>
+          </>
         )}
       </PageHeader>
 
@@ -90,7 +73,15 @@ export default function DatasetsPage() {
         </CardContent>
       </Card>
 
-      {datasets.length === 0 && (
+      {isError && (
+        <DatasetLoadError message={error?.message} onRetry={() => refetch()} retrying={isFetching} />
+      )}
+
+      {isLoading && !datasets.length && !isError && (
+        <p className="text-sm text-muted-foreground text-center py-8">Loading datasets...</p>
+      )}
+
+      {!isError && !isLoading && datasets.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <ImageIcon className="h-12 w-12 mx-auto mb-3 opacity-40" />
@@ -104,7 +95,7 @@ export default function DatasetsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {datasets.map((d) => {
-          const stats = statsMap[d.id];
+          const stats = d.builder_stats;
           return (
             <Card key={d.id} className="hover:border-primary/40 transition-colors">
               <CardHeader>
@@ -125,11 +116,11 @@ export default function DatasetsPage() {
                     </div>
                     <div className="rounded bg-secondary/50 p-2">
                       <p className="text-xs text-muted-foreground">Unlabeled</p>
-                      <p className="font-bold">{stats.unlabeled_count}</p>
+                      <p className="font-bold">{stats.unlabeled_count ?? 0}</p>
                     </div>
                     <div className="rounded bg-secondary/50 p-2">
                       <p className="text-xs text-muted-foreground">Classes</p>
-                      <p className="font-bold">{stats.per_class.filter((c) => c.image_count > 0).length}</p>
+                      <p className="font-bold">{stats.per_class.filter((c) => (c.image_count ?? c.count ?? 0) > 0).length}</p>
                     </div>
                   </div>
                 )}
@@ -137,13 +128,13 @@ export default function DatasetsPage() {
                 {stats && stats.per_class.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     <Tag className="h-3 w-3 text-muted-foreground mt-1" />
-                    {stats.per_class.filter((c) => c.image_count > 0).map((c) => (
+                    {stats.per_class.filter((c) => (c.image_count ?? c.count ?? 0) > 0).map((c) => (
                       <span
                         key={c.class_id}
                         className="text-xs px-2 py-0.5 rounded-full text-white inline-flex items-center gap-1"
                         style={{ backgroundColor: c.color }}
                       >
-                        {c.name} ({c.image_count})
+                        {c.name} ({c.image_count ?? c.count ?? 0})
                       </span>
                     ))}
                   </div>
