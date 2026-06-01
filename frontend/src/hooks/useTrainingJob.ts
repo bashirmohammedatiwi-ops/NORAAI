@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { computeEtaSeconds, type TrainingProgressDetail } from '@/lib/trainingProgress';
+import type { TrainingMetricsMeta } from '@/lib/trainingMetrics';
 import { useTrainingMetrics } from './useTrainingMetrics';
 
 export interface TrainingJobDetail {
@@ -35,6 +36,7 @@ export interface TrainingJobDetail {
     map50: number | null;
     map50_95: number | null;
   } | null;
+  metrics_meta?: TrainingMetricsMeta | null;
   artifact: {
     id: string;
     name: string;
@@ -91,7 +93,8 @@ export function useTrainingJob(
     const base = job ?? (baseline && jobId ? ({ ...baseline, id: jobId } as TrainingJobDetail) : null);
     if (!base) return null;
     const latestLive = liveMetrics.length ? liveMetrics[liveMetrics.length - 1] : null;
-    const hasLive = latestLive && (
+    const terminal = ['completed', 'failed', 'cancelled'].includes(base.status);
+    const hasLive = !terminal && latestLive && (
       latestLive.progress != null
       || latestLive.epoch != null
       || latestLive.phase
@@ -103,6 +106,9 @@ export function useTrainingJob(
     const total = Number(latestLive.total_epochs ?? base.total_epochs) || base.total_epochs;
     const progress = Number(latestLive.progress ?? base.progress);
     const duration = base.duration_seconds;
+    const validationLive = latestLive.phase === 'validation' || latestLive.save_epoch_metric
+      ? latestLive
+      : null;
 
     return {
       ...base,
@@ -119,14 +125,16 @@ export function useTrainingJob(
       current_step: num(latestLive.current_step, base.current_step),
       total_steps: num(latestLive.total_steps, base.total_steps),
       eta_seconds: num(latestLive.eta_seconds, base.eta_seconds) ?? computeEtaSeconds(duration, progress),
-      latest_metrics: {
-        loss: num(latestLive.loss, base.latest_metrics?.loss),
-        precision: num(latestLive.precision, base.latest_metrics?.precision),
-        recall: num(latestLive.recall, base.latest_metrics?.recall),
-        f1: num(latestLive.f1, base.latest_metrics?.f1),
-        map50: num(latestLive.map50, base.latest_metrics?.map50),
-        map50_95: num(latestLive.map50_95, base.latest_metrics?.map50_95),
-      },
+      latest_metrics: validationLive
+        ? {
+            loss: num(validationLive.loss, base.latest_metrics?.loss),
+            precision: num(validationLive.precision, base.latest_metrics?.precision),
+            recall: num(validationLive.recall, base.latest_metrics?.recall),
+            f1: num(validationLive.f1, base.latest_metrics?.f1),
+            map50: num(validationLive.map50, base.latest_metrics?.map50),
+            map50_95: num(validationLive.map50_95, base.latest_metrics?.map50_95),
+          }
+        : base.latest_metrics,
     };
   }, [job, baseline, jobId, liveMetrics]);
 
@@ -144,6 +152,7 @@ export function useTrainingJob(
       lossBox: num(latestLive?.loss_box, null),
       lossCls: num(latestLive?.loss_cls, null),
       map50: liveJob.latest_metrics?.map50,
+      map50_95: liveJob.latest_metrics?.map50_95,
       precision: liveJob.latest_metrics?.precision,
     };
   }, [liveJob, liveMetrics]);

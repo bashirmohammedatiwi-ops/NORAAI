@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router-dom';
+import { METRIC_DISPLAY } from '@/lib/trainingMetrics';
 import { useProjectOverview } from '@/hooks/useProjects';
 import { Badge } from '@/components/ui/badge';
 import { Database, Brain, Images, PenTool, Activity, ArrowRight } from 'lucide-react';
@@ -26,7 +27,7 @@ export default function ProjectDetailPage() {
             <Badge variant="success">Model active</Badge>
             {modelStatus.model?.metrics?.map50_95 != null && (
               <span className="text-sm text-muted-foreground">
-                mAP {(modelStatus.model.metrics.map50_95 * 100).toFixed(1)}%
+                {METRIC_DISPLAY.accuracy.label} {(modelStatus.model.metrics.map50_95 * 100).toFixed(1)}%
               </span>
             )}
           </>

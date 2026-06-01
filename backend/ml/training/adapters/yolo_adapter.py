@@ -86,6 +86,40 @@ class YOLOAdapter:
                     train_frac = (epoch_idx + batch_i / max(nb, 1)) / max(epochs, 1)
                     return min(99, 15 + int(train_frac * 85))
 
+                def emit_validation_metrics(trainer, *, save_epoch: bool) -> None:
+                    epoch = int(getattr(trainer, "epoch", 0)) + 1
+                    nb = max(int(getattr(trainer, "nb", 1)), 1)
+                    metrics = getattr(trainer, "metrics", None) or {}
+                    loss_items = getattr(trainer, "loss_items", None)
+                    train_loss = float(sum(loss_items)) if loss_items is not None else None
+                    val_box = _metric_val(metrics, "val/box_loss")
+                    val_cls = _metric_val(metrics, "val/cls_loss")
+                    val_loss = (val_box + val_cls) if val_box or val_cls else train_loss
+                    precision = _metric_val(metrics, "metrics/precision(B)")
+                    recall = _metric_val(metrics, "metrics/recall(B)")
+                    map50 = _metric_val(metrics, "metrics/mAP50(B)")
+                    map50_95 = _metric_val(metrics, "metrics/mAP50-95(B)")
+                    metrics_callback({
+                        "epoch": epoch,
+                        "total_epochs": epochs,
+                        "phase": "validation",
+                        "message": f"Epoch {epoch}/{epochs} validation · Accuracy {map50_95:.1%}",
+                        "progress": min(100, 15 + int((epoch / max(epochs, 1)) * 85)),
+                        "epoch_progress": 100,
+                        "batch": nb,
+                        "total_batches": nb,
+                        "loss": val_loss,
+                        "precision": precision,
+                        "recall": recall,
+                        "f1": _f1(precision, recall),
+                        "map50": map50,
+                        "map50_95": map50_95,
+                        "device": str(device),
+                        "status": "running",
+                        "save_epoch_metric": save_epoch,
+                        "metrics_source": "validation",
+                    })
+
                 def on_train_batch_end(trainer):
                     if cancel_check and cancel_check():
                         trainer.stop = True
@@ -132,38 +166,11 @@ class YOLOAdapter:
                         "status": "running",
                     })
 
-                def on_train_epoch_end(trainer):
-                    epoch = int(trainer.epoch) + 1
-                    nb = max(int(getattr(trainer, "nb", 1)), 1)
-                    metrics = getattr(trainer, "metrics", None) or {}
-                    loss_items = getattr(trainer, "loss_items", None)
-                    loss_val = float(sum(loss_items)) if loss_items is not None else None
-                    precision = _metric_val(metrics, "metrics/precision(B)")
-                    recall = _metric_val(metrics, "metrics/recall(B)")
-                    map50 = _metric_val(metrics, "metrics/mAP50(B)")
-                    map50_95 = _metric_val(metrics, "metrics/mAP50-95(B)")
-                    metrics_callback({
-                        "epoch": epoch,
-                        "total_epochs": epochs,
-                        "phase": "train",
-                        "message": f"Epoch {epoch}/{epochs} complete · mAP50 {map50:.1%}",
-                        "progress": min(100, 15 + int((epoch / max(epochs, 1)) * 85)),
-                        "epoch_progress": 100,
-                        "batch": nb,
-                        "total_batches": nb,
-                        "loss": loss_val,
-                        "precision": precision,
-                        "recall": recall,
-                        "f1": _f1(precision, recall),
-                        "map50": map50,
-                        "map50_95": map50_95,
-                        "device": str(device),
-                        "status": "running",
-                        "save_epoch_metric": True,
-                    })
+                def on_fit_epoch_end(trainer):
+                    emit_validation_metrics(trainer, save_epoch=True)
 
                 model.add_callback("on_train_batch_end", on_train_batch_end)
-                model.add_callback("on_train_epoch_end", on_train_epoch_end)
+                model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
 
             if cancel_check and cancel_check():
                 from app.services.training.cancellation import TrainingCancelled
@@ -176,41 +183,44 @@ class YOLOAdapter:
                 raise TrainingCancelled("Training cancelled")
 
             csv_path = Path(output_dir) / "train" / "results.csv"
-            if csv_path.exists() and metrics_callback:
-                import csv
-                with open(csv_path) as f:
-                    reader = csv.DictReader(f)
-                    for i, row in enumerate(reader, 1):
-                        metrics_callback({
-                            "epoch": i,
-                            "total_epochs": epochs,
-                            "progress": min(100, int((i / epochs) * 100)),
-                            "loss": _float(row, "train/box_loss", 0) + _float(row, "train/cls_loss", 0),
-                            "precision": _float(row, "metrics/precision(B)", 0),
-                            "recall": _float(row, "metrics/recall(B)", 0),
-                            "f1": _f1(_float(row, "metrics/precision(B)", 0), _float(row, "metrics/recall(B)", 0)),
-                            "map50": _float(row, "metrics/mAP50(B)", 0),
-                            "map50_95": _float(row, "metrics/mAP50-95(B)", 0),
-                            "device": str(device),
-                            "status": "running",
-                        })
+            final_metrics = _best_validation_metrics_from_csv(csv_path)
+            if not final_metrics:
+                rd = getattr(results, "results_dict", {}) or {}
+                precision = float(rd.get("metrics/precision(B)", 0) or 0)
+                recall = float(rd.get("metrics/recall(B)", 0) or 0)
+                map50 = float(rd.get("metrics/mAP50(B)", 0) or 0)
+                map50_95 = float(rd.get("metrics/mAP50-95(B)", 0) or 0)
+                final_metrics = {
+                    "map50": map50,
+                    "map50_95": map50_95,
+                    "precision": precision,
+                    "recall": recall,
+                    "f1": _f1(precision, recall),
+                    "best_epoch": epochs,
+                    "metrics_source": "validation",
+                }
             elif metrics_callback:
-                self._emit_simulated_metrics(metrics_callback, epochs, device)
+                metrics_callback({
+                    **final_metrics,
+                    "epoch": final_metrics.get("best_epoch", epochs),
+                    "total_epochs": epochs,
+                    "progress": 100,
+                    "phase": "validation",
+                    "message": (
+                        f"Best validation epoch {final_metrics.get('best_epoch')}/{epochs} · "
+                        f"Accuracy {final_metrics.get('map50_95', 0):.1%}"
+                    ),
+                    "status": "running",
+                    "save_epoch_metric": False,
+                })
 
             weights = str(Path(output_dir) / "train" / "weights" / "best.pt")
             if not Path(weights).exists():
                 weights = str(Path(output_dir) / "train" / "weights" / "last.pt")
 
-            rd = getattr(results, "results_dict", {}) or {}
             return {
                 "weights_path": weights,
-                "metrics": {
-                    "map50": float(rd.get("metrics/mAP50(B)", 0.5)),
-                    "map50_95": float(rd.get("metrics/mAP50-95(B)", 0.4)),
-                    "precision": float(rd.get("metrics/precision(B)", 0)),
-                    "recall": float(rd.get("metrics/recall(B)", 0)),
-                    "device": str(device),
-                },
+                "metrics": final_metrics,
                 "duration_seconds": int(time.time() - start),
             }
         except Exception as exc:
@@ -232,6 +242,8 @@ class YOLOAdapter:
                 "map50_95": min(0.90, 0.15 + i * 0.065),
                 "device": str(device),
                 "status": "running",
+                "metrics_source": "simulated",
+                "save_epoch_metric": True,
             })
 
     def _mock_train(
@@ -253,7 +265,17 @@ class YOLOAdapter:
 
         return {
             "weights_path": str(weights),
-            "metrics": {"map50": 0.75, "map50_95": 0.65, "mock": True, "error": error, "device": "cpu"},
+            "metrics": {
+                "map50": 0.75,
+                "map50_95": 0.65,
+                "precision": 0.72,
+                "recall": 0.68,
+                "f1": _f1(0.72, 0.68),
+                "mock": True,
+                "metrics_source": "simulated",
+                "error": error,
+                "device": "cpu",
+            },
             "duration_seconds": int(time.time() - start),
         }
 
@@ -296,6 +318,48 @@ def _float(row: dict, key: str, default: float) -> float:
         return float(row.get(key, default) or default)
     except (ValueError, TypeError):
         return default
+
+
+def _best_validation_metrics_from_csv(csv_path: Path) -> dict | None:
+    if not csv_path.exists():
+        return None
+
+    import csv
+
+    best_row: dict | None = None
+    best_epoch = 0
+    best_map = -1.0
+    with open(csv_path, newline="") as f:
+        for i, row in enumerate(csv.DictReader(f), 1):
+            map50_95 = _float(row, "metrics/mAP50-95(B)", 0)
+            if map50_95 >= best_map:
+                best_map = map50_95
+                best_epoch = i
+                best_row = row
+
+    if not best_row:
+        return None
+
+    precision = _float(best_row, "metrics/precision(B)", 0)
+    recall = _float(best_row, "metrics/recall(B)", 0)
+    map50 = _float(best_row, "metrics/mAP50(B)", 0)
+    map50_95 = _float(best_row, "metrics/mAP50-95(B)", 0)
+    val_box = _float(best_row, "val/box_loss", 0)
+    val_cls = _float(best_row, "val/cls_loss", 0)
+    train_box = _float(best_row, "train/box_loss", 0)
+    train_cls = _float(best_row, "train/cls_loss", 0)
+    loss = (val_box + val_cls) if (val_box or val_cls) else (train_box + train_cls)
+
+    return {
+        "map50": map50,
+        "map50_95": map50_95,
+        "precision": precision,
+        "recall": recall,
+        "f1": _f1(precision, recall),
+        "loss": loss,
+        "best_epoch": best_epoch,
+        "metrics_source": "validation",
+    }
 
 
 def _f1(p: float, r: float) -> float:

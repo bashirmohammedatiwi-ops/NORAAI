@@ -25,6 +25,7 @@ export interface TrainingProgressDetail {
   lossBox?: number | null;
   lossCls?: number | null;
   map50?: number | null;
+  map50_95?: number | null;
   precision?: number | null;
 }
 

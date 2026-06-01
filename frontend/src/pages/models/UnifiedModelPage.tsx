@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { METRIC_DISPLAY } from '@/lib/trainingMetrics';
 import { useActiveModel, useInvalidateProjects } from '@/hooks/useProjects';
 import { useTrainingJob } from '@/hooks/useTrainingJob';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -206,8 +207,8 @@ export default function UnifiedModelPage() {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
-                    { label: 'mAP50', value: model.metrics?.map50 },
-                    { label: 'mAP50-95', value: model.metrics?.map50_95 },
+                    { label: METRIC_DISPLAY.detectionAccuracy.label, value: model.metrics?.map50 },
+                    { label: METRIC_DISPLAY.accuracy.label, value: model.metrics?.map50_95 },
                     { label: 'Precision', value: model.metrics?.precision },
                     { label: 'Recall', value: model.metrics?.recall },
                   ].map(({ label, value }) => (

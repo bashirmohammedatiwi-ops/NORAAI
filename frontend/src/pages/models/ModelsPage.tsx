@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArchitectureBadge, TrainingStatusBadge } from '@/components/training/TrainingStatusBadge';
+import { METRIC_DISPLAY } from '@/lib/trainingMetrics';
 import { cn } from '@/lib/utils';
 import { Box, Download, Trophy, Zap } from 'lucide-react';
 
@@ -71,7 +72,7 @@ export default function ModelsPage() {
           { label: 'Total Models', value: models.length },
           { label: 'Production', value: models.filter((m) => m.lifecycle === 'production').length },
           { label: 'Staging', value: models.filter((m) => m.lifecycle === 'staging').length },
-          { label: 'Best mAP', value: models.length ? `${(Math.max(...models.map((m) => m.metrics?.map50_95 || 0)) * 100).toFixed(1)}%` : '—' },
+          { label: `Best ${METRIC_DISPLAY.accuracy.label}`, value: models.length ? `${(Math.max(...models.map((m) => m.metrics?.map50_95 || 0)) * 100).toFixed(1)}%` : '—' },
         ].map(({ label, value }) => (
           <Card key={label}>
             <CardContent className="pt-4 pb-3">
@@ -115,8 +116,8 @@ export default function ModelsPage() {
                   )}>{m.lifecycle}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-1 text-xs">
-                  <span>mAP50: <strong>{m.metrics?.map50?.toFixed(3) || 'N/A'}</strong></span>
-                  <span>mAP50-95: <strong>{m.metrics?.map50_95?.toFixed(3) || 'N/A'}</strong></span>
+                  <span>{METRIC_DISPLAY.detectionAccuracy.label}: <strong>{m.metrics?.map50?.toFixed(3) || 'N/A'}</strong></span>
+                  <span>{METRIC_DISPLAY.accuracy.label}: <strong>{m.metrics?.map50_95?.toFixed(3) || 'N/A'}</strong></span>
                   <span>Size: <strong>{m.model_size_mb?.toFixed(1)} MB</strong></span>
                   <span>GPU: <strong>{m.gpu_used || 'CPU'}</strong></span>
                 </div>

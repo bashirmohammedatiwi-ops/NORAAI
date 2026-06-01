@@ -89,6 +89,13 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
         .limit(1)
     )
     latest = latest_metric.scalar_one_or_none()
+    best_metric = await db.execute(
+        select(TrainingMetric)
+        .where(TrainingMetric.training_job_id == job_id)
+        .order_by(TrainingMetric.map50_95.desc().nullslast(), TrainingMetric.epoch.desc())
+        .limit(1)
+    )
+    best = best_metric.scalar_one_or_none()
     artifact = await db.execute(
         select(ModelArtifact).where(ModelArtifact.training_job_id == job_id).limit(1)
     )
@@ -109,17 +116,51 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
     progress = live_fields["progress"]
     current_epoch = live_fields["current_epoch"]
 
-    db_metrics = {
-        "loss": latest.loss if latest else None,
-        "precision": latest.precision if latest else None,
-        "recall": latest.recall if latest else None,
-        "f1": latest.f1 if latest else None,
-        "map50": latest.map50 if latest else None,
-        "map50_95": latest.map50_95 if latest else None,
-    } if latest else None
+    def _metric_row(row: TrainingMetric | None) -> dict | None:
+        if not row:
+            return None
+        return {
+            "loss": row.loss,
+            "precision": row.precision,
+            "recall": row.recall,
+            "f1": row.f1,
+            "map50": row.map50,
+            "map50_95": row.map50_95,
+        }
+
+    db_metrics = _metric_row(latest)
+    best_db_metrics = _metric_row(best)
 
     latest_metrics = db_metrics
-    if job.status in (TrainingStatus.RUNNING, TrainingStatus.PENDING):
+    metrics_meta: dict | None = None
+
+    if job.status == TrainingStatus.COMPLETED:
+        source_metrics = best_db_metrics or db_metrics
+        if art and art.metrics:
+            am = art.metrics or {}
+            source_metrics = {
+                "loss": am.get("loss", source_metrics.get("loss") if source_metrics else None),
+                "precision": am.get("precision", source_metrics.get("precision") if source_metrics else None),
+                "recall": am.get("recall", source_metrics.get("recall") if source_metrics else None),
+                "f1": am.get("f1", source_metrics.get("f1") if source_metrics else None),
+                "map50": am.get("map50", source_metrics.get("map50") if source_metrics else None),
+                "map50_95": am.get("map50_95", source_metrics.get("map50_95") if source_metrics else None),
+            }
+        latest_metrics = source_metrics
+        best_epoch = (art.metrics or {}).get("best_epoch") if art and art.metrics else (best.epoch if best else latest.epoch if latest else None)
+        metrics_meta = {
+            "source": (art.metrics or {}).get("metrics_source", "validation") if art and art.metrics else "validation",
+            "best_epoch": best_epoch,
+            "simulated": bool((art.metrics or {}).get("mock")) if art and art.metrics else False,
+        }
+        if latest_metrics and all(
+            (latest_metrics.get(k) or 0) >= 0.95 for k in ("precision", "recall", "map50", "map50_95") if latest_metrics.get(k) is not None
+        ):
+            metrics_meta["high_score_warning"] = (
+                "الدرجات فوق 95% غالباً تحدث مع مجموعة تحقق (validation) صغيرة جداً "
+                "ولا تعني بالضرورة أن النموذج سيعمل بنفس الأداء على صور جديدة."
+            )
+    elif job.status in (TrainingStatus.RUNNING, TrainingStatus.PENDING):
         latest_metrics = {
             "loss": live_fields.get("loss") if live_fields.get("loss") is not None else db_metrics.get("loss") if db_metrics else None,
             "precision": live_fields.get("precision") if live_fields.get("precision") is not None else db_metrics.get("precision") if db_metrics else None,
@@ -162,6 +203,7 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
         "metrics_count": metrics_count.scalar() or 0,
         "trials_count": trials_count.scalar() or 0,
         "latest_metrics": latest_metrics,
+        "metrics_meta": metrics_meta,
         "artifact": {
             "id": str(art.id),
             "name": art.name,

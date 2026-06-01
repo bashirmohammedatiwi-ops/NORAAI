@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { cancelTrainingJob } from '@/lib/cancelTraining';
+import { buildMetricsSubtitle, METRIC_DISPLAY, normalizeQualityMetrics } from '@/lib/trainingMetrics';
 import {
   Activity, BarChart3, Brain, ChevronDown, ChevronUp, Database, ImageIcon, Plus, RefreshCw, StopCircle,
 } from 'lucide-react';
@@ -142,7 +143,8 @@ export default function TrainingPage() {
   };
 
   const selectedClass = classes.find((c) => c.id === selectedClassId);
-  const displayMetrics = job?.latest_metrics ?? job?.artifact?.metrics ?? null;
+  const displayMetrics = normalizeQualityMetrics(job?.latest_metrics ?? job?.artifact?.metrics ?? null);
+  const metricsSubtitle = buildMetricsSubtitle(job?.name, job?.architecture, job?.metrics_meta, job?.message);
   const runningJob = jobs.find((j) => j.status === 'running' || j.status === 'pending');
   const showProgress = job && (job.status === 'running' || job.status === 'pending');
 
@@ -370,8 +372,9 @@ export default function TrainingPage() {
 
             <TrainingMetricsPanel
               metrics={displayMetrics}
+              metricsMeta={job?.metrics_meta}
               title={job?.status === 'running' ? 'Live Training Metrics' : 'Latest Model Quality'}
-              subtitle={job ? `${job.name} · ${job.architecture}${job.message ? ` · ${job.message}` : ''}` : 'No training job selected'}
+              subtitle={job ? metricsSubtitle : 'No training job selected'}
               trainingProgress={job?.progress}
               epoch={job ? { current: job.current_epoch, total: job.total_epochs } : undefined}
               status={job?.status}
@@ -423,9 +426,9 @@ export default function TrainingPage() {
                     <MetricChart data={chartMetrics} title="Loss" lines={[{ key: 'loss', color: '#ef4444', label: 'Loss' }]} />
                   </CardContent></Card>
                   <Card><CardContent className="pt-6">
-                    <MetricChart data={chartMetrics} title="Accuracy (mAP)" lines={[
-                      { key: 'map50', color: '#3b82f6', label: 'mAP@50' },
-                      { key: 'map50_95', color: '#8b5cf6', label: 'mAP@50-95' },
+                    <MetricChart data={chartMetrics} title="Accuracy" lines={[
+                      { key: 'map50', color: '#3b82f6', label: METRIC_DISPLAY.detectionAccuracy.label },
+                      { key: 'map50_95', color: '#8b5cf6', label: METRIC_DISPLAY.accuracy.label },
                     ]} />
                   </CardContent></Card>
                   <Card><CardContent className="pt-6">
@@ -441,7 +444,7 @@ export default function TrainingPage() {
               )}
 
               {!showCharts && (
-                <TrainingMetricsPanel metrics={displayMetrics} compact />
+                <TrainingMetricsPanel metrics={displayMetrics} metricsMeta={job?.metrics_meta} compact />
               )}
             </>
           )}

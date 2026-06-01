@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
-import { Target, Crosshair, Scan, Gauge, TrendingDown, Activity } from 'lucide-react';
+import { Target, Crosshair, Scan, Gauge, TrendingDown, Activity, AlertTriangle } from 'lucide-react';
+import { normalizeQualityMetrics, METRIC_DISPLAY, type TrainingMetricsMeta } from '@/lib/trainingMetrics';
 
 export interface QualityMetrics {
   loss?: number | null;
@@ -12,6 +13,7 @@ export interface QualityMetrics {
 
 interface Props {
   metrics: QualityMetrics | null;
+  metricsMeta?: TrainingMetricsMeta | null;
   title?: string;
   subtitle?: string;
   trainingProgress?: number;
@@ -51,8 +53,8 @@ function Ring({ value, color, size = 72 }: { value: number | null | undefined; c
 }
 
 const METRIC_DEFS = [
-  { key: 'map50_95' as const, label: 'Accuracy', sub: 'mAP@50-95', icon: Target, color: '#2563eb', ring: '#2563eb' },
-  { key: 'map50' as const, label: 'mAP@50', sub: 'IoU 50%', icon: Crosshair, color: '#7c3aed', ring: '#7c3aed' },
+  { key: 'map50_95' as const, label: METRIC_DISPLAY.accuracy.label, sub: METRIC_DISPLAY.accuracy.sub, icon: Target, color: '#2563eb', ring: '#2563eb' },
+  { key: 'map50' as const, label: METRIC_DISPLAY.detectionAccuracy.label, sub: METRIC_DISPLAY.detectionAccuracy.sub, icon: Crosshair, color: '#7c3aed', ring: '#7c3aed' },
   { key: 'precision' as const, label: 'Precision', sub: 'True positives', icon: Scan, color: '#059669', ring: '#059669' },
   { key: 'recall' as const, label: 'Recall', sub: 'Coverage', icon: Gauge, color: '#d97706', ring: '#d97706' },
   { key: 'f1' as const, label: 'F1 Score', sub: 'Balanced', icon: Activity, color: '#0891b2', ring: '#0891b2' },
@@ -60,6 +62,7 @@ const METRIC_DEFS = [
 
 export function TrainingMetricsPanel({
   metrics,
+  metricsMeta,
   title = 'Model Quality',
   subtitle,
   trainingProgress,
@@ -67,7 +70,12 @@ export function TrainingMetricsPanel({
   status,
   compact,
 }: Props) {
-  const hasMetrics = metrics && METRIC_DEFS.some(({ key }) => metrics[key] != null);
+  const normalized = normalizeQualityMetrics(metrics);
+  const hasMetrics = normalized && METRIC_DEFS.some(({ key }) => normalized[key] != null);
+  const warning = metricsMeta?.high_score_warning
+    ?? (metricsMeta?.simulated
+      ? 'المقاييس محاكاة لأن التدريب الحقيقي على GPU غير متاح.'
+      : null);
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -91,6 +99,13 @@ export function TrainingMetricsPanel({
         </div>
       </div>
 
+      {warning && (
+        <div className="mx-5 mt-4 flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>{warning}</span>
+        </div>
+      )}
+
       {!hasMetrics ? (
         <div className="px-5 py-10 text-center text-muted-foreground text-sm">
           Start training to see Accuracy, Precision, Recall and other metrics here
@@ -98,7 +113,7 @@ export function TrainingMetricsPanel({
       ) : (
         <div className={cn('p-5', compact ? 'grid grid-cols-2 sm:grid-cols-3 gap-3' : 'grid grid-cols-2 lg:grid-cols-5 gap-4')}>
           {METRIC_DEFS.map(({ key, label, sub, icon: Icon, color, ring }) => {
-            const val = metrics?.[key];
+            const val = normalized?.[key];
             return (
               <div
                 key={key}
@@ -121,11 +136,11 @@ export function TrainingMetricsPanel({
         </div>
       )}
 
-      {metrics?.loss != null && (
+      {normalized?.loss != null && (
         <div className="px-5 pb-4 flex items-center gap-2 text-sm border-t border-border pt-3 mx-5 mb-0">
           <TrendingDown className="h-4 w-4 text-red-500" />
           <span className="text-muted-foreground">Loss</span>
-          <span className="font-mono font-semibold ml-auto">{metrics.loss.toFixed(4)}</span>
+          <span className="font-mono font-semibold ml-auto">{normalized.loss.toFixed(4)}</span>
         </div>
       )}
     </div>

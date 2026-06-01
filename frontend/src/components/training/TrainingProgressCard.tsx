@@ -1,3 +1,4 @@
+import { METRIC_DISPLAY } from '@/lib/trainingMetrics';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -128,8 +129,8 @@ export function TrainingProgressCard({
             {detail?.loss != null && (
               <Stat label="Loss" value={detail.loss.toFixed(4)} mono />
             )}
-            {detail?.map50 != null && (
-              <Stat label="mAP50" value={pct(detail.map50)} />
+            {detail?.map50_95 != null && (
+              <Stat label={METRIC_DISPLAY.accuracy.label} value={pct(detail.map50_95)} />
             )}
           </div>
 
