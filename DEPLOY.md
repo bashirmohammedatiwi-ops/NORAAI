@@ -147,6 +147,40 @@ TRAINING_CPU_FALLBACK=false
 
 ## استكشاف الأخطاء
 
+### Cannot reach the server / بعد إعادة تشغيل VPS
+
+**السبب:** الخدمات لا تبدأ تلقائياً أو الـ API يحتاج 2–3 دقائق بعد الإقلاع.
+
+**الحل الدائم (مرة واحدة على السيرفر):**
+
+```bash
+cd /opt/aiops
+git pull
+chmod +x scripts/ensure_services.sh scripts/install_boot_service.sh
+sudo ./scripts/install_boot_service.sh
+```
+
+هذا يثبّت:
+- `aiops.service` — يشغّل Docker Compose عند إقلاع VPS
+- `aiops-health.timer` — يفحص كل 10 دقائق ويُصلح الخدمات إن توقفت
+
+**إذا ظهر الخطأ الآن:**
+
+```bash
+cd /opt/aiops
+./scripts/ensure_services.sh recover
+# أو
+sudo systemctl start aiops
+```
+
+**تحقق:**
+
+```bash
+curl http://localhost:8080/health
+curl http://localhost:6001/health
+docker compose -f docker-compose.prod.yml ps
+```
+
 ### تحديث فاشل (git pull conflict)
 
 إذا ظهر `Your local changes would be overwritten`:

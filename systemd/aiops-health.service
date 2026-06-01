@@ -1,0 +1,9 @@
+[Unit]
+Description=AI Ops stack health recovery
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aiops
+EnvironmentFile=-/opt/aiops/.env
+ExecStart=/bin/bash /opt/aiops/scripts/ensure_services.sh recover

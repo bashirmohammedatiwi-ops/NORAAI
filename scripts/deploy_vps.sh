@@ -110,13 +110,19 @@ if [ -x scripts/docker_cleanup_after_update.sh ]; then
   ./scripts/docker_cleanup_after_update.sh
 fi
 
+if [ -x scripts/install_boot_service.sh ]; then
+  echo ""
+  echo "To auto-start after VPS reboot, run once as root:"
+  echo "  sudo ./scripts/install_boot_service.sh"
+fi
+
 echo ""
 echo "=============================================="
 echo " DEPLOYMENT COMPLETE"
 echo "=============================================="
 echo ""
-echo "  Main App:       http://${VPS_IP:-localhost}:${PORT_APP:-6000}"
-echo "  API Docs:       http://${VPS_IP:-localhost}:${PORT_APP:-6000}/docs"
+echo "  Main App:       http://${VPS_IP:-localhost}:${PORT_APP:-8080}"
+echo "  API Docs:       http://${VPS_IP:-localhost}:${PORT_APP:-8080}/docs"
 echo "  API Direct:     http://${VPS_IP:-localhost}:${PORT_API:-6001}/docs"
 echo "  MinIO Console:  http://${VPS_IP:-localhost}:${PORT_MINIO_CONSOLE:-6003}"
 echo "  Grafana:        http://${VPS_IP:-localhost}:${PORT_GRAFANA:-6004}"

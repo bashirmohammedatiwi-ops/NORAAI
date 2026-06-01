@@ -132,6 +132,9 @@ class ApiClient {
         if (options.signal?.aborted) throw err;
         throw new Error('Request timed out — API may be busy or unreachable. Try again.');
       }
+      if (err instanceof TypeError) {
+        throw new Error('Network unreachable — is the API running?');
+      }
       throw err;
     } finally {
       clearTimeout(timer);
