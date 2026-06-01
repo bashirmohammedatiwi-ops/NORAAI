@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -9,18 +9,36 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [apiReady, setApiReady] = useState<boolean | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    api.clearToken();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    fetch('/health', { signal: controller.signal })
+      .then((res) => setApiReady(res.ok))
+      .catch(() => setApiReady(false))
+      .finally(() => clearTimeout(timer));
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const res = await api.post<{ access_token: string; refresh_token: string }>('/api/v1/auth/login', { username, password });
+      const res = await api.login<{ access_token: string; refresh_token: string }>(username, password);
       api.setSession(res.access_token, res.refresh_token);
-      navigate('/');
+      navigate('/', { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      const message = err instanceof Error ? err.message : 'Login failed';
+      if (message.includes('Invalid credentials')) {
+        setError('Invalid email or password.');
+      } else if (message.includes('timed out') || message.includes('unreachable')) {
+        setError('Cannot reach the server. Check that the API is running and try again.');
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -33,10 +51,16 @@ export default function LoginPage() {
           <h1 className="text-2xl font-semibold tracking-tight">NURAI</h1>
         </div>
 
+        {apiReady === false && (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+            Server unreachable — login may hang until timeout. Verify API / gateway on port 8080.
+          </p>
+        )}
+
         <form onSubmit={handleLogin} className="space-y-4">
           <Input
-            type="text"
-            placeholder="Username"
+            type="email"
+            placeholder="Email"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
@@ -51,7 +75,7 @@ export default function LoginPage() {
             required
           />
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || apiReady === false}>
             {loading ? 'Signing in...' : 'Sign in'}
           </Button>
         </form>

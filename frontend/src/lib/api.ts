@@ -2,6 +2,11 @@ const API_URL = import.meta.env.VITE_API_URL ?? '';
 const TOKEN_KEY = 'token';
 const REFRESH_KEY = 'refresh_token';
 const DEFAULT_TIMEOUT_MS = 30_000;
+const AUTH_PATHS = ['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/refresh'];
+
+function isAuthPath(path: string): boolean {
+  return AUTH_PATHS.some((p) => path === p || path.startsWith(`${p}?`));
+}
 
 function wsBaseUrl(): string {
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
@@ -62,12 +67,16 @@ class ApiClient {
       const refreshToken = readRefreshToken();
       if (!refreshToken) return false;
 
+      const timeoutController = new AbortController();
+      const timer = setTimeout(() => timeoutController.abort(), 10_000);
+
       try {
         const url = API_URL ? `${API_URL}/api/v1/auth/refresh` : '/api/v1/auth/refresh';
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refresh_token: refreshToken }),
+          signal: timeoutController.signal,
         });
         if (!res.ok) return false;
         const data = await res.json() as { access_token: string; refresh_token: string };
@@ -76,6 +85,7 @@ class ApiClient {
       } catch {
         return false;
       } finally {
+        clearTimeout(timer);
         this.refreshPromise = null;
       }
     })();
@@ -100,7 +110,7 @@ class ApiClient {
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string>),
     };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (token && !isAuthPath(path)) headers['Authorization'] = `Bearer ${token}`;
     if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
 
     const url = API_URL ? `${API_URL}${path}` : path;
@@ -126,7 +136,7 @@ class ApiClient {
       clearTimeout(timer);
     }
 
-    if (res.status === 401 && allowRefresh && path !== '/api/v1/auth/refresh') {
+    if (res.status === 401 && allowRefresh && !isAuthPath(path)) {
       const refreshed = await this.refreshSession();
       if (refreshed) {
         return this.request<T>(path, options, timeoutMs, false);
@@ -158,6 +168,19 @@ class ApiClient {
       method: 'POST',
       body: body instanceof FormData ? body : JSON.stringify(body),
     });
+  }
+
+  /** Login without sending stale tokens or retrying refresh on 401. */
+  login<T>(username: string, password: string) {
+    return this.request<T>(
+      '/api/v1/auth/login',
+      {
+        method: 'POST',
+        body: JSON.stringify({ username: username.trim(), password }),
+      },
+      20_000,
+      false,
+    );
   }
 
   patch<T>(path: string, body?: unknown, init?: RequestInit) {

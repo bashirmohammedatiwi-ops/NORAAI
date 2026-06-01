@@ -1,3 +1,5 @@
+import asyncio
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,7 +20,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == data.username))
     user = result.scalar_one_or_none()
-    if not user or not verify_password(data.password, user.hashed_password):
+    password_ok = user and await asyncio.to_thread(
+        verify_password, data.password, user.hashed_password
+    )
+    if not password_ok:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token_data = {"sub": str(user.id), "role": user.role.value}
     return TokenResponse(
