@@ -211,7 +211,7 @@ export default function DataHubPage() {
                       </Badge>
                     )}
                   </CardTitle>
-                  <CardDescription>Drag & drop or browse — auto full-image YOLO labels</CardDescription>
+                  <CardDescription>Detects the car first, then applies the class label to that region</CardDescription>
                 </div>
               </div>
             </CardHeader>

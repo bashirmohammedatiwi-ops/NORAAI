@@ -141,7 +141,7 @@ export function BulkImageUpload({
             <p className="text-sm text-muted-foreground mt-1">
               {backgroundMode
                 ? 'Background upload — no labels (reduces false accident alerts)'
-                : 'Bulk upload — 8 images/request · 2 parallel · auto YOLO labels'}
+                : 'Bulk upload — detects car region, then applies class label'}
             </p>
             {className && ready && (
               <span

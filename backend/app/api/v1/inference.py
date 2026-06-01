@@ -70,6 +70,8 @@ async def predict(
         "primary_confidence": primary["confidence"] if primary else None,
         "confidence_threshold": meta.get("confidence_threshold"),
         "raw_detection_count": meta.get("raw_detection_count", 0),
+        "vehicle_count": meta.get("vehicle_count", 0),
+        "pipeline": meta.get("pipeline", "two_stage"),
         "warnings": meta.get("warnings", []),
         "latency_ms": round(latency_ms, 1),
         "message": (

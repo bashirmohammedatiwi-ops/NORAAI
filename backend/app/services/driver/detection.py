@@ -98,34 +98,41 @@ async def run_detection(
             imgf.write(image_bytes)
             image_path = imgf.name
 
+        from ml.detection.two_stage import classify_vehicles_two_stage
         from ml.training.adapters import get_adapter
 
         adapter = get_adapter(artifact.architecture or "yolo11")
         yolo_conf = min(0.2, settings.inference_confidence_threshold)
-        raw = adapter.predict(
-            weights_path,
+
+        raw_items, vehicles = classify_vehicles_two_stage(
             image_path,
-            conf=yolo_conf,
+            weights_path,
+            adapter,
+            yolo_conf=yolo_conf,
             iou=settings.inference_iou_threshold,
+            vehicle_conf=0.35,
         )
 
         candidates: list[dict] = []
-        for item in raw:
+        for item in raw_items:
             idx = item.get("class_id", 0)
             name = class_names[idx] if idx < len(class_names) else f"class_{idx}"
             if normalize_class_name(name) not in allowed_norm:
                 continue
             event_type = map_class_to_event(name)
+            cx = item.get("x_center", 0.5)
+            cy = item.get("y_center", 0.5)
+            w = item.get("width", 0.2)
+            h = item.get("height", 0.2)
             candidates.append({
                 "class": name,
                 "event_type": event_type.value if event_type else None,
                 "confidence": item.get("confidence", 0.0),
-                "bbox": [
-                    item.get("x_center", 0.5) - item.get("width", 0.2) / 2,
-                    item.get("y_center", 0.5) - item.get("height", 0.2) / 2,
-                    item.get("x_center", 0.5) + item.get("width", 0.2) / 2,
-                    item.get("y_center", 0.5) + item.get("height", 0.2) / 2,
-                ],
+                "bbox": [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2],
+                "vehicle_bbox": item.get("vehicle_bbox"),
+                "vehicle_type": item.get("vehicle_type"),
+                "vehicle_confidence": item.get("vehicle_confidence"),
+                "pipeline": "two_stage",
             })
 
         predictions, threshold, warnings = filter_detections(
@@ -135,12 +142,20 @@ async def run_detection(
             settings=settings,
         )
 
+        if not vehicles:
+            warnings = list(warnings) + [
+                "No vehicle detected in the image — class was not assigned. "
+                "Ensure the car is visible and retrain with vehicle-region labels.",
+            ]
+
         Path(weights_path).unlink(missing_ok=True)
         Path(image_path).unlink(missing_ok=True)
         return predictions, None, {
             "confidence_threshold": threshold,
             "class_count": class_count,
             "raw_detection_count": len(candidates),
+            "vehicle_count": len(vehicles),
+            "pipeline": "two_stage",
             "warnings": warnings,
         }
     except Exception as exc:

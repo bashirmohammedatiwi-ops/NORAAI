@@ -13,6 +13,10 @@ interface Prediction {
   class: string;
   confidence: number;
   bbox: number[];
+  vehicle_bbox?: number[];
+  vehicle_type?: string;
+  vehicle_confidence?: number;
+  pipeline?: string;
 }
 
 interface PredictResponse {
@@ -146,7 +150,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
           Manual Test · اختبار يدوي
         </CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
-          Upload an image to test detection. Use confidence threshold to reduce false alarms.
+          Step 1: detect vehicle · Step 2: classify. Blue = car location, green = class.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -249,6 +253,24 @@ export function DashboardManualTest({ projects, compact }: Props) {
                         className="block max-w-full max-h-64 h-auto rounded-lg border border-border"
                       />
                       {sortedPredictions.map((p, i) => (
+                        p.vehicle_bbox ? (
+                          <div
+                            key={`vehicle-${i}`}
+                            className="absolute border-2 border-dashed border-blue-500 rounded-sm pointer-events-none"
+                            style={{
+                              left: `${p.vehicle_bbox[0] * 100}%`,
+                              top: `${p.vehicle_bbox[1] * 100}%`,
+                              width: `${Math.max(0, (p.vehicle_bbox[2] - p.vehicle_bbox[0]) * 100)}%`,
+                              height: `${Math.max(0, (p.vehicle_bbox[3] - p.vehicle_bbox[1]) * 100)}%`,
+                            }}
+                          >
+                            <span className="absolute -top-5 left-0 text-[10px] font-semibold bg-blue-600 text-white px-1 rounded whitespace-nowrap">
+                              Vehicle {p.vehicle_type ?? 'car'}
+                            </span>
+                          </div>
+                        ) : null
+                      ))}
+                      {sortedPredictions.map((p, i) => (
                         <div
                           key={`${p.class}-${i}`}
                           className="absolute border-2 border-emerald-500 rounded-sm pointer-events-none"
@@ -259,7 +281,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
                             height: `${Math.max(0, (p.bbox[3] - p.bbox[1]) * 100)}%`,
                           }}
                         >
-                          <span className="absolute -top-5 left-0 text-[10px] font-semibold bg-emerald-600 text-white px-1 rounded whitespace-nowrap">
+                          <span className="absolute -top-5 right-0 text-[10px] font-semibold bg-emerald-600 text-white px-1 rounded whitespace-nowrap">
                             {p.class} {(p.confidence * 100).toFixed(0)}%
                           </span>
                         </div>
