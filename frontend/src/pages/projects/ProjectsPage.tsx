@@ -8,10 +8,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
-import { Plus, ArrowRight, Trash2 } from 'lucide-react';
+import { Plus, ArrowRight, Trash2, RefreshCw, AlertCircle } from 'lucide-react';
 
 export default function ProjectsPage() {
-  const { data: projects = [], isLoading } = useProjectsList();
+  const { data: projects = [], isPending, isError, error, refetch, isFetching } = useProjectsList();
   const { invalidateList } = useInvalidateProjects();
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
@@ -52,6 +52,21 @@ export default function ProjectsPage() {
         </div>
       )}
 
+      {isPending && (
+        <div className="py-12 text-center text-sm text-muted-foreground">Loading projects...</div>
+      )}
+
+      {isError && (
+        <div className="surface py-10 text-center space-y-3">
+          <AlertCircle className="h-8 w-8 mx-auto text-destructive/80" />
+          <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : 'Failed to load projects'}</p>
+          <Button size="sm" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> Retry
+          </Button>
+        </div>
+      )}
+
+      {!isPending && !isError && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {projects.map((p) => (
           <Card key={p.id} className="hover:border-primary/30 transition-colors">
@@ -82,8 +97,9 @@ export default function ProjectsPage() {
           </Card>
         ))}
       </div>
+      )}
 
-      {!isLoading && projects.length === 0 && !showCreate && (
+      {!isPending && !isError && projects.length === 0 && !showCreate && (
         <div className="surface py-12 text-center text-sm text-muted-foreground">
           <p>No projects yet</p>
           <Button className="mt-3" size="sm" onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" /> New project</Button>

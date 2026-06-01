@@ -1,6 +1,4 @@
-import asyncio
-
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
@@ -9,28 +7,43 @@ from app.schemas import ProjectListItemResponse
 from app.services.projects.service import list_projects, project_has_model
 
 
-async def _scalar_count(query) -> int:
-    async with async_session() as db:
-        result = await db.execute(query)
-        return result.scalar() or 0
+async def _fast_image_count(db: AsyncSession) -> int:
+    """Use PostgreSQL estimate for large tables; exact count for small ones."""
+    try:
+        estimate = (
+            await db.execute(text("SELECT reltuples::bigint FROM pg_class WHERE relname = 'images'"))
+        ).scalar()
+        if estimate is not None and int(estimate) >= 10_000:
+            return int(estimate)
+    except Exception:
+        pass
+    return (await db.execute(select(func.count(Image.id)))).scalar() or 0
 
 
 async def fetch_dashboard_stats() -> dict:
-    projects_q = select(func.count(Project.id))
-    training_q = select(func.count(TrainingJob.id)).where(TrainingJob.status == TrainingStatus.RUNNING)
-    deployed_q = select(func.count(Deployment.id)).where(Deployment.status == DeploymentStatus.ACTIVE)
-    fleet_q = select(func.count(FleetDevice.id)).where(FleetDevice.is_online == True)
-    images_q = select(func.count(Image.id))
-    alerts_q = select(func.count(DriftAlert.id)).where(DriftAlert.is_acknowledged == False)
-
-    total_projects, active_training, deployed, fleet, images, alerts = await asyncio.gather(
-        _scalar_count(projects_q),
-        _scalar_count(training_q),
-        _scalar_count(deployed_q),
-        _scalar_count(fleet_q),
-        _scalar_count(images_q),
-        _scalar_count(alerts_q),
-    )
+    async with async_session() as db:
+        total_projects = (await db.execute(select(func.count(Project.id)))).scalar() or 0
+        active_training = (
+            await db.execute(
+                select(func.count(TrainingJob.id)).where(TrainingJob.status == TrainingStatus.RUNNING)
+            )
+        ).scalar() or 0
+        deployed = (
+            await db.execute(
+                select(func.count(Deployment.id)).where(Deployment.status == DeploymentStatus.ACTIVE)
+            )
+        ).scalar() or 0
+        fleet = (
+            await db.execute(
+                select(func.count(FleetDevice.id)).where(FleetDevice.is_online == True)
+            )
+        ).scalar() or 0
+        images = await _fast_image_count(db)
+        alerts = (
+            await db.execute(
+                select(func.count(DriftAlert.id)).where(DriftAlert.is_acknowledged == False)
+            )
+        ).scalar() or 0
 
     return {
         "total_projects": total_projects,
@@ -43,21 +56,17 @@ async def fetch_dashboard_stats() -> dict:
 
 
 async def fetch_dashboard_home(db: AsyncSession, org_id) -> dict:
-    stats_task = fetch_dashboard_stats()
     projects = await list_projects(db, org_id)
-    stats = await stats_task
-
-    return {
-        "stats": stats,
-        "projects": [
-            ProjectListItemResponse(
-                id=p.id,
-                name=p.name,
-                description=p.description,
-                domain=p.domain,
-                created_at=p.created_at,
-                has_model=project_has_model(p),
-            )
-            for p in projects
-        ],
-    }
+    project_items = [
+        ProjectListItemResponse(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            domain=p.domain,
+            created_at=p.created_at,
+            has_model=project_has_model(p),
+        )
+        for p in projects
+    ]
+    stats = await fetch_dashboard_stats()
+    return {"stats": stats, "projects": project_items}

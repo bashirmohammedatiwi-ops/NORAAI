@@ -66,7 +66,12 @@ fi
 # --- Build & Start ---
 echo "[4/6] Building containers (first build may take 10-20 min)..."
 docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
-docker compose -f docker-compose.prod.yml build --parallel
+docker compose -f docker-compose.prod.yml build --parallel gateway api
+if grep -qE '^TRAINING_DOCKERFILE=Dockerfile\.gpu' .env 2>/dev/null; then
+  docker compose -f docker-compose.prod.yml build worker-training
+else
+  docker tag aiops-backend:latest aiops-backend-training:latest 2>/dev/null || true
+fi
 
 echo "[5/6] Starting containers..."
 docker compose -f docker-compose.prod.yml up -d
@@ -100,6 +105,10 @@ fi
 # Start gateway if api is healthy
 docker compose -f docker-compose.prod.yml up -d gateway worker-ingestion worker-labeling worker-training worker-deploy worker-monitor worker-reports 2>/dev/null || \
   docker compose -f docker-compose.prod.yml up -d
+
+if [ -x scripts/docker_cleanup_after_update.sh ]; then
+  ./scripts/docker_cleanup_after_update.sh
+fi
 
 echo ""
 echo "=============================================="

@@ -2,14 +2,39 @@ import { Link, Navigate } from 'react-router-dom';
 import { useProjectsList } from '@/hooks/useProjects';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, Plus, ArrowRight, FolderKanban } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Sparkles, Plus, ArrowRight, FolderKanban, RefreshCw, AlertCircle } from 'lucide-react';
 
 export default function DatasetBuilderLandingPage() {
-  const { data: projects = [], isLoading: loading } = useProjectsList();
+  const { data: projects = [], isPending, isError, error, refetch, isFetching } = useProjectsList();
 
-  if (loading) {
-    return <div className="py-12 text-center text-muted-foreground">Loading projects...</div>;
+  if (isPending) {
+    return (
+      <div className="py-12 text-center text-muted-foreground space-y-2">
+        <p>Loading projects...</p>
+        <p className="text-xs">This should only take a few seconds</p>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="py-12 text-center space-y-4 max-w-md mx-auto">
+        <AlertCircle className="h-10 w-10 mx-auto text-destructive/80" />
+        <p className="text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : 'Failed to load projects'}
+        </p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            Retry
+          </Button>
+          <Link to="/login">
+            <Button variant="outline">Re-login</Button>
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   if (projects.length === 1) {

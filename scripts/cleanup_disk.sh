@@ -13,11 +13,23 @@ for arg in "$@"; do
   case "$arg" in
     --volumes) DELETE_VOLUMES=1 ;;
     --all-images) PRUNE_ALL_IMAGES=1 ;;
+    --after-update)
+      echo "Post-update cleanup (unused images + build cache)..."
+      docker image prune -f
+      docker image prune -a -f
+      docker builder prune -f --filter until=24h 2>/dev/null || docker builder prune -f
+      echo ""
+      echo "=== After cleanup ==="
+      df -h / | tail -1
+      docker system df
+      exit 0
+      ;;
     -h|--help)
-      echo "Usage: $0 [--all-images] [--volumes]"
-      echo "  default      Remove build cache, stopped containers, dangling images"
-      echo "  --all-images Also remove unused images not referenced by running containers"
-      echo "  --volumes    Stop stack and delete ALL aiops volumes (DATA LOSS)"
+      echo "Usage: $0 [--all-images] [--volumes] [--after-update]"
+      echo "  default        Remove build cache, stopped containers, dangling images"
+      echo "  --after-update Same as default + remove unused images (safe after deploy)"
+      echo "  --all-images   Also remove unused images not referenced by running containers"
+      echo "  --volumes      Stop stack and delete ALL aiops volumes (DATA LOSS)"
       exit 0
       ;;
   esac

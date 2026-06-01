@@ -27,6 +27,8 @@ function formatApiError(detail: unknown, fallback = 'Request failed'): string {
   return fallback;
 }
 
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 class ApiClient {
   private token: string | null = localStorage.getItem('token');
 
@@ -40,7 +42,7 @@ class ApiClient {
     localStorage.removeItem('token');
   }
 
-  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  private async request<T>(path: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string>),
     };
@@ -48,7 +50,20 @@ class ApiClient {
     if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
 
     const url = API_URL ? `${API_URL}${path}` : path;
-    const res = await fetch(url, { ...options, headers });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    let res: Response;
+    try {
+      res = await fetch(url, { ...options, headers, signal: controller.signal });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new Error('Request timed out — API may be busy or unreachable. Try again.');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
     if (res.status === 401) {
       this.clearToken();
       window.location.href = '/login';

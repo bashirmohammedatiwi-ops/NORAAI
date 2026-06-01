@@ -101,8 +101,38 @@ docker compose -f docker-compose.prod.yml restart
 docker compose -f docker-compose.prod.yml down
 
 # تحديث بعد تعديل الكود
-docker compose -f docker-compose.prod.yml up -d --build
+cd /opt/aiops
+./scripts/update_vps.sh
 ```
+
+> **مساحة القرص:** كل تحديث قديم كان يستخدم `build --no-cache` ويبني 8 نسخ من backend — هذا يستهلك ~10 GB إضافية.  
+> السكربت الحالي يستخدم **Docker cache** + **صورة backend واحدة** + **تنظيف تلقائي** بعد التحديث.
+
+### تنظيف مساحة القرص
+
+```bash
+# عرض ما يستهلك المساحة
+./scripts/disk_usage.sh
+
+# تنظيف آمن (لا يحذف بيانات المشروع)
+./scripts/cleanup_disk.sh --after-update
+
+# تنظيف أقوى — يحذف الصور غير المستخدمة
+./scripts/cleanup_disk.sh --all-images
+
+# تحرير مساحة فوراً (مرة واحدة بعد التحديث القديم)
+./scripts/docker_cleanup_after_update.sh
+```
+
+**ما يستهلك المساحة عادة:**
+| المصدر | الحجم التقريبي |
+|--------|----------------|
+| `minio_data` | الصور والنماذج المرفوعة (بيانات حقيقية) |
+| `training_data` | ملفات تدريب مؤقتة |
+| Docker build cache | ~2–5 GB بعد عدة تحديثات |
+| صور Docker القديمة | ~1–2 GB لكل rebuild بدون تنظيف |
+
+**لا تستخدم** `--volumes` إلا إذا أردت حذف كل البيانات.
 
 ## GPU (اختياري)
 

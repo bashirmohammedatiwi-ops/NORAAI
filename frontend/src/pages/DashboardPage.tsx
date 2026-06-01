@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useDashboardHome } from '@/hooks/useProjects';
+import { useProjectsList, useDashboardStats } from '@/hooks/useProjects';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,9 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { FolderKanban, Brain, Truck, AlertTriangle, ArrowRight, Sparkles } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { data, isLoading } = useDashboardHome();
-  const stats = data?.stats ?? {};
-  const projects = data?.projects ?? [];
+  const { data: projects = [], isPending: projectsLoading } = useProjectsList();
+  const { data: stats = {} } = useDashboardStats();
 
   const kpis = [
     { label: 'Projects', value: stats.total_projects ?? projects.length, icon: FolderKanban },
@@ -32,7 +31,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="text-2xl font-semibold mt-0.5">{isLoading ? '—' : value}</p>
+                <p className="text-2xl font-semibold mt-0.5">{projectsLoading && label === 'Projects' ? '—' : value}</p>
               </div>
               <Icon className="h-5 w-5 text-muted-foreground/60" />
             </div>
@@ -48,7 +47,10 @@ export default function DashboardPage() {
           </Link>
         </CardHeader>
         <CardContent className="space-y-1">
-          {projects.map((p) => (
+          {projectsLoading && (
+            <p className="py-6 text-center text-sm text-muted-foreground">Loading projects...</p>
+          )}
+          {!projectsLoading && projects.map((p) => (
             <Link
               key={p.id}
               to={`/projects/${p.id}`}
@@ -63,7 +65,7 @@ export default function DashboardPage() {
               <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
             </Link>
           ))}
-          {!isLoading && projects.length === 0 && (
+          {!projectsLoading && projects.length === 0 && (
             <div className="py-8 text-center text-sm text-muted-foreground">
               <p>No projects yet</p>
               <Link to="/projects"><Button className="mt-3" size="sm">Create project</Button></Link>

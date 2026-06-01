@@ -66,8 +66,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: aiops-backend:latest
     restart: always
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
     env_file: .env
     ports:
       - "${PORT_API:-6001}:8000"
@@ -88,9 +89,7 @@ services:
       - aiops
 
   worker-ingestion:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: aiops-backend:latest
     restart: always
     command: celery -A workers.celery_app worker -Q ingestion -c 6 --loglevel=info
     env_file: .env
@@ -101,9 +100,7 @@ services:
       - aiops
 
   worker-labeling:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: aiops-backend:latest
     restart: always
     command: celery -A workers.celery_app worker -Q labeling -c 1 --loglevel=info
     env_file: .env
@@ -117,6 +114,7 @@ services:
     build:
       context: ./backend
       dockerfile: ${TRAINING_DOCKERFILE:-Dockerfile}
+    image: aiops-backend-training:latest
     restart: always
     command: celery -A workers.celery_app worker -Q training -c 1 --loglevel=info
     env_file: .env
@@ -129,9 +127,7 @@ services:
       - aiops
 
   worker-deploy:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: aiops-backend:latest
     restart: always
     command: celery -A workers.celery_app worker -Q deploy -c 1 --loglevel=info
     env_file: .env
@@ -142,9 +138,7 @@ services:
       - aiops
 
   worker-monitor:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: aiops-backend:latest
     restart: always
     command: celery -A workers.celery_app worker -Q monitor -c 1 --loglevel=info
     env_file: .env
@@ -155,9 +149,7 @@ services:
       - aiops
 
   worker-reports:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: aiops-backend:latest
     restart: always
     command: celery -A workers.celery_app worker -Q reports -c 1 --loglevel=info
     env_file: .env
@@ -168,9 +160,7 @@ services:
       - aiops
 
   celery-beat:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: aiops-backend:latest
     restart: always
     command: celery -A workers.celery_app beat --loglevel=info
     env_file: .env
@@ -215,6 +205,7 @@ services:
       args:
         VITE_API_URL: ''
         VITE_WS_URL: ''
+    image: aiops-gateway:latest
     restart: always
     ports:
       - "${PORT_APP:-8080}:80"
@@ -233,6 +224,7 @@ services:
     build:
       context: ./driver-app
       dockerfile: Dockerfile.prod
+    image: aiops-driver:latest
     restart: always
     ports:
       - "${PORT_DRIVER:-5000}:5000"
