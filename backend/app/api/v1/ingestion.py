@@ -27,6 +27,7 @@ from app.schemas import (
     ClassUpdate,
     DeleteResultResponse,
     FleetDeviceCreate,
+    FleetDeviceRegisterResponse,
     FleetDeviceResponse,
     ImageResponse,
     IngestionUploadResponse,
@@ -275,17 +276,30 @@ async def list_fleet(project_id: UUID, db: AsyncSession = Depends(get_db)):
     return list(result.scalars().all())
 
 
-@router.post("/fleet/{project_id}", response_model=FleetDeviceResponse)
+@router.post("/fleet/{project_id}", response_model=FleetDeviceRegisterResponse)
 async def register_device(project_id: UUID, data: FleetDeviceCreate, db: AsyncSession = Depends(get_db)):
+    api_key = secrets.token_urlsafe(32)
     device = FleetDevice(
         project_id=project_id,
         device_id=data.device_id,
         vehicle_id=data.vehicle_id,
-        api_key=secrets.token_urlsafe(32),
+        api_key=api_key,
     )
     db.add(device)
     await db.flush()
-    return device
+    return FleetDeviceRegisterResponse(
+        id=device.id,
+        device_id=device.device_id,
+        vehicle_id=device.vehicle_id,
+        gps_status=device.gps_status,
+        camera_status=device.camera_status,
+        is_online=device.is_online,
+        latitude=device.latitude,
+        longitude=device.longitude,
+        last_communication=device.last_communication,
+        api_key=api_key,
+        project_id=project_id,
+    )
 
 
 @router.post("/fleet/{device_id}/telemetry")

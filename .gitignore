@@ -21,6 +21,9 @@ htmlcov/
 
 # Node
 node_modules/
+driver-app/node_modules/
+driver-app/release/
+driver-app/dist/
 frontend/dist/
 *.log
 npm-debug.log*
@@ -44,6 +47,13 @@ minio_data/
 *.onnx
 runs/
 /tmp/training/
+
+# Downloaded sample datasets
+data/_download_cache/
+data/pothole_samples/pothole_*.*
+data/pothole_samples/*.jpg
+data/pothole_samples/*.jpeg
+data/pothole_samples/*.png
 
 # Secrets
 *.pem

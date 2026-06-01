@@ -320,6 +320,11 @@ class FleetDeviceResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class FleetDeviceRegisterResponse(FleetDeviceResponse):
+    api_key: str
+    project_id: UUID
+
+
 class TelemetryRequest(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
@@ -342,6 +347,39 @@ class PasswordConfirmRequest(BaseModel):
 class DeleteResultResponse(BaseModel):
     deleted: str
     message: str | None = None
+
+
+class DriverAlertType(BaseModel):
+    type: str
+    label: str
+    label_ar: str
+    color: str
+
+
+class DriverConfigResponse(BaseModel):
+    project_id: UUID
+    device_id: str
+    vehicle_id: str
+    model_ready: bool
+    model_name: str | None
+    classes: list[str]
+    alert_types: list[DriverAlertType]
+    speed_limit_kmh: float = 80
+
+
+class DriverDetectResponse(BaseModel):
+    detections: list[dict]
+    alerts: list[dict]
+    events_created: int
+
+
+class DriverNearbyEvent(BaseModel):
+    id: UUID
+    event_type: str
+    latitude: float
+    longitude: float
+    confidence: float | None
+    distance_km: float
 
 
 class ReportCreate(BaseModel):

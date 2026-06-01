@@ -87,6 +87,9 @@ async def road_events(project_id: UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/road-intelligence/{project_id}/events")
 async def create_road_event(project_id: UUID, data: RoadEventCreate, db: AsyncSession = Depends(get_db)):
+    import json
+    from app.core.redis_client import get_redis
+
     event = RoadEvent(
         project_id=project_id,
         event_type=RoadEventType(data.event_type),
@@ -96,6 +99,20 @@ async def create_road_event(project_id: UUID, data: RoadEventCreate, db: AsyncSe
     )
     db.add(event)
     await db.flush()
+    try:
+        redis = await get_redis()
+        await redis.publish(
+            f"road:{project_id}",
+            json.dumps({
+                "id": str(event.id),
+                "event_type": event.event_type.value,
+                "latitude": event.latitude,
+                "longitude": event.longitude,
+                "confidence": event.confidence,
+            }),
+        )
+    except Exception:
+        pass
     return {"id": str(event.id), "event_type": event.event_type.value}
 
 
