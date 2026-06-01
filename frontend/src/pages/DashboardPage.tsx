@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { useProjectsList, useDashboardStats } from '@/hooks/useProjects';
+import { useDashboardHome } from '@/hooks/useProjects';
+import { DashboardActiveTraining } from '@/components/dashboard/DashboardActiveTraining';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,18 +9,22 @@ import { FolderKanban, Brain, Truck, AlertTriangle, ArrowRight, Sparkles, Refres
 
 export default function DashboardPage() {
   const {
-    projects,
-    isInitialLoading,
+    data,
+    isLoading: isInitialLoading,
     isFetching,
     isError,
     error,
     refetch,
-  } = useProjectsList();
-  const { data: stats = {} } = useDashboardStats();
+  } = useDashboardHome();
+
+  const projects = data?.projects ?? [];
+  const stats = data?.stats ?? {};
+  const activeTraining = data?.active_training ?? [];
+  const hasActiveTraining = activeTraining.length > 0;
 
   const kpis = [
     { label: 'Projects', value: stats.total_projects ?? projects.length, icon: FolderKanban },
-    { label: 'Training', value: stats.active_training_jobs || 0, icon: Brain },
+    { label: 'Training', value: stats.active_training_jobs || activeTraining.length, icon: Brain },
     { label: 'Fleet online', value: stats.fleet_devices_online || 0, icon: Truck },
     { label: 'Alerts', value: stats.alerts_active || 0, icon: AlertTriangle },
   ];
@@ -34,6 +39,10 @@ export default function DashboardPage() {
           <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
         </Button>
       </PageHeader>
+
+      {hasActiveTraining && (
+        <DashboardActiveTraining jobs={activeTraining} onStopped={() => refetch()} />
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {kpis.map(({ label, value, icon: Icon }) => (
@@ -87,6 +96,11 @@ export default function DashboardPage() {
                 <Badge variant={p.has_model ? 'success' : 'warning'} className="shrink-0 text-[10px] px-1.5 py-0">
                   {p.has_model ? 'Model' : 'No model'}
                 </Badge>
+                {activeTraining.some((t) => t.project_id === p.id) && (
+                  <Badge variant="success" className="shrink-0 text-[10px] px-1.5 py-0 gap-0.5">
+                    <Brain className="h-3 w-3" /> Training
+                  </Badge>
+                )}
               </div>
               <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
             </Link>

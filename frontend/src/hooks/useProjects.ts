@@ -59,6 +59,41 @@ export const projectKeys = {
   activeModel: (id: string) => [...projectKeys.all, 'active-model', id] as const,
 };
 
+export interface DashboardActiveTrainingJob {
+  job_id: string;
+  project_id: string;
+  project_name: string;
+  name: string;
+  architecture: string;
+  status: string;
+  progress: number;
+  current_epoch: number;
+  total_epochs: number;
+  phase?: string | null;
+  message?: string | null;
+  batch?: number | null;
+  total_batches?: number | null;
+  epoch_progress?: number | null;
+  export_current?: number | null;
+  export_total?: number | null;
+  current_step?: number | null;
+  total_steps?: number | null;
+  duration_seconds?: number | null;
+  eta_seconds?: number | null;
+  device_label?: string;
+  latest_metrics?: {
+    loss?: number | null;
+    map50?: number | null;
+    precision?: number | null;
+  } | null;
+}
+
+export interface DashboardHomeData {
+  stats: Record<string, number>;
+  projects: ProjectListItem[];
+  active_training: DashboardActiveTrainingJob[];
+}
+
 export const dashboardKeys = {
   stats: ['dashboard', 'stats'] as const,
   home: ['dashboard', 'home'] as const,
@@ -124,10 +159,11 @@ export function useDashboardStats() {
 export function useDashboardHome() {
   return useQuery({
     queryKey: dashboardKeys.home,
-    queryFn: ({ signal }) =>
-      api.get<{ stats: Record<string, number>; projects: ProjectListItem[] }>('/api/v1/dashboard/home', { signal }),
-    staleTime: 60_000,
+    queryFn: ({ signal }) => api.get<DashboardHomeData>('/api/v1/dashboard/home', { signal }),
+    staleTime: 15_000,
     retry: 1,
+    placeholderData: (prev) => prev,
+    refetchInterval: (query) => ((query.state.data?.active_training?.length ?? 0) > 0 ? 4000 : 30_000),
   });
 }
 

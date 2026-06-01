@@ -77,6 +77,32 @@ class ProjectOverviewResponse(BaseModel):
 class DashboardHomeResponse(BaseModel):
     stats: dict
     projects: list[ProjectListItemResponse]
+    active_training: list["ActiveTrainingJobResponse"] = []
+
+
+class ActiveTrainingJobResponse(BaseModel):
+    job_id: str
+    project_id: str
+    project_name: str
+    name: str
+    architecture: str
+    status: str
+    progress: int = 0
+    current_epoch: int = 0
+    total_epochs: int = 0
+    phase: str | None = None
+    message: str | None = None
+    batch: int | None = None
+    total_batches: int | None = None
+    epoch_progress: int | None = None
+    export_current: int | None = None
+    export_total: int | None = None
+    current_step: int | None = None
+    total_steps: int | None = None
+    duration_seconds: int | None = None
+    eta_seconds: int | None = None
+    device_label: str = "CPU Training"
+    latest_metrics: dict | None = None
 
 
 class ModelDefinitionCreate(BaseModel):

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import async_session
 from app.models import Deployment, DeploymentStatus, DriftAlert, FleetDevice, Image, Project, TrainingJob, TrainingStatus
 from app.schemas import ProjectListItemResponse
+from app.services.dashboard.active_training import fetch_active_training_jobs
 from app.services.projects.service import list_projects, project_has_model
 
 
@@ -69,4 +70,5 @@ async def fetch_dashboard_home(db: AsyncSession, org_id) -> dict:
         for p in projects
     ]
     stats = await fetch_dashboard_stats()
-    return {"stats": stats, "projects": project_items}
+    active_training = await fetch_active_training_jobs(db, org_id)
+    return {"stats": stats, "projects": project_items, "active_training": active_training}
