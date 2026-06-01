@@ -79,7 +79,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
       {/* Desktop */}
       <aside className="hidden lg:flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar min-h-screen">
         <div className="border-b border-sidebar-border px-4 py-4">
-          <p className="text-sm font-semibold">NORAAI</p>
+          <p className="text-sm font-semibold">NURAI</p>
         </div>
         <nav className="flex-1 overflow-y-auto p-3">
           <NavLinks />
@@ -93,7 +93,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           <div className="absolute inset-0 bg-black/40" onClick={onMobileClose} />
           <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-sidebar shadow-xl">
             <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4">
-              <p className="text-sm font-semibold">NORAAI</p>
+              <p className="text-sm font-semibold">NURAI</p>
               <button type="button" onClick={onMobileClose} className="rounded-md p-1 hover:bg-accent" aria-label="Close menu">
                 <X className="h-5 w-5" />
               </button>

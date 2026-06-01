@@ -166,10 +166,11 @@ export default function DrivePage({ config, onLogout }: Props) {
   }, [config, loc.location, camOk, aiOn, pushAlert, activeLimit]);
 
   const gpsBad =
-    loc.gpsStatus === 'denied' ||
-    loc.gpsStatus === 'unavailable' ||
-    loc.gpsStatus === 'loading' ||
-    loc.gpsStatus === 'locating';
+    !loc.location &&
+    (loc.gpsStatus === 'denied' ||
+      loc.gpsStatus === 'unavailable' ||
+      loc.gpsStatus === 'loading' ||
+      loc.gpsStatus === 'locating');
 
   return (
     <div className="nx-app">

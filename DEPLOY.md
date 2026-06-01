@@ -14,6 +14,7 @@
 | المنفذ | الخدمة | الوصف |
 |--------|--------|-------|
 | **8080** | Gateway | التطبيق الرئيسي (واجهة + API + WebSocket) |
+| **5000** | Driver Web | تطبيق السائق (Rasid Drive) |
 | **6001** | API | الوصول المباشر للـ API و Swagger |
 | **6002** | MinIO | تخزين S3 للصور والنماذج |
 | **6003** | MinIO Console | لوحة إدارة MinIO |
@@ -77,6 +78,7 @@ sudo iptables -A INPUT -p tcp --dport 6001:6005 -j ACCEPT
 | الخدمة | الرابط |
 |--------|--------|
 | التطبيق | `http://YOUR_VPS_IP:8080` |
+| تطبيق السائق | `http://YOUR_VPS_IP:5000` |
 | API Docs | `http://YOUR_VPS_IP:8080/docs` |
 | Grafana | `http://YOUR_VPS_IP:6004` |
 | MinIO | `http://YOUR_VPS_IP:6003` |

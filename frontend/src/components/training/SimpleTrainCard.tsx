@@ -1,0 +1,102 @@
+import { useState } from 'react';
+import { api } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Loader2, Play, Settings2 } from 'lucide-react';
+
+interface Props {
+  projectId: string;
+  datasetId: string;
+  imageCount: number;
+  ready: boolean;
+  onStarted: () => void;
+  showAdvanced?: boolean;
+  onToggleAdvanced?: () => void;
+}
+
+export function SimpleTrainCard({
+  projectId,
+  datasetId,
+  imageCount,
+  ready,
+  onStarted,
+  showAdvanced,
+  onToggleAdvanced,
+}: Props) {
+  const [architecture, setArchitecture] = useState('yolo11');
+  const [epochs, setEpochs] = useState(30);
+  const [loading, setLoading] = useState(false);
+
+  const start = async () => {
+    if (!ready || !datasetId) return;
+    setLoading(true);
+    try {
+      await api.post(`/api/v1/training/project/${projectId}/retrain?epochs=${epochs}&architecture=${architecture}`);
+      onStarted();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card className="border-emerald-200/80 bg-gradient-to-br from-emerald-50/50 to-card">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Play className="h-5 w-5 text-emerald-600" />
+              Train Model
+            </CardTitle>
+            <CardDescription className="mt-1">
+              {imageCount > 0
+                ? `${imageCount} images ready · YOLO auto-labels applied`
+                : 'Upload images first to enable training'}
+            </CardDescription>
+          </div>
+          {onToggleAdvanced && (
+            <Button type="button" variant="ghost" size="sm" onClick={onToggleAdvanced}>
+              <Settings2 className="h-4 w-4" />
+              {showAdvanced ? 'Simple' : 'Advanced'}
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="min-w-[140px] flex-1">
+            <Select label="Model" value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
+              <option value="yolo11">YOLO11 (recommended)</option>
+              <option value="yolov10">YOLOv10</option>
+              <option value="rt_detr">RT-DETR</option>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1.5">Epochs</label>
+            <Input
+              type="number"
+              className="w-24"
+              value={epochs}
+              min={5}
+              max={200}
+              onChange={(e) => setEpochs(+e.target.value)}
+            />
+          </div>
+          <Button
+            onClick={start}
+            disabled={loading || !ready}
+            variant="success"
+            className="min-w-[140px]"
+          >
+            {loading ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Starting...</>
+            ) : (
+              <><Play className="h-4 w-4" /> Start Training</>
+            )}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

@@ -30,7 +30,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">NORAAI</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">NURAI</h1>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">

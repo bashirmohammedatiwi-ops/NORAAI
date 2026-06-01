@@ -1,122 +1,198 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useTrainingJob } from '@/hooks/useTrainingJob';
+import { BulkImageUpload } from '@/components/training/BulkImageUpload';
+import { SimpleTrainCard } from '@/components/training/SimpleTrainCard';
 import { TrainingConfigForm } from '@/components/training/TrainingConfigForm';
+import { TrainingMetricsPanel } from '@/components/training/TrainingMetricsPanel';
 import { MetricChart } from '@/components/training/MetricChart';
 import { ArchitectureBadge, TrainingStatusBadge } from '@/components/training/TrainingStatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import {
-  Activity, BarChart3, Brain, Clock, FlaskConical, Layers, RefreshCw, StopCircle, Trophy, Zap
+  Activity, BarChart3, Brain, ChevronDown, ChevronUp, Database, ImageIcon, Plus, RefreshCw, StopCircle,
 } from 'lucide-react';
 
-type Tab = 'configure' | 'jobs' | 'analytics' | 'hpo';
+type Tab = 'studio' | 'charts';
 
 interface JobSummary {
   id: string;
   name: string;
   architecture: string;
   status: string;
-  hpo_enabled: boolean;
   created_at: string;
-  error_message?: string;
 }
 
-interface Trial {
+interface DatasetSummary {
   id: string;
-  trial_number: number;
-  params: Record<string, number>;
-  metrics: Record<string, number>;
-  status: string;
-  is_best: boolean;
+  name: string;
+  image_count: number;
+}
+
+interface ProjectClass {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface BuilderStats {
+  image_count: number;
+  annotated_count: number;
+  ready_for_training: boolean;
+  head_version_id: string | null;
+  per_class: { class_id: string; name: string; color: string; count: number }[];
 }
 
 export default function TrainingPage() {
-  const { id } = useParams();
-  const [tab, setTab] = useState<Tab>('configure');
+  const { id: projectId } = useParams();
+  const [tab, setTab] = useState<Tab>('studio');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showCharts, setShowCharts] = useState(false);
+
+  const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
+  const [classes, setClasses] = useState<ProjectClass[]>([]);
+  const [selectedDatasetId, setSelectedDatasetId] = useState('');
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [newClassName, setNewClassName] = useState('');
+  const [stats, setStats] = useState<BuilderStats | null>(null);
+
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [trials, setTrials] = useState<Trial[]>([]);
   const { job, chartMetrics, connected, refresh } = useTrainingJob(selectedJobId);
 
-  const loadJobs = () => {
-    if (!id) return;
-    api.get<JobSummary[]>(`/api/v1/training/project/${id}`).then((j) => {
-      setJobs(j);
-      if (!selectedJobId && j.length > 0) setSelectedJobId(j[0].id);
-    }).catch(() => {});
-  };
+  const loadDatasets = useCallback(async () => {
+    if (!projectId) return;
+    let list = await api.get<DatasetSummary[]>(`/api/v1/datasets/project/${projectId}`).catch(() => []);
+    if (!list.length) {
+      const created = await api.post<DatasetSummary>(`/api/v1/datasets/project/${projectId}/default`).catch(() => null);
+      if (created) list = [created];
+    }
+    setDatasets(list);
+    setSelectedDatasetId((prev) => prev || list[0]?.id || '');
+  }, [projectId]);
 
-  useEffect(() => { loadJobs(); }, [id]);
+  const loadClasses = useCallback(async () => {
+    if (!projectId) return;
+    const list = await api.get<ProjectClass[]>(`/api/v1/projects/${projectId}/classes`).catch(() => []);
+    setClasses(list);
+    setSelectedClassId((prev) => prev || list[0]?.id || '');
+  }, [projectId]);
+
+  const loadStats = useCallback(async () => {
+    if (!selectedDatasetId) return;
+    const s = await api.get<BuilderStats>(`/api/v1/datasets/${selectedDatasetId}/builder-stats`).catch(() => null);
+    setStats(s);
+  }, [selectedDatasetId]);
+
+  const loadJobs = useCallback(() => {
+    if (!projectId) return;
+    api.get<JobSummary[]>(`/api/v1/training/project/${projectId}`).then((j) => {
+      setJobs(j);
+      const running = j.find((x) => x.status === 'running');
+      const latest = j[0];
+      setSelectedJobId((prev) => {
+        if (prev && j.some((x) => x.id === prev)) return prev;
+        return running?.id ?? latest?.id ?? null;
+      });
+    }).catch(() => {});
+  }, [projectId]);
+
+  useEffect(() => { loadDatasets(); loadClasses(); loadJobs(); }, [loadDatasets, loadClasses, loadJobs]);
+  useEffect(() => { loadStats(); }, [loadStats]);
 
   useEffect(() => {
-    if (!selectedJobId) return;
-    api.get<Trial[]>(`/api/v1/training/${selectedJobId}/trials`).then(setTrials).catch(() => setTrials([]));
-  }, [selectedJobId, job?.status]);
+    const t = setInterval(() => { loadStats(); loadJobs(); }, 8000);
+    return () => clearInterval(t);
+  }, [loadStats, loadJobs]);
 
-  const cancelJob = async (jobId: string) => {
-    await api.post(`/api/v1/training/${jobId}/cancel`);
+  const refreshAll = () => {
+    loadDatasets();
+    loadClasses();
+    loadStats();
     loadJobs();
     refresh();
   };
 
-  const tabs: { key: Tab; label: string; icon: typeof Brain }[] = [
-    { key: 'configure', label: 'Configure', icon: Layers },
-    { key: 'jobs', label: 'Jobs', icon: Activity },
-    { key: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { key: 'hpo', label: 'HPO Trials', icon: FlaskConical },
-  ];
+  const addClass = async () => {
+    if (!projectId || !newClassName.trim()) return;
+    const cls = await api.post<ProjectClass>(`/api/v1/projects/${projectId}/classes`, { name: newClassName.trim() });
+    setNewClassName('');
+    await loadClasses();
+    setSelectedClassId(cls.id);
+  };
 
-  const latest = job?.latest_metrics;
+  const cancelJob = async () => {
+    if (!job?.id) return;
+    await api.post(`/api/v1/training/${job.id}/cancel`);
+    loadJobs();
+    refresh();
+  };
+
+  const selectedClass = classes.find((c) => c.id === selectedClassId);
+  const displayMetrics = job?.latest_metrics ?? job?.artifact?.metrics ?? null;
+  const runningJob = jobs.find((j) => j.status === 'running');
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
+    <div className="space-y-6 max-w-6xl">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Brain className="h-8 w-8 text-primary" />
-            Training Center
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Brain className="h-7 w-7 text-primary" />
+            Training Studio
           </h1>
-          <p className="text-muted-foreground mt-1">مركز التدريب — YOLO, RT-DETR, Faster R-CNN, EfficientDet</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            Upload images · Train YOLO · Track Accuracy &amp; quality metrics
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { loadJobs(); refresh(); }}>
-          <RefreshCw className="h-4 w-4 mr-1" /> Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {connected && (
+            <Badge variant="success" className="gap-1">
+              <Activity className="h-3 w-3 animate-pulse" /> Live
+            </Badge>
+          )}
+          {runningJob && <TrainingStatusBadge status="running" />}
+          <Button variant="outline" size="sm" onClick={refreshAll}>
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </Button>
+        </div>
       </div>
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      {/* Quick stats strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Total Jobs', value: jobs.length, icon: Activity },
-          { label: 'Running', value: jobs.filter((j) => j.status === 'running').length, icon: Zap },
-          { label: 'Completed', value: jobs.filter((j) => j.status === 'completed').length, icon: Trophy },
-          { label: 'Failed', value: jobs.filter((j) => j.status === 'failed').length, icon: StopCircle },
-          { label: 'Best mAP50', value: latest?.map50 ? `${(latest.map50 * 100).toFixed(1)}%` : '—', icon: BarChart3 },
-          { label: 'Live', value: connected ? 'Connected' : 'Offline', icon: Activity },
+          { label: 'Images', value: stats?.image_count ?? 0, icon: ImageIcon },
+          { label: 'Labeled', value: stats?.annotated_count ?? 0, icon: Database },
+          { label: 'Jobs', value: jobs.length, icon: Activity },
+          { label: 'Running', value: jobs.filter((j) => j.status === 'running').length, icon: BarChart3 },
         ].map(({ label, value, icon: Icon }) => (
-          <Card key={label}>
-            <CardContent className="pt-4 pb-3 flex items-center gap-3">
-              <Icon className="h-5 w-5 text-primary shrink-0" />
-              <div>
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="text-lg font-bold">{value}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <div key={label} className="rounded-xl border border-border bg-card px-4 py-3 flex items-center gap-3">
+            <Icon className="h-5 w-5 text-primary shrink-0" />
+            <div>
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="text-xl font-bold">{value}</p>
+            </div>
+          </div>
         ))}
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border">
-        {tabs.map(({ key, label, icon: Icon }) => (
+        {([
+          { key: 'studio' as Tab, label: 'Studio', icon: Brain },
+          { key: 'charts' as Tab, label: 'Charts', icon: BarChart3 },
+        ]).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
+            type="button"
             onClick={() => setTab(key)}
             className={cn(
               'flex items-center gap-2 px-4 py-2 text-sm border-b-2 -mb-px transition-colors',
-              tab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+              tab === key ? 'border-primary text-primary font-medium' : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             <Icon className="h-4 w-4" />{label}
@@ -124,112 +200,157 @@ export default function TrainingPage() {
         ))}
       </div>
 
-      {tab === 'configure' && id && (
-        <TrainingConfigForm projectId={id} onStarted={() => { loadJobs(); setTab('jobs'); }} />
-      )}
+      {tab === 'studio' && projectId && (
+        <div className="space-y-5">
+          {/* Step 1: Class + Upload */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">1</span>
+                Upload Training Images
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {classes.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setSelectedClassId(c.id)}
+                    className={cn(
+                      'flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-all',
+                      selectedClassId === c.id ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent',
+                    )}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.color }} />
+                    {c.name}
+                    {stats?.per_class.find((p) => p.class_id === c.id) && (
+                      <span className="text-xs opacity-70">
+                        ({stats.per_class.find((p) => p.class_id === c.id)?.count})
+                      </span>
+                    )}
+                  </button>
+                ))}
+                <div className="flex gap-1">
+                  <Input
+                    placeholder="New class"
+                    className="h-8 w-28 text-sm"
+                    value={newClassName}
+                    onChange={(e) => setNewClassName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addClass()}
+                  />
+                  <Button type="button" size="sm" variant="secondary" onClick={addClass}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
 
-      {tab === 'jobs' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Card className="lg:col-span-1">
-            <CardHeader><CardTitle>Training Jobs</CardTitle></CardHeader>
-            <CardContent className="space-y-2 max-h-[600px] overflow-auto">
-              {jobs.map((j) => (
-                <button
-                  key={j.id}
-                  onClick={() => { setSelectedJobId(j.id); setTab('analytics'); }}
-                  className={cn(
-                    'w-full text-left p-3 rounded-lg border transition-all',
-                    selectedJobId === j.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-accent'
-                  )}
+              {datasets.length > 1 && (
+                <select
+                  className="h-9 rounded-md border border-border bg-background px-3 text-sm max-w-xs"
+                  value={selectedDatasetId}
+                  onChange={(e) => setSelectedDatasetId(e.target.value)}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium text-sm">{j.name}</p>
-                    <TrainingStatusBadge status={j.status} />
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <ArchitectureBadge architecture={j.architecture} />
-                    {j.hpo_enabled && <span className="text-xs text-purple-400">HPO</span>}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">{new Date(j.created_at).toLocaleString()}</p>
-                </button>
-              ))}
-              {jobs.length === 0 && <p className="text-muted-foreground text-sm">No training jobs yet</p>}
+                  {datasets.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.image_count})</option>
+                  ))}
+                </select>
+              )}
+
+              <BulkImageUpload
+                datasetId={selectedDatasetId}
+                classId={selectedClassId}
+                className={selectedClass?.name}
+                classColor={selectedClass?.color}
+                disabled={!selectedDatasetId}
+                onComplete={() => {
+                  setTimeout(loadStats, 2000);
+                  setTimeout(loadStats, 6000);
+                  setTimeout(loadStats, 12000);
+                }}
+              />
             </CardContent>
           </Card>
 
-          {job && (
-            <Card className="lg:col-span-2">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>{job.name}</CardTitle>
+          {/* Step 2: Train */}
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold">2</span>
+              Train
+            </p>
+            {showAdvanced ? (
+              <TrainingConfigForm
+                projectId={projectId}
+                onStarted={() => { loadJobs(); setShowAdvanced(false); }}
+              />
+            ) : (
+              <SimpleTrainCard
+                projectId={projectId}
+                datasetId={selectedDatasetId}
+                imageCount={stats?.image_count ?? 0}
+                ready={Boolean(stats?.ready_for_training && stats.head_version_id)}
+                onStarted={loadJobs}
+                showAdvanced={showAdvanced}
+                onToggleAdvanced={() => setShowAdvanced(true)}
+              />
+            )}
+            {showAdvanced && (
+              <Button type="button" variant="ghost" size="sm" className="mt-2 text-primary" onClick={() => setShowAdvanced(false)}>
+                ← Back to simple mode
+              </Button>
+            )}
+          </div>
+
+          {/* Step 3: Metrics */}
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold">3</span>
+              Quality Metrics
+            </p>
+
+            {job && (
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+                <ArchitectureBadge architecture={job.architecture} />
+                <TrainingStatusBadge status={job.status} progress={job.progress} showProgress />
+                <select
+                  className="h-8 rounded border border-border bg-background px-2 text-xs ml-auto"
+                  value={selectedJobId || ''}
+                  onChange={(e) => setSelectedJobId(e.target.value)}
+                >
+                  {jobs.map((j) => (
+                    <option key={j.id} value={j.id}>{j.name} ({j.status})</option>
+                  ))}
+                </select>
                 {job.status === 'running' && (
-                  <Button size="sm" variant="destructive" onClick={() => cancelJob(job.id)}>
-                    <StopCircle className="h-4 w-4 mr-1" /> Cancel
+                  <Button size="sm" variant="destructive" onClick={cancelJob}>
+                    <StopCircle className="h-3.5 w-3.5" /> Cancel
                   </Button>
                 )}
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <TrainingStatusBadge status={job.status} progress={job.progress} showProgress />
+              </div>
+            )}
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                  <div className="p-3 rounded bg-secondary/50">
-                    <p className="text-muted-foreground text-xs">Epoch</p>
-                    <p className="font-bold">{job.current_epoch} / {job.total_epochs}</p>
-                  </div>
-                  <div className="p-3 rounded bg-secondary/50">
-                    <p className="text-muted-foreground text-xs">Duration</p>
-                    <p className="font-bold">{job.duration_seconds ? `${Math.floor(job.duration_seconds / 60)}m ${job.duration_seconds % 60}s` : '—'}</p>
-                  </div>
-                  <div className="p-3 rounded bg-secondary/50">
-                    <p className="text-muted-foreground text-xs">Architecture</p>
-                    <p className="font-bold">{job.architecture}</p>
-                  </div>
-                  <div className="p-3 rounded bg-secondary/50">
-                    <p className="text-muted-foreground text-xs">Mode</p>
-                    <p className="font-bold">{job.training_mode}</p>
-                  </div>
-                </div>
+            <TrainingMetricsPanel
+              metrics={displayMetrics}
+              title={job?.status === 'running' ? 'Live Training Metrics' : 'Latest Model Quality'}
+              subtitle={job ? `${job.name} · ${job.architecture}` : 'No training job selected'}
+              trainingProgress={job?.progress}
+              epoch={job ? { current: job.current_epoch, total: job.total_epochs } : undefined}
+              status={job?.status}
+            />
 
-                {latest && (
-                  <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                    {[
-                      { k: 'loss', v: latest.loss, fmt: (n: number) => n.toFixed(3) },
-                      { k: 'Precision', v: latest.precision, fmt: (n: number) => `${(n * 100).toFixed(1)}%` },
-                      { k: 'Recall', v: latest.recall, fmt: (n: number) => `${(n * 100).toFixed(1)}%` },
-                      { k: 'F1', v: latest.f1, fmt: (n: number) => `${(n * 100).toFixed(1)}%` },
-                      { k: 'mAP50', v: latest.map50, fmt: (n: number) => `${(n * 100).toFixed(1)}%` },
-                      { k: 'mAP50-95', v: latest.map50_95, fmt: (n: number) => `${(n * 100).toFixed(1)}%` },
-                    ].map(({ k, v, fmt }) => (
-                      <div key={k} className="text-center p-2 rounded border border-border">
-                        <p className="text-xs text-muted-foreground">{k}</p>
-                        <p className="font-bold text-primary">{v != null ? fmt(v) : '—'}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {job.error_message && (
-                  <div className="p-3 rounded bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{job.error_message}</div>
-                )}
-
-                {job.artifact && (
-                  <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/5">
-                    <p className="font-medium text-green-400 flex items-center gap-2">
-                      <Trophy className="h-4 w-4" /> Model Artifact Registered
-                    </p>
-                    <p className="text-sm mt-1">{job.artifact.name} — {job.artifact.model_size_mb?.toFixed(2)} MB</p>
-                    <p className="text-xs text-muted-foreground mt-1">mAP50: {job.artifact.metrics?.map50?.toFixed(3)} | mAP50-95: {job.artifact.metrics?.map50_95?.toFixed(3)}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+            {job?.error_message && (
+              <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 text-sm">
+                {job.error_message}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {tab === 'analytics' && (
+      {tab === 'charts' && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="text-sm text-muted-foreground">Job:</label>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-sm text-muted-foreground">Job</label>
             <select
               className="h-9 rounded border border-border bg-background px-3 text-sm min-w-[200px]"
               value={selectedJobId || ''}
@@ -237,100 +358,55 @@ export default function TrainingPage() {
             >
               {jobs.map((j) => <option key={j.id} value={j.id}>{j.name} ({j.status})</option>)}
             </select>
-            {connected && <span className="text-green-400 text-sm flex items-center gap-1"><Activity className="h-3 w-3 animate-pulse" /> Live WebSocket</span>}
-            {job && <TrainingStatusBadge status={job.status} progress={job.progress} showProgress />}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <MetricChart data={chartMetrics} title="Loss Curve" lines={[{ key: 'loss', color: '#ef4444', label: 'Loss' }]} />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <MetricChart
-                  data={chartMetrics}
-                  title="mAP Curves"
-                  lines={[
-                    { key: 'map50', color: '#3b82f6', label: 'mAP@50' },
-                    { key: 'map50_95', color: '#8b5cf6', label: 'mAP@50-95' },
-                  ]}
-                />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <MetricChart
-                  data={chartMetrics}
-                  title="Precision & Recall"
-                  lines={[
-                    { key: 'precision', color: '#22c55e', label: 'Precision' },
-                    { key: 'recall', color: '#f59e0b', label: 'Recall' },
-                  ]}
-                />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <MetricChart data={chartMetrics} title="F1 Score" lines={[{ key: 'f1', color: '#06b6d4', label: 'F1' }]} />
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      )}
-
-      {tab === 'hpo' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FlaskConical className="h-5 w-5" /> Hyperparameter Optimization Trials
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-3 mb-4">
-              <select
-                className="h-9 rounded border border-border bg-background px-3 text-sm"
-                value={selectedJobId || ''}
-                onChange={(e) => setSelectedJobId(e.target.value)}
-              >
-                {jobs.filter((j) => j.hpo_enabled).map((j) => (
-                  <option key={j.id} value={j.id}>{j.name}</option>
-                ))}
-              </select>
-            </div>
-            {trials.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-muted-foreground">
-                      <th className="pb-2 pr-4">#</th>
-                      <th className="pb-2 pr-4">LR</th>
-                      <th className="pb-2 pr-4">Batch</th>
-                      <th className="pb-2 pr-4">mAP50-95</th>
-                      <th className="pb-2 pr-4">Status</th>
-                      <th className="pb-2">Best</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {trials.map((t) => (
-                      <tr key={t.id} className={cn('border-b border-border', t.is_best && 'bg-yellow-500/5')}>
-                        <td className="py-2 pr-4">{t.trial_number}</td>
-                        <td className="py-2 pr-4">{t.params.learning_rate?.toExponential(2)}</td>
-                        <td className="py-2 pr-4">{t.params.batch_size}</td>
-                        <td className="py-2 pr-4 font-medium">{t.metrics.map50_95?.toFixed(4) ?? '—'}</td>
-                        <td className="py-2 pr-4">{t.status}</td>
-                        <td className="py-2">{t.is_best && <Trophy className="h-4 w-4 text-yellow-500" />}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-muted-foreground">No HPO trials. Enable Auto HPO when starting training.</p>
+            {connected && (
+              <span className="text-emerald-600 text-sm flex items-center gap-1">
+                <Activity className="h-3 w-3 animate-pulse" /> Live
+              </span>
             )}
-          </CardContent>
-        </Card>
+          </div>
+
+          {jobs.length === 0 ? (
+            <Card><CardContent className="py-12 text-center text-muted-foreground">No training jobs yet</CardContent></Card>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="flex items-center gap-2 text-sm text-primary"
+                onClick={() => setShowCharts(!showCharts)}
+              >
+                {showCharts ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                {showCharts ? 'Hide' : 'Show'} epoch charts
+              </button>
+
+              {showCharts && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <Card><CardContent className="pt-6">
+                    <MetricChart data={chartMetrics} title="Loss" lines={[{ key: 'loss', color: '#ef4444', label: 'Loss' }]} />
+                  </CardContent></Card>
+                  <Card><CardContent className="pt-6">
+                    <MetricChart data={chartMetrics} title="Accuracy (mAP)" lines={[
+                      { key: 'map50', color: '#3b82f6', label: 'mAP@50' },
+                      { key: 'map50_95', color: '#8b5cf6', label: 'mAP@50-95' },
+                    ]} />
+                  </CardContent></Card>
+                  <Card><CardContent className="pt-6">
+                    <MetricChart data={chartMetrics} title="Precision & Recall" lines={[
+                      { key: 'precision', color: '#22c55e', label: 'Precision' },
+                      { key: 'recall', color: '#f59e0b', label: 'Recall' },
+                    ]} />
+                  </CardContent></Card>
+                  <Card><CardContent className="pt-6">
+                    <MetricChart data={chartMetrics} title="F1 Score" lines={[{ key: 'f1', color: '#06b6d4', label: 'F1' }]} />
+                  </CardContent></Card>
+                </div>
+              )}
+
+              {!showCharts && (
+                <TrainingMetricsPanel metrics={displayMetrics} compact />
+              )}
+            </>
+          )}
+        </div>
       )}
     </div>
   );

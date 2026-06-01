@@ -37,7 +37,7 @@ function createWindow() {
   });
 
   if (isDev) {
-    win.loadURL('http://127.0.0.1:5174');
+    win.loadURL('http://127.0.0.1:5000');
   } else {
     win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }

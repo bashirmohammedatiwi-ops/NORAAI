@@ -8,6 +8,7 @@
 #   6004  Grafana
 #   6005  Prometheus
 #   6006-6010  Reserved (internal only)
+#   5000  Driver web app (Rasid Drive)
 
 services:
   postgres:
@@ -225,6 +226,16 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    networks:
+      - aiops
+
+  driver:
+    build:
+      context: ./driver-app
+      dockerfile: Dockerfile.prod
+    restart: always
+    ports:
+      - "${PORT_DRIVER:-5000}:5000"
     networks:
       - aiops
 

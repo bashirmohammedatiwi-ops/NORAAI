@@ -28,7 +28,7 @@ export default function TopBar({
       <div className="nx-top__brand">
         <div className="nx-top__logo">N</div>
         <div>
-          <strong>NORAAI</strong>
+          <strong>NURAI</strong>
           <span>Driver · {vehicle}</span>
         </div>
       </div>

@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>راصد RASID — التقرير التقني</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    :root {
+      --text: #111;
+      --muted: #555;
+      --light: #888;
+      --line: #ddd;
+      --bg: #e8e8e8;
+      --paper: #fff;
+      /* A4 @ 96dpi — ثابت لالتقاط PDF دقيق */
+      --page-w: 794px;
+      --page-h: 1123px;
+      --pad-x: 48px;
+      --pad-top: 44px;
+      --pad-bottom: 52px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'IBM Plex Sans Arabic', sans-serif;
+      background: var(--bg); color: var(--text);
+      line-height: 1.75; font-size: 10pt;
+    }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      background: var(--text); color: #fff;
+      padding: 10px 20px; display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; gap: 12px;
+    }
+    .toolbar__actions { display: flex; gap: 8px; align-items: center; }
+    .toolbar button {
+      border: 0; padding: 8px 18px; border-radius: 4px;
+      cursor: pointer; font-family: inherit; font-weight: 600; font-size: 12px;
+    }
+    .btn-pdf { background: #fff; color: var(--text); }
+    .btn-pdf:disabled { opacity: 0.55; cursor: wait; }
+    .toolbar__status { font-size: 11px; color: #ccc; }
+
+    /* ── Report container ── */
+    #report {
+      margin: 52px auto 40px;
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
+    }
+
+    /* ── A4 page ── */
+    .a4-page {
+      width: var(--page-w);
+      height: var(--page-h);
+      background: var(--paper);
+      padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+      page-break-after: always;
+      flex-shrink: 0;
+    }
+    .a4-page__body {
+      height: calc(var(--page-h) - var(--pad-top) - var(--pad-bottom));
+      overflow: hidden;
+    }
+    body.exporting .a4-page {
+      box-shadow: none;
+      margin: 0;
+    }
+    body.exporting #report { gap: 0; margin-top: 0; }
+    .a4-page__footer {
+      position: absolute;
+      bottom: 16px; left: var(--pad-x); right: var(--pad-x);
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 8pt; color: var(--light);
+      border-top: 1px solid var(--line); padding-top: 4px;
+    }
+    .a4-page__footer strong { color: var(--muted); font-weight: 600; }
+
+    /* ── Cover ── */
+    .cover { text-align: center; display: flex; flex-direction: column; justify-content: center; height: 100%; }
+    .cover__badge {
+      display: inline-block; font-size: 9pt; color: var(--muted);
+      border: 1px solid var(--line); padding: 4px 14px; margin-bottom: 28px;
+    }
+    .cover__mark {
+      width: 56px; height: 56px; margin: 0 auto 20px;
+      border: 2px solid var(--text); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22pt; font-weight: 700;
+    }
+    .cover h1 { font-size: 32pt; font-weight: 700; margin-bottom: 4px; }
+    .cover__en { font-size: 10pt; color: var(--muted); letter-spacing: 0.3em; margin-bottom: 14px; }
+    .cover__desc { font-size: 10.5pt; color: var(--muted); line-height: 1.8; margin-bottom: 28px; }
+    .cover__info {
+      text-align: right; max-width: 400px; margin: 0 auto;
+      border: 1px solid var(--line); font-size: 9.5pt;
+    }
+    .cover__row {
+      display: grid; grid-template-columns: 90px 1fr;
+      border-bottom: 1px solid var(--line);
+    }
+    .cover__row:last-child { border-bottom: 0; }
+    .cover__row label {
+      padding: 8px 10px; background: #fafafa; color: var(--light);
+      font-size: 8.5pt; border-left: 1px solid var(--line);
+    }
+    .cover__row span { padding: 8px 12px; }
+    .cover__students span { display: block; line-height: 1.6; }
+
+    /* ── Sections ── */
+    .sec-head {
+      padding-bottom: 6px; margin-bottom: 14px;
+      border-bottom: 1px solid var(--text);
+    }
+    .sec-num { font-size: 8.5pt; color: var(--light); letter-spacing: 0.08em; }
+    .sec-head h2 { font-size: 13pt; font-weight: 700; margin-top: 2px; }
+
+    h3 { font-size: 10pt; font-weight: 600; margin: 14px 0 6px; }
+    h4 { font-size: 9.5pt; font-weight: 600; margin: 10px 0 5px; color: var(--muted); }
+    p { margin-bottom: 8px; text-align: justify; font-size: 9.5pt; }
+    .muted { color: var(--muted); font-size: 9pt; }
+
+    .lead {
+      border-right: 2px solid var(--text);
+      padding: 10px 14px; margin-bottom: 12px;
+      background: #fafafa; font-size: 9.5pt;
+    }
+
+    table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 8.5pt; }
+    th {
+      text-align: right; font-weight: 600; padding: 5px 8px;
+      border-bottom: 2px solid var(--text);
+    }
+    td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    td code { font-size: 7.5pt; direction: ltr; display: inline-block; }
+
+    ul, ol { margin: 4px 18px 8px 0; font-size: 9.5pt; }
+    li { margin-bottom: 3px; }
+
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+    .box { border: 1px solid var(--line); padding: 10px 12px; font-size: 9pt; }
+    .box h4 { margin-top: 0; }
+
+    figure.diagram {
+      margin: 14px 0 16px;
+      padding: 0;
+      border: 1px solid #ccc;
+      background: #fff;
+      overflow: hidden;
+    }
+    figure.diagram .diagram__canvas {
+      padding: 18px 16px 14px;
+      background: #fafafa;
+      min-height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    figure.diagram .diagram__canvas pre.mermaid {
+      margin: 0; background: transparent; border: 0; padding: 0;
+      width: 100%; max-width: 680px;
+    }
+    figure.diagram img.mermaid-raster {
+      width: 100%;
+      max-width: 680px;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+    }
+    figure.diagram figcaption {
+      padding: 8px 14px;
+      border-top: 1px solid var(--line);
+      background: #fff;
+      font-size: 8.5pt;
+      color: var(--muted);
+      text-align: center;
+    }
+    figure.diagram.diagram--hero .diagram__canvas {
+      min-height: 340px;
+      padding: 20px 16px;
+    }
+    figure.diagram.diagram--compact .diagram__canvas {
+      min-height: 80px;
+      padding: 14px 12px;
+    }
+
+    /* ── مخططات HTML (شكل 2 · 3 · 4) ── */
+    .arch {
+      width: 100%; max-width: 620px; margin: 0 auto;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+    }
+    .arch__row {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%;
+    }
+    .arch__row--single { justify-content: center; }
+    .arch__v { color: var(--light); font-size: 11pt; line-height: 1; }
+    .arch__box {
+      border: 1.5px solid #111; background: #fff; padding: 8px 14px;
+      font-size: 9pt; font-weight: 600; text-align: center; min-width: 110px;
+    }
+    .arch__box--core { background: #f0f0f0; }
+    .arch__box--store { background: #e8e8e8; }
+
+    .pipe {
+      width: 100%; max-width: 660px; margin: 0 auto;
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+      gap: 4px 2px; font-size: 9pt; font-weight: 600;
+    }
+    .pipe__step {
+      border: 1.5px solid #111; background: #fff; padding: 6px 10px;
+      white-space: nowrap;
+    }
+    .pipe__step--last { background: #f0f0f0; border-width: 2px; }
+    .pipe__arrow { color: #666; font-size: 10pt; padding: 0 2px; user-select: none; }
+    .pipe__loop {
+      width: 100%; text-align: center; margin-top: 8px;
+      font-size: 8.5pt; color: var(--muted); font-weight: 500;
+    }
+
+    .er {
+      width: 100%; max-width: 640px; margin: 0 auto;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }
+    .er__root {
+      border: 2px solid #111; background: #f0f0f0; padding: 8px 24px;
+      font-size: 10pt; font-weight: 700; text-align: center;
+    }
+    .er__v { color: var(--light); font-size: 11pt; line-height: 1; }
+    .er__cols {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%;
+    }
+    .er__col {
+      border: 1px solid #ccc; background: #fff; padding: 10px 10px 12px;
+    }
+    .er__group-title {
+      font-size: 8.5pt; font-weight: 700; color: var(--muted);
+      text-align: center; margin-bottom: 10px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--line);
+    }
+    .er__chain {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+      gap: 4px; margin-bottom: 8px; font-size: 8.5pt; font-weight: 600;
+    }
+    .er__chain:last-child { margin-bottom: 0; }
+    .er__node {
+      border: 1.5px solid #111; background: #fff; padding: 5px 8px;
+      white-space: nowrap;
+    }
+    .er__arrow { color: #666; font-size: 9pt; user-select: none; }
+    .er__links {
+      width: 100%; text-align: center; font-size: 8pt; color: var(--muted); margin-top: 4px;
+    }
+
+    pre.path {
+      background: #fafafa; border: 1px solid var(--line);
+      padding: 10px 12px; font-size: 7.5pt;
+      direction: ltr; text-align: left; line-height: 1.5; margin: 8px 0;
+    }
+
+    .foot-box {
+      margin-top: 20px; padding-top: 14px;
+      border-top: 1px solid var(--line); text-align: center;
+      color: var(--muted); font-size: 9pt;
+    }
+    .foot-box strong { display: block; font-size: 12pt; color: var(--text); margin-bottom: 4px; }
+
+    @media print {
+      body { background: #fff; }
+      .toolbar { display: none !important; }
+      #report { margin: 0; gap: 0; }
+      .a4-page { box-shadow: none; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span>راصد RASID — التقرير التقني · NURAI</span>
+  <div class="toolbar__actions">
+    <span class="toolbar__status" id="status"></span>
+    <button type="button" class="btn-pdf" id="exportBtn">تصدير PDF</button>
+  </div>
+</div>
+
+<div id="report">
+
+  <!-- ═══ صفحة 1: الغلاف ═══ -->
+  <div class="a4-page">
+    <div class="cover">
+      <div class="cover__badge">مسابقة NURAI · 2026</div>
+      <h1>راصد</h1>
+      <div class="cover__en">R A S I D</div>
+      <p class="cover__desc">
+        منصة ذكية تربط Machine Learning والخرائط وVehicle Fleet؛<br/>
+        ترصد الطريق Real-time، تكشف Potholes وAccidents والمخاطر، وتُحدّث Live GIS Event Map — للمتابعة والتصرف<br/>
+        <em style="font-size:9.5pt;color:var(--light)">RASID — Road AI Surveillance, Intelligence &amp; Detection</em>
+      </p>
+      <div class="cover__info">
+        <div class="cover__row">
+          <label>الطلاب</label>
+          <span class="cover__students">
+            <span>بشير محمد</span>
+            <span>سلمان داود</span>
+            <span>مهدي احمد</span>
+          </span>
+        </div>
+        <div class="cover__row">
+          <label>الإشراف</label>
+          <span>د. مهند عبدالاله</span>
+        </div>
+        <div class="cover__row">
+          <label>الجامعة</label>
+          <span>جامعة تكنولوجيا المعلومات والاتصالات</span>
+        </div>
+      </div>
+    </div>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>1</span></div>
+  </div>
+
+  <!-- ═══ صفحة 2: ملخص ═══ -->
+  <div class="a4-page">
+    <div class="sec-head"><div class="sec-num">00</div><h2>ملخص تنفيذي</h2></div>
+    <div class="lead">
+      <strong>راصد (RASID)</strong> منصة MLOps + GIS + Fleet مبنية لمشاركة مسابقة <strong>NURAI</strong>.
+      تجمع Images من 6 sources، Annotation، Training على <strong>YOLO11</strong>، Deploy إلى Production، ثم تستخدمه
+      في <strong>Electron Driver App</strong> يرسل Camera frames كل 4s مع GPS coordinates.
+      النتائج تُخزَّن كـ <strong>RoadEvent</strong> في PostgreSQL/PostGIS وتُبث فوراً عبر Redis WebSocket
+      إلى <strong>Road Intelligence</strong> Map في Dashboard.
+    </div>
+    <p>
+      يميز المشروع دورة ML كاملة (Ingestion → Annotation → Training → Deploy → Drift Monitoring)،
+      وActive Learning عند confidence &lt; 70%، وField link عبر Fleet devices
+      بمفتاح <code>X-Device-Key</code>، وDynamic speed limit من OpenStreetMap مع optional Google Roads API.
+    </p>
+    <h3>المكونات الرئيسية</h3>
+    <table>
+      <tr><th>المكون</th><th>الوصف</th></tr>
+      <tr><td>Rasid Console</td><td>React Dashboard — ML · Annotation · Training · Fleet · GIS</td></tr>
+      <tr><td>Rasid Drive</td><td>Electron App — Camera · GPS · AI scan · Map · Alerts</td></tr>
+      <tr><td>Backend API</td><td>FastAPI · Celery · YOLO inference · PostGIS</td></tr>
+    </table>
+    <h3>الإنجازات الأساسية</h3>
+    <ul>
+      <li>Pipeline MLOps كامل من Raw Image إلى Production Model</li>
+      <li>8 RoadEvent types + GPS speed violations</li>
+      <li>Live WebSocket Map + PDF/Excel Reports</li>
+      <li>Docker VPS Deploy — Gateway on port 8080</li>
+    </ul>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>2</span></div>
+  </div>
+
+  <!-- ═══ صفحة 3: هوية ═══ -->
+  <div class="a4-page">
+    <div class="sec-head"><div class="sec-num">01</div><h2>هوية المشروع</h2></div>
+    <table>
+      <tr><th>العنصر</th><th>التفاصيل</th></tr>
+      <tr><td>الاسم</td><td><strong>راصد</strong> — من «يرصد» الطريق ويكشف المخاطر مبكراً</td></tr>
+      <tr><td>الاختصار</td><td><strong>RASID</strong> = Road · AI · Surveillance · Intelligence · Detection</td></tr>
+      <tr><td>الشعار</td><td><em>نرصد الطريق… قبل أن تصبح المشكلة حادثاً</em></td></tr>
+      <tr><td>المسابقة</td><td>NURAI</td></tr>
+      <tr><td>الجامعة</td><td>جامعة تكنولوجيا المعلومات والاتصالات</td></tr>
+      <tr><td>الإشراف</td><td>د. مهند عبدالاله</td></tr>
+    </table>
+    <h3>الأهداف</h3>
+    <ol>
+      <li>Automatic Detection لـ 8 RoadEvent types</li>
+      <li>Unified Pipeline من Raw Image إلى Production</li>
+      <li>Fleet vehicles — API Key لكل device</li>
+      <li>Live GIS Map + Reports</li>
+      <li>Active Learning + OSM/Google speed limit</li>
+    </ol>
+    <h3>سيناريوهات الاستخدام</h3>
+    <table>
+      <tr><th>المستخدم</th><th>السيناريو</th><th>الأداة</th></tr>
+      <tr><td>ML Engineer</td><td>Upload → Annotation → Training → Deploy</td><td>Console</td></tr>
+      <tr><td>Annotator</td><td>auto-label review · Active Learning</td><td>Annotation</td></tr>
+      <tr><td>Fleet Manager</td><td>Register device + API Key</td><td>Fleet</td></tr>
+      <tr><td>Driver</td><td>Camera + GPS + Alerts + Map</td><td>Rasid Drive</td></tr>
+      <tr><td>Monitor</td><td>Live events on Map</td><td>Road Intelligence</td></tr>
+    </table>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>3</span></div>
+  </div>
+
+  <!-- ═══ صفحة 4: المشكلة ═══ -->
+  <div class="a4-page">
+    <div class="sec-head"><div class="sec-num">02</div><h2>المشكلة والحل</h2></div>
+    <div class="two">
+      <div class="box">
+        <h4>المشكلة</h4>
+        <ul>
+          <li>Late detection للـ Potholes &amp; Accidents</li>
+          <li>Fragmented ML data بدون Pipeline</li>
+          <li>No link بين Field و Model</li>
+          <li>Costly manual Road surveys</li>
+          <li>Static unrealistic speed limits</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h4>حل راصد</h4>
+        <ul>
+          <li>Real-time AI Detection (every 4s)</li>
+          <li>ingest → train → deploy → monitor</li>
+          <li>Dashboard + Fleet + GIS + WS</li>
+          <li>OSM Overpass + optional Google</li>
+          <li>Telemetry + events within 15 km</li>
+        </ul>
+      </div>
+    </div>
+    <figure class="diagram">
+      <div class="diagram__canvas">
+      <pre class="mermaid">
+flowchart LR
+    IN[Image + GPS] --> AI[YOLO11]
+    AI --> EV[RoadEvent]
+    EV --> DB[(PostgreSQL)]
+    EV --> MQ[(Redis)]
+    MQ --> UI[Console Map]
+
+    classDef input fill:#ffffff,stroke:#111111,stroke-width:1.5px,color:#111111
+    classDef process fill:#f0f0f0,stroke:#111111,stroke-width:1.5px,color:#111111
+    classDef store fill:#e5e5e5,stroke:#111111,stroke-width:1.5px,color:#111111
+    class IN input
+    class AI,EV process
+    class DB,MQ store
+    class UI input
+      </pre>
+      </div>
+      <figcaption><b>شكل 1</b> — Detection flow: Driver → Map</figcaption>
+    </figure>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>4</span></div>
+  </div>
+
+  <!-- ═══ صفحة 5: معمارية ═══ -->
+  <div class="a4-page">
+    <div class="sec-head"><div class="sec-num">03</div><h2>System Architecture</h2></div>
+    <figure class="diagram diagram--hero">
+      <div class="diagram__canvas">
+        <div class="arch">
+          <div class="arch__row">
+            <span class="arch__box">Rasid Console</span>
+            <span class="arch__box">Rasid Drive</span>
+          </div>
+          <div class="arch__v">▼</div>
+          <div class="arch__row arch__row--single">
+            <span class="arch__box arch__box--core">FastAPI + WebSocket</span>
+          </div>
+          <div class="arch__v">▼</div>
+          <div class="arch__row arch__row--single">
+            <span class="arch__box arch__box--core">Celery Workers</span>
+          </div>
+          <div class="arch__v">▼</div>
+          <div class="arch__row">
+            <span class="arch__box arch__box--store">PostgreSQL PostGIS</span>
+            <span class="arch__box arch__box--store">Redis</span>
+            <span class="arch__box arch__box--store">MinIO</span>
+          </div>
+        </div>
+      </div>
+      <figcaption><b>شكل 2</b> — المعمارية العامة للمنصة</figcaption>
+    </figure>
+
+    <h3 style="margin-top:8px">MLOps Cycle</h3>
+    <figure class="diagram diagram--compact">
+      <div class="diagram__canvas">
+        <div class="pipe">
+          <span class="pipe__step">Ingestion</span>
+          <span class="pipe__arrow">←</span>
+          <span class="pipe__step">Annotation</span>
+          <span class="pipe__arrow">←</span>
+          <span class="pipe__step">Training</span>
+          <span class="pipe__arrow">←</span>
+          <span class="pipe__step">Deploy</span>
+          <span class="pipe__arrow">←</span>
+          <span class="pipe__step">Detection</span>
+          <span class="pipe__arrow">←</span>
+          <span class="pipe__step">GIS</span>
+          <span class="pipe__arrow">←</span>
+          <span class="pipe__step pipe__step--last">Active Learning</span>
+          <div class="pipe__loop">↩ loops back to Annotation to improve the Model</div>
+        </div>
+      </div>
+      <figcaption><b>شكل 3</b> — دورة MLOps في راصد</figcaption>
+    </figure>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>5</span></div>
+  </div>
+
+  <!-- ═══ صفحة 6: MLOps + هيكل ═══ -->
+  <div class="a4-page">
+    <h3>هيكل المستودع</h3>
+    <pre class="path">AI/
+├── backend/       FastAPI · Celery · YOLO · PostGIS
+├── frontend/      Rasid Console (React + Vite)
+├── driver-app/    Rasid Drive (Electron)
+├── infra/         nginx · prometheus · grafana
+├── docs/          التقارير
+└── scripts/       deploy_vps.sh</pre>
+    <div class="sec-head" style="margin-top:12px"><div class="sec-num">04</div><h2>Tech Stack</h2></div>
+    <table>
+      <tr><th>الطبقة</th><th>التقنية</th><th>الدور</th></tr>
+      <tr><td>Console</td><td>React 18 · TS · Vite</td><td>ML · Konva · Training WS</td></tr>
+      <tr><td>Drive</td><td>Electron 33 · React</td><td>720p · Windows GPS · Leaflet</td></tr>
+      <tr><td>API</td><td>FastAPI · asyncpg</td><td>JWT · X-Device-Key · WS</td></tr>
+      <tr><td>ML</td><td>YOLO11 · PyTorch · Optuna</td><td>train · predict · HPO</td></tr>
+      <tr><td>DB</td><td>PostgreSQL 16 · PostGIS</td><td>relational + geo queries</td></tr>
+      <tr><td>Cache</td><td>Redis 7</td><td>queue · pub/sub · speed cache 180s</td></tr>
+      <tr><td>Storage</td><td>MinIO S3</td><td>images · best.pt · reports</td></tr>
+    </table>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>6</span></div>
+  </div>
+
+  <!-- ═══ صفحة 7: Celery + منافذ ═══ -->
+  <div class="a4-page">
+    <h3>Celery Workers (6 Queues)</h3>
+    <table>
+      <tr><th>Queue</th><th>المهمة</th><th>التفاصيل</th></tr>
+      <tr><td><code>ingestion</code></td><td>process_image</td><td>quality ≥40 · dedup · MinIO</td></tr>
+      <tr><td><code>labeling</code></td><td>auto_label</td><td>Active Learning queue</td></tr>
+      <tr><td><code>training</code></td><td>run_training_job</td><td>YOLO · metrics · Optuna</td></tr>
+      <tr><td><code>deploy</code></td><td>deploy_model</td><td>Production live</td></tr>
+      <tr><td><code>monitor</code></td><td>drift checks</td><td>mean confidence · hourly</td></tr>
+      <tr><td><code>reports</code></td><td>PDF / Excel</td><td>Celery async</td></tr>
+    </table>
+    <h3>VPS Ports</h3>
+    <table>
+      <tr><th>منفذ</th><th>الخدمة</th></tr>
+      <tr><td>8080</td><td>Gateway — UI + API + WebSocket</td></tr>
+      <tr><td>6001</td><td>Direct API / Swagger</td></tr>
+      <tr><td>6002–6003</td><td>MinIO API + Console</td></tr>
+      <tr><td>6004–6005</td><td>Grafana · Prometheus</td></tr>
+    </table>
+    <h3>Environment Variables</h3>
+    <table>
+      <tr><th>المتغير</th><th>الوصف</th></tr>
+      <tr><td><code>SECRET_KEY</code></td><td>JWT — change in Production</td></tr>
+      <tr><td><code>POSTGRES_PASSWORD</code></td><td>Database</td></tr>
+      <tr><td><code>MINIO_*</code></td><td>S3 Storage</td></tr>
+      <tr><td><code>PUBLIC_URL</code></td><td>http://IP:8080</td></tr>
+      <tr><td><code>GOOGLE_MAPS_API_KEY</code></td><td>optional — Roads API</td></tr>
+    </table>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>7</span></div>
+  </div>
+
+  <!-- ═══ صفحة 8: قاعدة البيانات ═══ -->
+  <div class="a4-page">
+    <div class="sec-head"><div class="sec-num">05</div><h2>Database</h2></div>
+    <figure class="diagram diagram--compact">
+      <div class="diagram__canvas">
+        <div class="er">
+          <div class="er__root">Project</div>
+          <div class="er__v">▼</div>
+          <div class="er__cols">
+            <div class="er__col">
+              <div class="er__group-title">Machine Learning</div>
+              <div class="er__chain">
+                <span class="er__node">Image</span>
+                <span class="er__arrow">→</span>
+                <span class="er__node">Annotation</span>
+              </div>
+              <div class="er__chain">
+                <span class="er__node">Dataset</span>
+                <span class="er__arrow">→</span>
+                <span class="er__node">TrainingJob</span>
+                <span class="er__arrow">→</span>
+                <span class="er__node">ModelArtifact</span>
+              </div>
+            </div>
+            <div class="er__col">
+              <div class="er__group-title">Fleet &amp; Field</div>
+              <div class="er__chain">
+                <span class="er__node">FleetDevice</span>
+                <span class="er__arrow">→</span>
+                <span class="er__node">RoadEvent</span>
+              </div>
+              <div class="er__chain">
+                <span class="er__node">DeviceTelemetry</span>
+              </div>
+            </div>
+          </div>
+          <div class="er__links">Project links all entities · ActiveLearningQueue ← Annotation</div>
+        </div>
+      </div>
+      <figcaption><b>شكل 4</b> — الكيانات الرئيسية في قاعدة البيانات</figcaption>
+    </figure>
+    <h3>Image Sources (6)</h3>
+    <p><code>manual_upload</code> · <code>vehicle_device</code> · <code>traffic_camera</code> · <code>mobile_app</code> · <code>government_camera</code> · <code>drone_camera</code></p>
+    <h3>States</h3>
+    <p>Image: <code>pending → validated | rejected | flagged</code></p>
+    <p>Training: <code>pending → running → completed | failed</code></p>
+    <p>Model: <code>registered → staging → production | archived</code></p>
+    <h3>RoadEventType (8 أنواع)</h3>
+    <table>
+      <tr><th>النوع</th><th>الوصف</th><th>المصدر</th></tr>
+      <tr><td><code>pothole</code></td><td>Pothole</td><td>YOLO</td></tr>
+      <tr><td><code>accident</code></td><td>Accident</td><td>YOLO</td></tr>
+      <tr><td><code>road_crack</code></td><td>Road crack</td><td>YOLO</td></tr>
+      <tr><td><code>barrier</code></td><td>Barrier</td><td>YOLO</td></tr>
+      <tr><td><code>road_closed</code></td><td>Road closed</td><td>YOLO</td></tr>
+      <tr><td><code>construction</code></td><td>Construction</td><td>YOLO</td></tr>
+      <tr><td><code>flooded_road</code></td><td>Flooded road</td><td>YOLO</td></tr>
+      <tr><td><code>traffic_violation</code></td><td>Speed violation</td><td>GPS</td></tr>
+    </table>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>8</span></div>
+  </div>
+
+  <!-- ═══ صفحة 8: AI ═══ -->
+  <div class="a4-page">
+    <div class="sec-head"><div class="sec-num">06</div><h2>Artificial Intelligence</h2></div>
+    <table>
+      <tr><th>النموذج</th><th>ملاحظة</th></tr>
+      <tr><td>YOLO11 (yolo11n.pt)</td><td>default</td></tr>
+      <tr><td>YOLOv10 · RT-DETR</td><td>Ultralytics / Transformer</td></tr>
+      <tr><td>Faster R-CNN · EfficientDet</td><td>Torchvision / wrapper</td></tr>
+    </table>
+    <h3>Training Parameters</h3>
+    <table>
+      <tr><th>المعامل</th><th>القيمة</th></tr>
+      <tr><td>Epochs / Batch / Size</td><td>50 · 16 · 640</td></tr>
+      <tr><td>Optimizer</td><td>AdamW</td></tr>
+      <tr><td>Augmentation</td><td>none / light / medium / heavy</td></tr>
+      <tr><td>HPO</td><td>Optuna (optional)</td></tr>
+    </table>
+    <figure class="diagram">
+      <div class="diagram__canvas">
+      <pre class="mermaid">
+flowchart LR
+    DS[Dataset YOLO] --> TR[Training Job]
+    TR --> PT[best.pt]
+    PT --> S3[(MinIO)]
+    S3 --> PR[Production Model]
+
+    classDef data fill:#ffffff,stroke:#111111,stroke-width:1.5px,color:#111111
+    classDef process fill:#f0f0f0,stroke:#111111,stroke-width:1.5px,color:#111111
+    classDef store fill:#e5e5e5,stroke:#111111,stroke-width:1.5px,color:#111111
+    classDef prod fill:#ffffff,stroke:#111111,stroke-width:2px,color:#111111
+    class DS data
+    class TR,PT process
+    class S3 store
+    class PR prod
+      </pre>
+      </div>
+      <figcaption><b>شكل 5</b> — Training &amp; Deploy flow</figcaption>
+    </figure>
+    <h3>Active Learning · threshold 0.70</h3>
+    <ul>
+      <li>confidence ≥ 70% → pending_review</li>
+      <li>confidence &lt; 70% → needs_review → human review → retrain</li>
+    </ul>
+    <h3>Driver Detection</h3>
+    <ul>
+      <li>confidence ≥ 0.5 → RoadEvent</li>
+      <li>Redis publish: <code>road:{project_id}</code></li>
+      <li>speed &gt; limit → traffic_violation</li>
+    </ul>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>9</span></div>
+  </div>
+
+  <!-- ═══ صفحة 9: Console ═══ -->
+  <div class="a4-page">
+    <div class="sec-head"><div class="sec-num">07</div><h2>Dashboard — Rasid Console</h2></div>
+    <table>
+      <tr><th>الصفحة</th><th>الوظيفة</th></tr>
+      <tr><td>Projects</td><td>Create road monitoring projects</td></tr>
+      <tr><td>Ingestion</td><td>Upload images — 6 sources</td></tr>
+      <tr><td>Classes</td><td>Detection classes + colors</td></tr>
+      <tr><td>Annotation</td><td>Konva bbox · auto-label review</td></tr>
+      <tr><td>Training</td><td>jobs · metrics WebSocket</td></tr>
+      <tr><td>Models / Deploy</td><td>artifacts · Production · logs</td></tr>
+      <tr><td>Monitoring</td><td>drift alerts</td></tr>
+      <tr><td>Fleet</td><td>device + api_key (once)</td></tr>
+      <tr><td>Road Intelligence</td><td>Leaflet · Live WS</td></tr>
+      <tr><td>Reports</td><td>PDF / Excel</td></tr>
+    </table>
+    <h3>Roles</h3>
+    <table>
+      <tr><th>الدور</th><th>الصلاحية</th></tr>
+      <tr><td><code>admin</code></td><td>full access</td></tr>
+      <tr><td><code>ml_engineer</code></td><td>Training · Deploy</td></tr>
+      <tr><td><code>annotator</code></td><td>Annotation</td></tr>
+      <tr><td><code>viewer</code></td><td>read-only</td></tr>
+    </table>
+    <h3>Fleet Integration</h3>
+    <ol>
+      <li>POST <code>/fleet/{project_id}</code> → api_key</li>
+      <li>Setup في Drive: URL · Project · Device · Key</li>
+      <li>Header: <code>X-Device-Key</code></li>
+    </ol>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>10</span></div>
+  </div>
+
+  <!-- ═══ صفحة 10: Drive ═══ -->
+  <div class="a4-page">
+    <div class="sec-head"><div class="sec-num">08</div><h2>Driver App — Rasid Drive</h2></div>
+    <table>
+      <tr><th>المكوّن</th><th>الوظيفة</th></tr>
+      <tr><td>TopBar</td><td>GPS · Connection · Alerts</td></tr>
+      <tr><td>DriveMap</td><td>Leaflet · Carto Voyager · markers</td></tr>
+      <tr><td>CameraPanel</td><td>PiP · expanded · scan</td></tr>
+      <tr><td>DashBar</td><td>Speed vs limit · nearest hazard</td></tr>
+      <tr><td>AlertPanel</td><td>AI + nearby events</td></tr>
+    </table>
+    <h3>Timing Schedule</h3>
+    <table>
+      <tr><th>العملية</th><th>الفترة</th></tr>
+      <tr><td>AI detect</td><td>every 4s · JPEG 0.85</td></tr>
+      <tr><td>sync config</td><td>every 20s</td></tr>
+      <tr><td>nearby events</td><td>every 15s · 15 km</td></tr>
+      <tr><td>speed limit</td><td>12s or 25 m</td></tr>
+      <tr><td>telemetry</td><td>on location change</td></tr>
+    </table>
+    <h3>GPS Windows Native</h3>
+    <p>Electron → <code>windows-location.ps1</code> → fallback Browser Geolocation</p>
+    <figure class="diagram">
+      <div class="diagram__canvas">
+      <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    box rgb(250,250,250) Rasid Drive
+        participant D as Driver App
+    end
+    box rgb(240,240,240) Backend
+        participant A as FastAPI
+        participant Y as YOLO11
+    end
+    D->>A: JPEG + GPS + speed
+    A->>Y: predict
+    Y-->>A: detections
+    A-->>D: alerts + events
+      </pre>
+      </div>
+      <figcaption><b>شكل 6</b> — Live Detection sequence</figcaption>
+    </figure>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>11</span></div>
+  </div>
+
+  <!-- ═══ صفحة 11: Speed + API ═══ -->
+  <div class="a4-page">
+    <div class="sec-head"><div class="sec-num">09</div><h2>Dynamic Speed Limit</h2></div>
+    <p>Google Roads → OSM Overpass → osm_inferred → fallback · Cache 180s</p>
+    <table>
+      <tr><th>source</th><th>meaning</th></tr>
+      <tr><td><code>google</code></td><td>Google Roads API</td></tr>
+      <tr><td><code>osm</code></td><td>maxspeed tag</td></tr>
+      <tr><td><code>osm_inferred</code></td><td>from highway type</td></tr>
+      <tr><td><code>fallback</code></td><td>manual fallback limit</td></tr>
+    </table>
+    <table>
+      <tr><th>highway</th><th>km/h</th><th>highway</th><th>km/h</th></tr>
+      <tr><td>motorway</td><td>120</td><td>residential</td><td>30</td></tr>
+      <tr><td>primary</td><td>80</td><td>living_street</td><td>20</td></tr>
+      <tr><td>secondary</td><td>60</td><td>service</td><td>20</td></tr>
+    </table>
+    <div class="sec-head" style="margin-top:14px"><div class="sec-num">10</div><h2>API Endpoints</h2></div>
+    <h3>Console — JWT</h3>
+    <table>
+      <tr><th>Method</th><th>المسار</th></tr>
+      <tr><td>POST</td><td><code>/api/v1/auth/login</code></td></tr>
+      <tr><td>CRUD</td><td><code>/projects · /datasets · /annotation · /training</code></td></tr>
+      <tr><td>WS</td><td><code>/ws/road-intelligence · /ws/training/{id}</code></td></tr>
+    </table>
+    <h3>Drive — X-Device-Key</h3>
+    <table>
+      <tr><th>Method</th><th>المسار</th></tr>
+      <tr><td>GET</td><td><code>/driver/config · /speed-limit · /events/nearby</code></td></tr>
+      <tr><td>POST</td><td><code>/driver/detect · /telemetry</code></td></tr>
+    </table>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>12</span></div>
+  </div>
+
+  <!-- ═══ صفحة 12: نشر + خلاصة ═══ -->
+  <div class="a4-page">
+    <div class="sec-head"><div class="sec-num">11</div><h2>Security &amp; Deployment</h2></div>
+    <table>
+      <tr><th>الطبقة</th><th>الآلية</th></tr>
+      <tr><td>Console</td><td>JWT Bearer · RBAC</td></tr>
+      <tr><td>Drive</td><td>X-Device-Key</td></tr>
+      <tr><td>PostgreSQL · Redis</td><td>Docker internal only</td></tr>
+    </table>
+    <h3>Deployment</h3>
+    <pre class="path">cp .env.production.example .env
+./scripts/deploy_vps.sh
+# Gateway: http://IP:8080
+cd driver-app && npm run electron:dev</pre>
+    <h3>Access</h3>
+    <table>
+      <tr><th>الخدمة</th><th>الرابط</th></tr>
+      <tr><td>App</td><td>http://IP:8080</td></tr>
+      <tr><td>API Docs</td><td>http://IP:8080/docs</td></tr>
+      <tr><td>Grafana</td><td>http://IP:6004</td></tr>
+    </table>
+    <div class="sec-head" style="margin-top:14px"><div class="sec-num">12</div><h2>Conclusion</h2></div>
+    <ul>
+      <li>MLOps full cycle + Active Learning + drift monitoring</li>
+      <li>GIS WebSocket + Fleet + Electron native GPS</li>
+      <li>8 RoadEvents · 6 sources · 5 ML architectures</li>
+    </ul>
+    <h3>Future</h3>
+    <ul>
+      <li>Android/iOS · audio alerts · Edge (Jetson)</li>
+      <li>ONNX · government APIs</li>
+    </ul>
+    <div class="foot-box">
+      <strong>راصد RASID</strong>
+      نرصد الطريق… قبل أن تصبح المشكلة حادثاً<br/>
+      NURAI · جامعة تكنولوجيا المعلومات والاتصالات · 2026
+    </div>
+    <div class="a4-page__footer"><strong>راصد RASID</strong><span>13</span></div>
+  </div>
+
+</div><!-- #report -->
+
+<script>
+  const A4_W_MM = 210;
+  const A4_H_MM = 297;
+  const A4_W_PX = 794;
+  const A4_H_PX = 1123;
+  const PDF_NAME = 'Rasid-Report-NURAI.pdf';
+
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    securityLevel: 'loose',
+    flowchart: {
+      useMaxWidth: true,
+      htmlLabels: false,
+      curve: 'basis',
+      padding: 16,
+      nodeSpacing: 36,
+      rankSpacing: 40,
+      diagramPadding: 12
+    },
+    sequence: {
+      useMaxWidth: true,
+      mirrorActors: false,
+      htmlLabels: false,
+      boxMargin: 8,
+      messageMargin: 40,
+      actorMargin: 48
+    },
+    themeVariables: {
+      fontFamily: 'IBM Plex Sans Arabic, Arial, sans-serif',
+      fontSize: '12px',
+      primaryColor: '#ffffff',
+      primaryBorderColor: '#111111',
+      primaryTextColor: '#111111',
+      lineColor: '#333333',
+      secondaryColor: '#f0f0f0',
+      tertiaryColor: '#e5e5e5',
+      noteBkgColor: '#fafafa',
+      noteTextColor: '#111111',
+      actorBkg: '#ffffff',
+      actorBorder: '#111111',
+      actorTextColor: '#111111',
+      signalColor: '#333333',
+      labelBoxBkgColor: '#f0f0f0',
+      labelBoxBorderColor: '#111111',
+      labelTextColor: '#111111'
+    }
+  });
+
+  const statusEl = document.getElementById('status');
+  const exportBtn = document.getElementById('exportBtn');
+
+  function getSvgSize(svg) {
+    const rect = svg.getBoundingClientRect();
+    let w = Math.ceil(rect.width);
+    let h = Math.ceil(rect.height);
+    if (w < 10 || h < 10) {
+      const vb = svg.viewBox && svg.viewBox.baseVal;
+      if (vb && vb.width > 0) {
+        w = Math.ceil(vb.width);
+        h = Math.ceil(vb.height);
+      } else {
+        w = 680;
+        h = 240;
+      }
+    }
+    return { w, h };
+  }
+
+  function prepareSvgClone(svg, w, h) {
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+    clone.setAttribute('width', String(w));
+    clone.setAttribute('height', String(h));
+    if (!clone.getAttribute('viewBox')) {
+      clone.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    }
+    clone.querySelectorAll('style').forEach((s) => {
+      s.textContent += ' text{font-family:IBM Plex Sans Arabic,Arial,sans-serif;}';
+    });
+    return clone;
+  }
+
+  async function rasterizeSvg(svg, scale = 3) {
+    const { w, h } = getSvgSize(svg);
+    const clone = prepareSvgClone(svg, w, h);
+    const svgStr = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('SVG raster failed'));
+        el.src = url;
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w * scale;
+      canvas.height = h * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fafafa';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, w, h);
+
+      return { dataUrl: canvas.toDataURL('image/png'), w, h };
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function rasterizeAllDiagrams() {
+    const svgs = [...document.querySelectorAll('figure svg')];
+    for (const svg of svgs) {
+      if (svg.closest('figure')?.querySelector('img.mermaid-raster')) continue;
+      try {
+        const { dataUrl } = await rasterizeSvg(svg, 3);
+        const img = document.createElement('img');
+        img.className = 'mermaid-raster';
+        img.src = dataUrl;
+        img.alt = svg.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || 'مخطط';
+        svg.replaceWith(img);
+      } catch (e) {
+        console.warn('Diagram rasterize skipped', e);
+      }
+    }
+  }
+
+  async function renderMermaid() {
+    statusEl.textContent = 'تحميل المخططات…';
+    await document.fonts.ready;
+    try {
+      await document.fonts.load('400 13px "IBM Plex Sans Arabic"');
+      await document.fonts.load('600 13px "IBM Plex Sans Arabic"');
+    } catch (_) { /* ignore */ }
+    const nodes = document.querySelectorAll('.mermaid');
+    if (nodes.length) await mermaid.run({ nodes });
+    await new Promise((r) => setTimeout(r, 500));
+    await rasterizeAllDiagrams();
+    statusEl.textContent = '';
+  }
+
+  async function ensureDiagramsReady() {
+    const needsRender =
+      document.querySelector('figure svg') ||
+      (document.querySelector('.mermaid') && !document.querySelector('img.mermaid-raster'));
+    if (needsRender) await renderMermaid();
+    else await document.fonts.ready;
+  }
+
+  async function capturePage(pageEl) {
+    pageEl.scrollIntoView({ block: 'center', behavior: 'instant' });
+    await new Promise((r) => setTimeout(r, 120));
+
+    return html2canvas(pageEl, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      width: A4_W_PX,
+      height: A4_H_PX,
+      windowWidth: A4_W_PX,
+      windowHeight: A4_H_PX,
+      scrollX: 0,
+      scrollY: -window.scrollY,
+      onclone: (_doc, el) => {
+        el.style.boxShadow = 'none';
+        el.style.width = A4_W_PX + 'px';
+        el.style.height = A4_H_PX + 'px';
+      }
+    });
+  }
+
+  async function exportPdf() {
+    if (!window.jspdf || !window.html2canvas) {
+      alert('تعذّر تحميل مكتبات PDF. تحقق من الاتصال بالإنترنت.');
+      return;
+    }
+
+    exportBtn.disabled = true;
+    exportBtn.textContent = 'جاري التصدير…';
+    document.body.classList.add('exporting');
+
+    try {
+      await ensureDiagramsReady();
+
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+      const pages = [...document.querySelectorAll('#report > .a4-page')];
+
+      for (let i = 0; i < pages.length; i++) {
+        statusEl.textContent = `صفحة ${i + 1} من ${pages.length}`;
+        const canvas = await capturePage(pages[i]);
+        const img = canvas.toDataURL('image/jpeg', 0.93);
+        if (i > 0) pdf.addPage();
+        pdf.addImage(img, 'JPEG', 0, 0, A4_W_MM, A4_H_MM, undefined, 'FAST');
+      }
+
+      pdf.save(PDF_NAME);
+      statusEl.textContent = 'تم التصدير ✓';
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = 'فشل التصدير';
+      alert('تعذّر تصدير PDF. افتح الملف في Google Chrome وحاول مجدداً.');
+    } finally {
+      document.body.classList.remove('exporting');
+      exportBtn.disabled = false;
+      exportBtn.textContent = 'تصدير PDF';
+    }
+  }
+
+  exportBtn.addEventListener('click', exportPdf);
+  renderMermaid();
+</script>
+</body>
+</html>

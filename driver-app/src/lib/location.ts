@@ -331,11 +331,18 @@ export function createLocationWatcher(
   };
 
   const applyLocation = (loc: DriverLocation) => {
-    if (stopped || locating) return;
+    if (stopped) return;
     hasFix = true;
     retryCount = 0;
     clearUnavailableTimer();
     clearRetryTimer();
+    onUpdate(loc);
+    onStatus('gps');
+  };
+
+  const reportProgress = (loc: DriverLocation) => {
+    if (stopped) return;
+    hasFix = true;
     onUpdate(loc);
     onStatus('gps');
   };
@@ -358,6 +365,8 @@ export function createLocationWatcher(
     if (!hasFix) {
       onStatus('loading');
       if (!lowWatchId) startLowWatch();
+    } else {
+      onStatus('gps');
     }
   };
 
@@ -392,9 +401,7 @@ export function createLocationWatcher(
 
     try {
       const loc = await getPositionWithFallback((progress) => {
-        hasFix = true;
-        onUpdate(progress);
-        onStatus('loading');
+        reportProgress(progress);
       });
       applyLocation(loc);
       startWatches();
@@ -446,9 +453,7 @@ export function createLocationWatcher(
       }
 
       const loc = await acquirePreciseLocation((progress) => {
-        hasFix = true;
-        onUpdate(progress);
-        onStatus('locating');
+        reportProgress(progress);
       });
       hasFix = true;
       onUpdate(loc);
@@ -462,9 +467,7 @@ export function createLocationWatcher(
       } else {
         try {
           const loc = await getPositionWithFallback((progress) => {
-            hasFix = true;
-            onUpdate(progress);
-            onStatus('locating');
+            reportProgress(progress);
           });
           hasFix = true;
           onUpdate(loc);

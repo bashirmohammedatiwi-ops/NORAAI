@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { SimpleTrainingPanel } from '@/components/training/SimpleTrainingPanel';
+import { BulkImageUpload } from '@/components/training/BulkImageUpload';
 import { DatasetGallery } from '@/components/datasets/DatasetGallery';
 import {
-  CheckCircle2, Eye, ImagePlus, Plus, RefreshCw, AlertCircle,
+  CheckCircle2, Eye, Plus, RefreshCw, AlertCircle,
 } from 'lucide-react';
 
 interface DatasetSummary {
@@ -45,7 +46,6 @@ export default function DataHubPage() {
   const [stats, setStats] = useState<BuilderStats | null>(null);
   const [newDatasetName, setNewDatasetName] = useState('');
   const [newClassName, setNewClassName] = useState('');
-  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
 
   const loadClasses = useCallback(async () => {
@@ -100,32 +100,11 @@ export default function DataHubPage() {
     setMessage(`Class "${name}" added`);
   };
 
-  const uploadFiles = async (files: FileList | null) => {
-    if (!files?.length || !selectedId) return;
-    if (!selectedClassId) {
-      setMessage('Select a class before uploading (required for auto-labeling).');
-      return;
-    }
-    setUploading(true);
-    setMessage('');
-    try {
-      const form = new FormData();
-      Array.from(files).forEach((f) => form.append('files', f));
-      form.append('source_type', 'manual_upload');
-      form.append('class_id', selectedClassId);
-      const res = await api.post<{ message: string }>(`/api/v1/datasets/${selectedId}/upload`, form);
-      setMessage(res.message || `Uploading ${files.length} image(s)...`);
-      setTimeout(loadStats, 3000);
-      setTimeout(loadStats, 8000);
-      setTimeout(loadStats, 15000);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    uploadFiles(e.dataTransfer.files);
+  const uploadComplete = () => {
+    setMessage('Upload complete — processing images in background');
+    setTimeout(loadStats, 2000);
+    setTimeout(loadStats, 8000);
+    setTimeout(loadStats, 15000);
   };
 
   const selectedClass = classes.find((c) => c.id === selectedClassId);
@@ -227,33 +206,15 @@ export default function DataHubPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={onDrop}
-            className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all ${
-              selectedClassId
-                ? 'border-primary/30 bg-primary/5 hover:border-primary/50 hover:bg-primary/10'
-                : 'border-amber-200 bg-amber-50/50'
-            }`}
-          >
-            <ImagePlus className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-            <p className="font-medium">
-              {selectedClassId ? 'Drop images here or click to browse' : 'Select a class first'}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Each image gets an auto full-image bounding box + class label for YOLO training
-            </p>
-            <Input
-              type="file"
-              accept="image/*"
-              multiple
-              className="mt-4 max-w-xs mx-auto"
-              disabled={!selectedId || !selectedClassId || uploading}
-              onChange={(e) => uploadFiles(e.target.files)}
-            />
-          </div>
+          <BulkImageUpload
+            datasetId={selectedId}
+            classId={selectedClassId}
+            className={selectedClass?.name}
+            classColor={selectedClass?.color}
+            disabled={!selectedId}
+            onComplete={uploadComplete}
+          />
           {message && <p className="text-sm text-primary mt-3">{message}</p>}
-          {uploading && <p className="text-sm text-muted-foreground mt-2">Uploading...</p>}
         </CardContent>
       </Card>
 

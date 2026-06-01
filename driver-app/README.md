@@ -1,4 +1,4 @@
-# NORAAI Driver — Desktop App
+# NURAI Driver — Web & Desktop
 
 تطبيق سطح المكتب للسائق — يكتشف:
 - **حفرة** (pothole)
@@ -17,8 +17,8 @@
 ```bash
 cd driver-app
 npm install
-npm run dev          # browser only — http://127.0.0.1:5174
-npm run electron:dev # desktop window
+npm run dev          # web — http://localhost:5000
+npm run electron:dev # desktop (loads http://127.0.0.1:5000)
 ```
 
 ## Build

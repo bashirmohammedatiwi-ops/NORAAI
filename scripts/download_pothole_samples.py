@@ -199,7 +199,7 @@ def write_readme(output: Path, total: int) -> None:
         "RDD2022 citation:\n"
         "  Arya et al., RDD2022: A multi-national image dataset for automatic\n"
         "  road damage detection, Geoscience Data Journal, 2024.\n\n"
-        "Upload to NORAAI: use Dataset Builder with class 'pothole'.\n",
+        "Upload to NURAI: use Dataset Builder with class 'pothole'.\n",
         encoding="utf-8",
     )
 

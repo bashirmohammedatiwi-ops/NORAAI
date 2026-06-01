@@ -25,7 +25,7 @@ function getPageTitle(pathname: string): string {
   if (pathname.includes('/classes')) return 'Classes';
   if (pathname.includes('/monitoring')) return 'Monitoring';
   if (pathname.match(/\/projects\/[^/]+$/)) return 'Overview';
-  return 'NORAAI';
+  return 'NURAI';
 }
 
 interface TopBarProps {

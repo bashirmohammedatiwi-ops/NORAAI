@@ -38,7 +38,7 @@ export default function SetupPage({ initial, error, onSave }: Props) {
 
       <div className="nx-setup__card">
         <header>
-          <p>NORAAI · DRIVER</p>
+          <p>NURAI · DRIVER</p>
           <h1>ربط المركبة</h1>
           <span>سجّل الجهاز من Fleet واحصل على API Key</span>
         </header>
