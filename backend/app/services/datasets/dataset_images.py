@@ -223,9 +223,6 @@ async def get_dataset_summary(db: AsyncSession, dataset_id: uuid.UUID) -> dict |
             if version.image_count and version.image_count > 0:
                 image_count = version.image_count
             else:
-                from sqlalchemy import func
-                from app.models import DatasetImage
-
                 image_count = (
                     await db.execute(
                         select(func.count(DatasetImage.id)).where(
