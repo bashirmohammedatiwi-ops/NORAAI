@@ -18,17 +18,19 @@ async def get_builder_stats(db: AsyncSession, dataset_id: uuid.UUID) -> dict | N
     image_ids: list[str] = []
 
     if dataset.head_version_id:
-        version = await db.get(DatasetVersion, dataset.head_version_id)
-        if version:
-            image_count = version.image_count
-            image_ids = list(version.manifest.get("image_ids", []))
-
-    if not image_ids and dataset.head_version_id:
         result = await db.execute(
-            select(DatasetImage.image_id).where(DatasetImage.version_id == dataset.head_version_id)
+            select(DatasetImage.image_id)
+            .where(DatasetImage.version_id == dataset.head_version_id)
+            .order_by(DatasetImage.added_at)
         )
         image_ids = [str(row[0]) for row in result.all()]
         image_count = len(image_ids)
+
+        version = await db.get(DatasetVersion, dataset.head_version_id)
+        if version and version.image_count != image_count:
+            version.manifest = {"image_ids": image_ids}
+            version.image_count = image_count
+            await db.flush()
 
     per_class: list[dict] = []
     unlabeled_count = 0

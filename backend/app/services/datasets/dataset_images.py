@@ -10,6 +10,101 @@ from app.models import Dataset, DatasetBranch, DatasetImage, DatasetVersion
 from app.services.datasets.versioning import create_dataset
 
 
+def _image_ids_from_version_rows(session: Session, version_id: uuid.UUID) -> list[str]:
+    rows = (
+        session.query(DatasetImage.image_id)
+        .filter(DatasetImage.version_id == version_id)
+        .order_by(DatasetImage.added_at)
+        .all()
+    )
+    return [str(row[0]) for row in rows]
+
+
+async def _image_ids_from_version_rows_async(db: AsyncSession, version_id: uuid.UUID) -> list[str]:
+    result = await db.execute(
+        select(DatasetImage.image_id)
+        .where(DatasetImage.version_id == version_id)
+        .order_by(DatasetImage.added_at)
+    )
+    return [str(row[0]) for row in result.all()]
+
+
+def _sync_version_manifest(session: Session, version: DatasetVersion) -> None:
+    image_ids = _image_ids_from_version_rows(session, version.id)
+    version.manifest = {"image_ids": image_ids}
+    version.image_count = len(image_ids)
+    session.flush()
+
+
+async def _sync_version_manifest_async(db: AsyncSession, version: DatasetVersion) -> None:
+    image_ids = await _image_ids_from_version_rows_async(db, version.id)
+    version.manifest = {"image_ids": image_ids}
+    version.image_count = len(image_ids)
+    await db.flush()
+
+
+def _ensure_head_version_sync(session: Session, dataset: Dataset) -> DatasetVersion | None:
+    if dataset.head_version_id:
+        return session.execute(
+            select(DatasetVersion)
+            .where(DatasetVersion.id == dataset.head_version_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+
+    branch = session.query(DatasetBranch).filter_by(dataset_id=dataset.id, name="main").first()
+    if not branch:
+        branch = DatasetBranch(dataset_id=dataset.id, name="main")
+        session.add(branch)
+        session.flush()
+
+    version = DatasetVersion(
+        dataset_id=dataset.id,
+        version_tag="v1",
+        branch_id=branch.id,
+        image_count=0,
+        manifest={"image_ids": []},
+    )
+    session.add(version)
+    session.flush()
+    branch.head_version_id = version.id
+    dataset.head_version_id = version.id
+    session.flush()
+    return version
+
+
+async def _ensure_head_version_async(db: AsyncSession, dataset: Dataset) -> DatasetVersion | None:
+    if dataset.head_version_id:
+        result = await db.execute(
+            select(DatasetVersion)
+            .where(DatasetVersion.id == dataset.head_version_id)
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
+    branch_result = await db.execute(
+        select(DatasetBranch).where(DatasetBranch.dataset_id == dataset.id, DatasetBranch.name == "main")
+    )
+    branch = branch_result.scalar_one_or_none()
+    if not branch:
+        branch = DatasetBranch(dataset_id=dataset.id, name="main")
+        db.add(branch)
+        await db.flush()
+
+    version = DatasetVersion(
+        dataset_id=dataset.id,
+        version_tag="v1",
+        branch_id=branch.id,
+        image_count=0,
+        manifest={"image_ids": []},
+    )
+    db.add(version)
+    await db.flush()
+    branch.head_version_id = version.id
+    dataset.head_version_id = version.id
+    await db.flush()
+    return version
+
+
 def append_images_to_dataset_sync(
     session: Session,
     dataset_id: uuid.UUID,
@@ -18,48 +113,34 @@ def append_images_to_dataset_sync(
     if not image_ids:
         return None
 
-    dataset = session.get(Dataset, dataset_id)
+    dataset = session.execute(
+        select(Dataset).where(Dataset.id == dataset_id).with_for_update()
+    ).scalar_one_or_none()
     if not dataset:
         return None
 
-    if not dataset.head_version_id:
-        branch = session.query(DatasetBranch).filter_by(dataset_id=dataset_id, name="main").first()
-        if not branch:
-            branch = DatasetBranch(dataset_id=dataset_id, name="main")
-            session.add(branch)
-            session.flush()
-
-        version = DatasetVersion(
-            dataset_id=dataset_id,
-            version_tag="v1",
-            branch_id=branch.id,
-            image_count=0,
-            manifest={"image_ids": []},
-        )
-        session.add(version)
-        session.flush()
-        branch.head_version_id = version.id
-        dataset.head_version_id = version.id
-        session.flush()
-
-    version = session.get(DatasetVersion, dataset.head_version_id)
+    version = _ensure_head_version_sync(session, dataset)
     if not version:
         return None
 
-    current_ids = list(version.manifest.get("image_ids", []))
-    current_set = set(current_ids)
+    existing_rows = (
+        session.query(DatasetImage.image_id)
+        .filter(DatasetImage.version_id == version.id)
+        .all()
+    )
+    current_set = {str(row[0]) for row in existing_rows}
 
+    added = False
     for img_id in image_ids:
         sid = str(img_id)
         if sid in current_set:
             continue
         current_set.add(sid)
-        current_ids.append(sid)
         session.add(DatasetImage(version_id=version.id, image_id=img_id))
+        added = True
 
-    version.manifest = {"image_ids": current_ids}
-    version.image_count = len(current_ids)
-    session.flush()
+    if added:
+        _sync_version_manifest(session, version)
     return version
 
 
@@ -71,52 +152,51 @@ async def append_images_to_dataset(
     if not image_ids:
         return None
 
-    dataset = await db.get(Dataset, dataset_id)
+    dataset_result = await db.execute(
+        select(Dataset).where(Dataset.id == dataset_id).with_for_update()
+    )
+    dataset = dataset_result.scalar_one_or_none()
     if not dataset:
         return None
 
-    if not dataset.head_version_id:
-        branch_result = await db.execute(
-            select(DatasetBranch).where(DatasetBranch.dataset_id == dataset_id, DatasetBranch.name == "main")
-        )
-        branch = branch_result.scalar_one_or_none()
-        if not branch:
-            branch = DatasetBranch(dataset_id=dataset_id, name="main")
-            db.add(branch)
-            await db.flush()
-
-        version = DatasetVersion(
-            dataset_id=dataset_id,
-            version_tag="v1",
-            branch_id=branch.id,
-            image_count=0,
-            manifest={"image_ids": []},
-        )
-        db.add(version)
-        await db.flush()
-        branch.head_version_id = version.id
-        dataset.head_version_id = version.id
-        await db.flush()
-
-    version = await db.get(DatasetVersion, dataset.head_version_id)
+    version = await _ensure_head_version_async(db, dataset)
     if not version:
         return None
 
-    current_ids = list(version.manifest.get("image_ids", []))
-    current_set = set(current_ids)
+    existing_result = await db.execute(
+        select(DatasetImage.image_id).where(DatasetImage.version_id == version.id)
+    )
+    current_set = {str(row[0]) for row in existing_result.all()}
 
+    added = False
     for img_id in image_ids:
         sid = str(img_id)
         if sid in current_set:
             continue
         current_set.add(sid)
-        current_ids.append(sid)
         db.add(DatasetImage(version_id=version.id, image_id=img_id))
+        added = True
 
-    version.manifest = {"image_ids": current_ids}
-    version.image_count = len(current_ids)
-    await db.flush()
+    if added:
+        await _sync_version_manifest_async(db, version)
     return version
+
+
+async def repair_dataset_manifest(db: AsyncSession, dataset_id: uuid.UUID) -> int | None:
+    """Rebuild manifest from dataset_images rows (fixes partial parallel uploads)."""
+    dataset = await db.get(Dataset, dataset_id)
+    if not dataset or not dataset.head_version_id:
+        return None
+
+    version = await db.get(DatasetVersion, dataset.head_version_id)
+    if not version:
+        return None
+
+    image_ids = await _image_ids_from_version_rows_async(db, version.id)
+    version.manifest = {"image_ids": image_ids}
+    version.image_count = len(image_ids)
+    await db.flush()
+    return len(image_ids)
 
 
 async def ensure_default_dataset(db: AsyncSession, project_id: uuid.UUID) -> Dataset:
@@ -140,7 +220,12 @@ async def get_dataset_summary(db: AsyncSession, dataset_id: uuid.UUID) -> dict |
         version = await db.get(DatasetVersion, dataset.head_version_id)
         if version:
             version_tag = version.version_tag
-            image_count = version.image_count
+            image_ids = await _image_ids_from_version_rows_async(db, dataset.head_version_id)
+            image_count = len(image_ids)
+            if version.image_count != image_count:
+                version.manifest = {"image_ids": image_ids}
+                version.image_count = image_count
+                await db.flush()
 
     return {
         "id": str(dataset.id),

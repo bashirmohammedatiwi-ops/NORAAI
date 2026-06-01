@@ -28,18 +28,21 @@ async def _dataset_image_ids(db: AsyncSession, dataset: Dataset) -> list[uuid.UU
     if not dataset.head_version_id:
         return []
 
+    result = await db.execute(
+        select(DatasetImage.image_id)
+        .where(DatasetImage.version_id == dataset.head_version_id)
+        .order_by(DatasetImage.added_at)
+    )
+    ids = [row[0] for row in result.all()]
+    if ids:
+        return ids
+
     version = await db.get(DatasetVersion, dataset.head_version_id)
     if not version:
         return []
 
     raw_ids = version.manifest.get("image_ids", [])
-    if raw_ids:
-        return [uuid.UUID(i) for i in raw_ids]
-
-    result = await db.execute(
-        select(DatasetImage.image_id).where(DatasetImage.version_id == dataset.head_version_id)
-    )
-    return [row[0] for row in result.all()]
+    return [uuid.UUID(i) for i in raw_ids]
 
 
 async def _per_class_image_counts(

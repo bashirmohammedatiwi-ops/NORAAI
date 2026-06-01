@@ -3,10 +3,10 @@
 import asyncio
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Dataset, DatasetVersion
+from app.models import Dataset, DatasetImage, DatasetVersion
 from app.services.datasets.builder_stats import get_builder_stats
 
 
@@ -22,6 +22,7 @@ async def list_project_datasets(db: AsyncSession, project_id: uuid.UUID) -> list
 
     version_ids = [d.head_version_id for d in datasets if d.head_version_id]
     versions: dict[uuid.UUID, DatasetVersion] = {}
+    image_counts: dict[uuid.UUID, int] = {}
     if version_ids:
         version_rows = await db.execute(
             select(DatasetVersion).where(DatasetVersion.id.in_(version_ids))
@@ -29,16 +30,24 @@ async def list_project_datasets(db: AsyncSession, project_id: uuid.UUID) -> list
         for version in version_rows.scalars().all():
             versions[version.id] = version
 
+        count_rows = await db.execute(
+            select(DatasetImage.version_id, func.count(DatasetImage.id))
+            .where(DatasetImage.version_id.in_(version_ids))
+            .group_by(DatasetImage.version_id)
+        )
+        image_counts = {row[0]: row[1] for row in count_rows.all()}
+
     summaries: list[dict] = []
     for dataset in datasets:
         version = versions.get(dataset.head_version_id) if dataset.head_version_id else None
+        row_count = image_counts.get(dataset.head_version_id, 0) if dataset.head_version_id else 0
         summaries.append({
             "id": str(dataset.id),
             "name": dataset.name,
             "description": dataset.description,
             "head_version_id": str(dataset.head_version_id) if dataset.head_version_id else None,
             "version_tag": version.version_tag if version else None,
-            "image_count": version.image_count if version else 0,
+            "image_count": row_count,
         })
     return summaries
 

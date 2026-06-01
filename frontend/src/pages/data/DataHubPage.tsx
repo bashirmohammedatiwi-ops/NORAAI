@@ -92,10 +92,14 @@ export default function DataHubPage() {
 
   const uploadComplete = (uploaded: number) => {
     if (!projectId || !selectedId || uploaded <= 0) return;
-    setMessage('Upload complete — processing images in background');
+    setMessage('Upload complete — processing images in background (may take 1–2 min)');
     invalidateDataset(selectedId, projectId);
-    window.setTimeout(() => { void refetchStats(); }, 5000);
-    window.setTimeout(() => { void refetchHub(); void refetchStats(); }, 15000);
+    [5000, 15000, 30000, 60000].forEach((ms) => {
+      window.setTimeout(() => {
+        void refetchStats();
+        if (ms >= 15000) void refetchHub();
+      }, ms);
+    });
   };
 
   const selectedClass = classes.find((c) => c.id === selectedClassId);

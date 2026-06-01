@@ -136,6 +136,14 @@ def process_image(record_id: str, image_bytes_b64: str | None = None, minio_key:
         }
     except Exception as exc:
         session.rollback()
+        try:
+            record = session.get(IngestionRecord, uuid.UUID(record_id))
+            if record and record.status == "processing":
+                record.status = "failed"
+                record.error_message = str(exc)[:500]
+                session.commit()
+        except Exception:
+            session.rollback()
         return {"status": "failed", "error": str(exc)}
     finally:
         session.close()

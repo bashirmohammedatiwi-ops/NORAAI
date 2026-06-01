@@ -198,7 +198,7 @@ export function BulkImageUpload({
               </p>
               <p className="text-muted-foreground mt-0.5">
                 {result.uploaded > 0
-                  ? 'Processing in background — stats refresh shortly'
+                  ? 'Processing in background — image count updates within 1–2 minutes'
                   : 'Upload failed — try again with a stable connection or fewer images at once'}
               </p>
               {result.errors.slice(0, 3).map((err) => (
