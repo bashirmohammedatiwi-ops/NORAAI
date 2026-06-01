@@ -6,6 +6,7 @@ import { useTrainingJob } from '@/hooks/useTrainingJob';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { TrainingProgressCard } from '@/components/training/TrainingProgressCard';
+import { TrainingActivityLog } from '@/components/training/TrainingActivityLog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -40,7 +41,7 @@ export default function UnifiedModelPage() {
   const { data: status, refetch } = useActiveModel(projectId, { refetchInterval: 5000 });
   const { invalidateProject } = useInvalidateProjects();
   const runningJobId = status?.training.is_running ? status.training.job_id : null;
-  const { job: runningJob } = useTrainingJob(runningJobId);
+  const { job: runningJob, progressDetail, activityLog } = useTrainingJob(runningJobId);
 
   const [epochs, setEpochs] = useState(CPU_PRESETS[DEFAULT_CPU_PRESET].epochs);
   const [preset, setPreset] = useState<CpuPreset>(DEFAULT_CPU_PRESET);
@@ -140,21 +141,25 @@ export default function UnifiedModelPage() {
       </PageHeader>
 
       {training?.is_running && (
-        <TrainingProgressCard
-          progress={progress}
-          currentEpoch={currentEpoch}
-          totalEpochs={totalEpochs}
-          durationSeconds={runningJob?.duration_seconds}
-          deviceLabel={training.device_label ?? 'CPU Training'}
-          status={training.status ?? 'running'}
-          jobName={training.name ?? undefined}
-          phase={phase}
-          message={message}
-          batch={batch}
-          totalBatches={totalBatches}
-          onStop={stopTraining}
-          stopping={stopping}
-        />
+        <div className="space-y-3">
+          <TrainingProgressCard
+            progress={progress}
+            currentEpoch={currentEpoch}
+            totalEpochs={totalEpochs}
+            durationSeconds={runningJob?.duration_seconds}
+            deviceLabel={training.device_label ?? 'CPU Training'}
+            status={training.status ?? 'running'}
+            jobName={training.name ?? undefined}
+            phase={phase}
+            message={message}
+            batch={batch}
+            totalBatches={totalBatches}
+            detail={progressDetail}
+            onStop={stopTraining}
+            stopping={stopping}
+          />
+          {activityLog.length > 0 && <TrainingActivityLog entries={activityLog} />}
+        </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

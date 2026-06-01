@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { computeEtaSeconds, type TrainingProgressDetail } from '@/lib/trainingProgress';
 import { useTrainingMetrics } from './useTrainingMetrics';
 
 export interface TrainingJobDetail {
@@ -20,6 +21,12 @@ export interface TrainingJobDetail {
   message?: string | null;
   batch?: number | null;
   total_batches?: number | null;
+  epoch_progress?: number | null;
+  export_current?: number | null;
+  export_total?: number | null;
+  current_step?: number | null;
+  total_steps?: number | null;
+  eta_seconds?: number | null;
   latest_metrics: {
     loss: number | null;
     precision: number | null;
@@ -87,6 +94,7 @@ export function useTrainingJob(jobId: string | null) {
     const epoch = Number(latestLive.epoch ?? job.current_epoch);
     const total = Number(latestLive.total_epochs ?? job.total_epochs) || job.total_epochs;
     const progress = Number(latestLive.progress ?? job.progress);
+    const duration = job.duration_seconds;
 
     return {
       ...job,
@@ -97,6 +105,12 @@ export function useTrainingJob(jobId: string | null) {
       message: (latestLive.message as string | undefined) ?? job.message,
       batch: num(latestLive.batch, job.batch),
       total_batches: num(latestLive.total_batches, job.total_batches),
+      epoch_progress: num(latestLive.epoch_progress, job.epoch_progress),
+      export_current: num(latestLive.export_current, job.export_current),
+      export_total: num(latestLive.export_total, job.export_total),
+      current_step: num(latestLive.current_step, job.current_step),
+      total_steps: num(latestLive.total_steps, job.total_steps),
+      eta_seconds: num(latestLive.eta_seconds, job.eta_seconds) ?? computeEtaSeconds(duration, progress),
       latest_metrics: {
         loss: num(latestLive.loss, job.latest_metrics?.loss),
         precision: num(latestLive.precision, job.latest_metrics?.precision),
@@ -108,7 +122,38 @@ export function useTrainingJob(jobId: string | null) {
     };
   }, [job, liveMetrics]);
 
-  return { job: liveJob, chartMetrics, connected, refresh };
+  const progressDetail: TrainingProgressDetail | undefined = useMemo(() => {
+    if (!liveJob) return undefined;
+    const latestLive = liveMetrics.length ? liveMetrics[liveMetrics.length - 1] : null;
+    return {
+      epochProgress: liveJob.epoch_progress,
+      exportCurrent: liveJob.export_current,
+      exportTotal: liveJob.export_total,
+      currentStep: liveJob.current_step,
+      totalSteps: liveJob.total_steps,
+      etaSeconds: liveJob.eta_seconds,
+      loss: liveJob.latest_metrics?.loss,
+      lossBox: num(latestLive?.loss_box, null),
+      lossCls: num(latestLive?.loss_cls, null),
+      map50: liveJob.latest_metrics?.map50,
+      precision: liveJob.latest_metrics?.precision,
+    };
+  }, [liveJob, liveMetrics]);
+
+  const activityLog = useMemo(
+    () => liveMetrics
+      .filter((m) => m.message)
+      .slice(-6)
+      .reverse()
+      .map((m) => ({
+        message: String(m.message),
+        phase: m.phase as string | undefined,
+        progress: m.progress as number | undefined,
+      })),
+    [liveMetrics],
+  );
+
+  return { job: liveJob, chartMetrics, connected, refresh, progressDetail, activityLog };
 }
 
 function num(value: unknown, fallback: number | null | undefined): number | null {

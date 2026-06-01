@@ -158,6 +158,13 @@ def run_training_job(job_id: str):
             if cancel_check():
                 raise TrainingCancelled("Training cancelled")
 
+            publish_metric(job_id, {
+                "phase": "finalize",
+                "message": "Saving model weights…",
+                "progress": 99,
+                "status": "running",
+            })
+
             weights_path = result["weights_path"]
             weights_bytes = Path(weights_path).read_bytes() if Path(weights_path).exists() else b"mock"
             minio_key = f"projects/{job.project_id}/models/{job.id}/best.pt"

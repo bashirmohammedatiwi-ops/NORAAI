@@ -99,14 +99,35 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
 
     progress, current_epoch, epochs_total = _job_progress(job, latest)
     live = get_training_progress(job_id)
-    live_fields = merge_live_progress(job.status.value, progress, current_epoch, live)
-    progress = live_fields["progress"]
-    current_epoch = live_fields["current_epoch"]
 
     duration = None
     if job.started_at:
         end = job.completed_at or datetime.now(timezone.utc)
         duration = int((end - job.started_at).total_seconds())
+
+    live_fields = merge_live_progress(job.status.value, progress, current_epoch, live, duration)
+    progress = live_fields["progress"]
+    current_epoch = live_fields["current_epoch"]
+
+    db_metrics = {
+        "loss": latest.loss if latest else None,
+        "precision": latest.precision if latest else None,
+        "recall": latest.recall if latest else None,
+        "f1": latest.f1 if latest else None,
+        "map50": latest.map50 if latest else None,
+        "map50_95": latest.map50_95 if latest else None,
+    } if latest else None
+
+    latest_metrics = db_metrics
+    if job.status in (TrainingStatus.RUNNING, TrainingStatus.PENDING):
+        latest_metrics = {
+            "loss": live_fields.get("loss") if live_fields.get("loss") is not None else db_metrics.get("loss") if db_metrics else None,
+            "precision": live_fields.get("precision") if live_fields.get("precision") is not None else db_metrics.get("precision") if db_metrics else None,
+            "recall": live_fields.get("recall") if live_fields.get("recall") is not None else db_metrics.get("recall") if db_metrics else None,
+            "f1": live_fields.get("f1") if live_fields.get("f1") is not None else db_metrics.get("f1") if db_metrics else None,
+            "map50": live_fields.get("map50") if live_fields.get("map50") is not None else db_metrics.get("map50") if db_metrics else None,
+            "map50_95": live_fields.get("map50_95") if live_fields.get("map50_95") is not None else db_metrics.get("map50_95") if db_metrics else None,
+        }
 
     return {
         "id": str(job.id),
@@ -131,17 +152,16 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
         "message": live_fields.get("message"),
         "batch": live_fields.get("batch"),
         "total_batches": live_fields.get("total_batches"),
+        "epoch_progress": live_fields.get("epoch_progress"),
+        "export_current": live_fields.get("export_current"),
+        "export_total": live_fields.get("export_total"),
+        "current_step": live_fields.get("current_step"),
+        "total_steps": live_fields.get("total_steps"),
+        "eta_seconds": live_fields.get("eta_seconds"),
         "duration_seconds": duration,
         "metrics_count": metrics_count.scalar() or 0,
         "trials_count": trials_count.scalar() or 0,
-        "latest_metrics": {
-            "loss": latest.loss if latest else None,
-            "precision": latest.precision if latest else None,
-            "recall": latest.recall if latest else None,
-            "f1": latest.f1 if latest else None,
-            "map50": latest.map50 if latest else None,
-            "map50_95": latest.map50_95 if latest else None,
-        } if latest else None,
+        "latest_metrics": latest_metrics,
         "artifact": {
             "id": str(art.id),
             "name": art.name,

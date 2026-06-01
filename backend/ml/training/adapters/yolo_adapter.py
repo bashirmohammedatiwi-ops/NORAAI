@@ -109,21 +109,32 @@ class YOLOAdapter:
                     batch_state["last_ts"] = now
                     loss_items = getattr(trainer, "loss_items", None)
                     loss_val = float(sum(loss_items)) if loss_items is not None else None
+                    loss_box = float(loss_items[0]) if loss_items is not None and len(loss_items) > 0 else None
+                    loss_cls = float(loss_items[1]) if loss_items is not None and len(loss_items) > 1 else None
+                    epoch_progress = int((batch_i / nb) * 100)
+                    total_steps = max(epochs * nb, 1)
+                    current_step = epoch_idx * nb + batch_i
                     metrics_callback({
                         "epoch": epoch_idx + 1,
                         "total_epochs": epochs,
                         "batch": batch_i,
                         "total_batches": nb,
+                        "epoch_progress": epoch_progress,
+                        "current_step": current_step,
+                        "total_steps": total_steps,
                         "phase": "train",
-                        "message": f"Epoch {epoch_idx + 1}/{epochs} · batch {batch_i}/{nb}",
+                        "message": f"Epoch {epoch_idx + 1}/{epochs} · batch {batch_i}/{nb} ({epoch_progress}%)",
                         "progress": training_progress(epoch_idx, batch_i, nb),
                         "loss": loss_val,
+                        "loss_box": loss_box,
+                        "loss_cls": loss_cls,
                         "device": str(device),
                         "status": "running",
                     })
 
                 def on_train_epoch_end(trainer):
                     epoch = int(trainer.epoch) + 1
+                    nb = max(int(getattr(trainer, "nb", 1)), 1)
                     metrics = getattr(trainer, "metrics", None) or {}
                     loss_items = getattr(trainer, "loss_items", None)
                     loss_val = float(sum(loss_items)) if loss_items is not None else None
@@ -135,8 +146,11 @@ class YOLOAdapter:
                         "epoch": epoch,
                         "total_epochs": epochs,
                         "phase": "train",
-                        "message": f"Epoch {epoch}/{epochs} complete",
+                        "message": f"Epoch {epoch}/{epochs} complete · mAP50 {map50:.1%}",
                         "progress": min(100, 15 + int((epoch / max(epochs, 1)) * 85)),
+                        "epoch_progress": 100,
+                        "batch": nb,
+                        "total_batches": nb,
                         "loss": loss_val,
                         "precision": precision,
                         "recall": recall,

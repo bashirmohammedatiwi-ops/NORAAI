@@ -7,6 +7,7 @@ import { SimpleTrainCard } from '@/components/training/SimpleTrainCard';
 import { TrainingConfigForm } from '@/components/training/TrainingConfigForm';
 import { TrainingMetricsPanel } from '@/components/training/TrainingMetricsPanel';
 import { TrainingProgressCard } from '@/components/training/TrainingProgressCard';
+import { TrainingActivityLog } from '@/components/training/TrainingActivityLog';
 import { MetricChart } from '@/components/training/MetricChart';
 import { ArchitectureBadge, TrainingStatusBadge } from '@/components/training/TrainingStatusBadge';
 import { Button } from '@/components/ui/button';
@@ -68,7 +69,7 @@ export default function TrainingPage() {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
-  const { job, chartMetrics, connected, refresh } = useTrainingJob(selectedJobId);
+  const { job, chartMetrics, connected, refresh, progressDetail, activityLog } = useTrainingJob(selectedJobId);
 
   const loadDatasets = useCallback(async () => {
     if (!projectId) return;
@@ -200,21 +201,25 @@ export default function TrainingPage() {
       </div>
 
       {showProgress && job && (
-        <TrainingProgressCard
-          progress={job.progress}
-          currentEpoch={job.current_epoch}
-          totalEpochs={job.total_epochs}
-          durationSeconds={job.duration_seconds}
-          deviceLabel={(job.config?.device as string) === 'cpu' || !job.config?.device ? 'CPU Training' : String(job.config.device)}
-          status={job.status}
-          jobName={job.name}
-          phase={job.phase}
-          message={job.message}
-          batch={job.batch}
-          totalBatches={job.total_batches}
-          onStop={job.status === 'running' || job.status === 'pending' ? cancelJob : undefined}
-          stopping={stopping}
-        />
+        <div className="space-y-3">
+          <TrainingProgressCard
+            progress={job.progress}
+            currentEpoch={job.current_epoch}
+            totalEpochs={job.total_epochs}
+            durationSeconds={job.duration_seconds}
+            deviceLabel={(job.config?.device as string) === 'cpu' || !job.config?.device ? 'CPU Training' : String(job.config.device)}
+            status={job.status}
+            jobName={job.name}
+            phase={job.phase}
+            message={job.message}
+            batch={job.batch}
+            totalBatches={job.total_batches}
+            detail={progressDetail}
+            onStop={job.status === 'running' || job.status === 'pending' ? cancelJob : undefined}
+            stopping={stopping}
+          />
+          {activityLog.length > 0 && <TrainingActivityLog entries={activityLog} />}
+        </div>
       )}
 
       {/* Tabs */}
@@ -372,7 +377,7 @@ export default function TrainingPage() {
             <TrainingMetricsPanel
               metrics={displayMetrics}
               title={job?.status === 'running' ? 'Live Training Metrics' : 'Latest Model Quality'}
-              subtitle={job ? `${job.name} · ${job.architecture}` : 'No training job selected'}
+              subtitle={job ? `${job.name} · ${job.architecture}${job.message ? ` · ${job.message}` : ''}` : 'No training job selected'}
               trainingProgress={job?.progress}
               epoch={job ? { current: job.current_epoch, total: job.total_epochs } : undefined}
               status={job?.status}

@@ -41,7 +41,7 @@ export function useTrainingMetrics(jobId: string | null) {
               return next;
             }
           }
-          if (data.phase === 'export' || data.phase === 'train') {
+          if (data.phase === 'export' || data.phase === 'train' || data.phase === 'finalize') {
             const idx = prev.findIndex((m) => m.phase === data.phase && !m.save_epoch_metric);
             if (idx >= 0) {
               const next = [...prev];
