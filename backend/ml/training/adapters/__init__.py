@@ -59,6 +59,8 @@ class FasterRCNNAdapter:
                 "metrics": {"map50": 0.72, "map50_95": 0.58, "framework": "torchvision"},
                 "duration_seconds": int(time.time() - start),
             }
+        except TrainingCancelled:
+            raise
         except Exception as exc:
             return YOLOAdapter("yolo11n.pt")._mock_train(output_dir, config, metrics_callback, start, str(exc))
 
