@@ -37,7 +37,7 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-chmod +x scripts/sync_env.sh scripts/diagnose.sh scripts/deploy_vps.sh scripts/pull_and_rebuild.sh scripts/docker_cleanup_after_update.sh scripts/ensure_services.sh scripts/install_boot_service.sh
+chmod +x scripts/sync_env.sh scripts/diagnose.sh scripts/deploy_vps.sh scripts/pull_and_rebuild.sh scripts/docker_cleanup_after_update.sh scripts/ensure_services.sh scripts/install_boot_service.sh scripts/cleanup_orphans.sh scripts/load_env.sh scripts/setup_swap.sh
 ./scripts/sync_env.sh .env
 
 echo "Rebuilding gateway + backend (Docker cache: $([ -n "$NO_CACHE" ] && echo off || echo on))..."
@@ -53,6 +53,7 @@ fi
 
 echo "Restarting stack..."
 docker compose -f docker-compose.prod.yml up -d --remove-orphans
+./scripts/cleanup_orphans.sh
 
 echo "Waiting for API (up to 4 min)..."
 OK=0

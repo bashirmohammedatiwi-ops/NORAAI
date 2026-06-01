@@ -12,12 +12,9 @@ LOG_FILE="${LOG_DIR}/watchdog.log"
 STATE_FILE="${LOG_DIR}/watchdog.state"
 
 load_env() {
-  if [ -f .env ]; then
-    set -a
-    # shellcheck disable=SC1091
-    source .env
-    set +a
-  fi
+  # shellcheck disable=SC1091
+  source "$(dirname "$0")/load_env.sh"
+  load_env_file "${PROJECT_DIR}/.env"
 }
 
 log() {

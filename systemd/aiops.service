@@ -9,7 +9,6 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/aiops
-EnvironmentFile=-/opt/aiops/.env
 ExecStart=/bin/bash /opt/aiops/scripts/ensure_services.sh start
 ExecStop=/usr/bin/docker compose -f /opt/aiops/docker-compose.prod.yml stop
 TimeoutStartSec=600

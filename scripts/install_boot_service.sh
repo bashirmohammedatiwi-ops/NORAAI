@@ -16,7 +16,7 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-chmod +x scripts/ensure_services.sh scripts/start_all.sh
+chmod +x scripts/ensure_services.sh scripts/start_all.sh scripts/load_env.sh scripts/cleanup_orphans.sh scripts/setup_swap.sh
 
 sed "s|/opt/aiops|${PROJECT_DIR}|g" systemd/aiops.service > /etc/systemd/system/aiops.service
 sed "s|/opt/aiops|${PROJECT_DIR}|g" systemd/aiops-health.service > /etc/systemd/system/aiops-health.service

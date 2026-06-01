@@ -35,6 +35,16 @@ sync_url = f"postgresql://{user}:{password}@postgres:5432/{db}"
 text = env_path.read_text(encoding="utf-8")
 text = re.sub(r"^DATABASE_URL=.*$", f"DATABASE_URL={async_url}", text, flags=re.M)
 text = re.sub(r"^DATABASE_URL_SYNC=.*$", f"DATABASE_URL_SYNC={sync_url}", text, flags=re.M)
+
+# APP_NAME with spaces must be quoted or bash/systemd break when sourcing .env
+if re.search(r"^APP_NAME=AI Operations Center\s*$", text, flags=re.M):
+    text = re.sub(
+        r"^APP_NAME=AI Operations Center\s*$",
+        'APP_NAME="AI Operations Center"',
+        text,
+        flags=re.M,
+    )
+
 env_path.write_text(text, encoding="utf-8")
 print(f"Synced DATABASE_URL with POSTGRES_PASSWORD in {env_path}")
 PY
