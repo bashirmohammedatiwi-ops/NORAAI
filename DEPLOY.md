@@ -194,7 +194,21 @@ tail -20 logs/watchdog.log
 
 **إذا تكرر التوقف:** راجع `dmesg | grep -i oom` — إن ظهر `Killed process` فالذاكرة ممتلئة. نفّذ `sudo ./scripts/setup_swap.sh` أو زِد RAM VPS.
 
-**Grafana/Prometheus (اختياري):** `docker compose -f docker-compose.prod.yml --profile monitoring up -d`
+**بعد التحديث — يجب 10 حاويات فقط** (ليس 17):
+
+```bash
+cd /opt/aiops
+git pull
+./scripts/cleanup_orphans.sh
+```
+
+الـ 7 الزائدة عادة: `worker-ingestion`, `worker-labeling`, `worker-deploy`, `worker-monitor`, `worker-reports`, `grafana`, `prometheus`.
+
+**إذا أردت Grafana/Prometheus:**
+
+```bash
+KEEP_MONITORING=1 docker compose -f docker-compose.prod.yml --profile monitoring up -d
+```
 
 ### تحديث فاشل (git pull conflict)
 
