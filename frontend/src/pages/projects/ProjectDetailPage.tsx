@@ -8,7 +8,7 @@ const actions = [
   { to: 'data', label: 'Data', icon: Database },
   { to: 'model', label: 'Model', icon: Brain },
   { to: 'datasets', label: 'Datasets', icon: Images },
-  { to: 'annotation', label: 'Review', icon: PenTool },
+  { to: 'annotation', label: 'Annotation', icon: PenTool },
   { to: 'monitoring', label: 'Monitor', icon: Activity },
 ];
 

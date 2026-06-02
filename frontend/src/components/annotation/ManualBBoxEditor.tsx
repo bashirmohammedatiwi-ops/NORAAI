@@ -4,7 +4,7 @@ import { AuthenticatedImage } from '@/components/datasets/AuthenticatedImage';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { Loader2, MousePointer2, Pencil, Save, Trash2 } from 'lucide-react';
+import { Check, Loader2, MousePointer2, Pencil, Trash2 } from 'lucide-react';
 
 export interface ClassOption {
   id: string;
@@ -29,6 +29,11 @@ interface Props {
   imageId: string;
   classes: ClassOption[];
   onSaved?: () => void;
+  onSavingChange?: (saving: boolean) => void;
+  onPrevImage?: () => void;
+  onNextImage?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
 }
 
 function clamp01(v: number) {
@@ -52,8 +57,35 @@ function pointInBox(nx: number, ny: number, ann: EditableAnnotation) {
   return nx >= x1 && nx <= x2 && ny >= y1 && ny <= y2;
 }
 
-export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
+function annPayload(ann: EditableAnnotation) {
+  return {
+    class_id: ann.class_id,
+    x_center: ann.x_center,
+    y_center: ann.y_center,
+    width: ann.width,
+    height: ann.height,
+  };
+}
+
+function isTempId(id: string) {
+  return id.startsWith('new-');
+}
+
+export function ManualBBoxEditor({
+  imageId,
+  classes,
+  onSaved,
+  onSavingChange,
+  onPrevImage,
+  onNextImage,
+  hasPrev,
+  hasNext,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const annotationsRef = useRef<EditableAnnotation[]>([]);
+  const saveOpsRef = useRef(0);
+  const notifyTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
   const [annotations, setAnnotations] = useState<EditableAnnotation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tool, setTool] = useState<'select' | 'draw'>('select');
@@ -67,13 +99,32 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
   } | null>(null);
   const [defaultClassId, setDefaultClassId] = useState('');
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [deletedIds, setDeletedIds] = useState<string[]>([]);
+  const [savedFlash, setSavedFlash] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    annotationsRef.current = annotations;
+  }, [annotations]);
+
+  const setSavingCount = useCallback((delta: number) => {
+    saveOpsRef.current = Math.max(0, saveOpsRef.current + delta);
+    const active = saveOpsRef.current > 0;
+    setSaving(active);
+    onSavingChange?.(active);
+  }, [onSavingChange]);
+
+  const notifySaved = useCallback(() => {
+    if (notifyTimerRef.current) clearTimeout(notifyTimerRef.current);
+    notifyTimerRef.current = setTimeout(() => onSaved?.(), 350);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1200);
+  }, [onSaved]);
 
   const load = useCallback(async () => {
     if (!imageId) return;
     setLoading(true);
+    setError(null);
     try {
       const rows = await api.get<Array<{
         id: string;
@@ -86,10 +137,11 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
         height: number;
         status: string;
       }>>(`/api/v1/annotation/image/${imageId}`);
-      setAnnotations(rows.map((r) => ({ ...r, isNew: false })));
-      setSelectedId(rows[0]?.id ?? null);
-      setDeletedIds([]);
-      setDirty(false);
+      const mapped = rows.map((r) => ({ ...r, isNew: false }));
+      setAnnotations(mapped);
+      setSelectedId(mapped[0]?.id ?? null);
+    } catch {
+      setError('تعذّر تحميل التسميات');
     } finally {
       setLoading(false);
     }
@@ -103,6 +155,71 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
     if (!defaultClassId && classes[0]) setDefaultClassId(classes[0].id);
   }, [classes, defaultClassId]);
 
+  const persistCreate = useCallback(async (ann: EditableAnnotation) => {
+    setSavingCount(1);
+    try {
+      const created = await api.post<{
+        id: string;
+        class_id: string;
+        x_center: number;
+        y_center: number;
+        width: number;
+        height: number;
+        status: string;
+      }>(`/api/v1/annotation/image/${imageId}`, annPayload(ann));
+      const cls = classes.find((c) => c.id === ann.class_id);
+      setAnnotations((prev) =>
+        prev.map((a) =>
+          a.id === ann.id
+            ? {
+                ...a,
+                id: String(created.id),
+                isNew: false,
+                status: created.status ?? 'approved',
+                class_name: cls?.name ?? a.class_name,
+              }
+            : a,
+        ),
+      );
+      setSelectedId(String(created.id));
+      notifySaved();
+    } catch {
+      setError('فشل الحفظ التلقائي');
+      setAnnotations((prev) => prev.filter((a) => a.id !== ann.id));
+    } finally {
+      setSavingCount(-1);
+    }
+  }, [imageId, classes, notifySaved, setSavingCount]);
+
+  const persistUpdate = useCallback(async (ann: EditableAnnotation) => {
+    if (ann.isNew || isTempId(ann.id)) {
+      await persistCreate(ann);
+      return;
+    }
+    setSavingCount(1);
+    try {
+      await api.patch(`/api/v1/annotation/${ann.id}`, annPayload(ann));
+      notifySaved();
+    } catch {
+      setError('فشل حفظ التعديل');
+    } finally {
+      setSavingCount(-1);
+    }
+  }, [persistCreate, notifySaved, setSavingCount]);
+
+  const persistDelete = useCallback(async (id: string) => {
+    if (isTempId(id)) return;
+    setSavingCount(1);
+    try {
+      await api.delete(`/api/v1/annotation/${id}`);
+      notifySaved();
+    } catch {
+      setError('فشل الحذف');
+    } finally {
+      setSavingCount(-1);
+    }
+  }, [notifySaved, setSavingCount]);
+
   const normFromEvent = (e: React.MouseEvent) => {
     const el = containerRef.current;
     if (!el) return { x: 0, y: 0 };
@@ -114,7 +231,7 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
   };
 
   const onMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || saving) return;
     if (tool === 'draw') {
       const p = normFromEvent(e);
       setDrawStart(p);
@@ -123,7 +240,7 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
       return;
     }
     const p = normFromEvent(e);
-    const hit = [...annotations].reverse().find((a) => pointInBox(p.x, p.y, a));
+    const hit = [...annotationsRef.current].reverse().find((a) => pointInBox(p.x, p.y, a));
     if (!hit) {
       setSelectedId(null);
       return;
@@ -166,10 +283,12 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
         };
       }),
     );
-    setDirty(true);
   };
 
   const finishDraw = () => {
+    const hadDrag = Boolean(drag && selectedId);
+    const dragId = selectedId;
+
     if (tool === 'draw' && drawStart && drawCurrent && defaultClassId) {
       const x1 = Math.min(drawStart.x, drawCurrent.x);
       const y1 = Math.min(drawStart.y, drawCurrent.y);
@@ -178,65 +297,72 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
       if (x2 - x1 > 0.02 && y2 - y1 > 0.02) {
         const cls = classes.find((c) => c.id === defaultClassId);
         const id = `new-${Date.now()}`;
-        setAnnotations((prev) => [
-          ...prev,
-          {
-            id,
-            class_id: defaultClassId,
-            class_name: cls?.name ?? 'class',
-            class_color: cls?.color ?? '#3B82F6',
-            x_center: (x1 + x2) / 2,
-            y_center: (y1 + y2) / 2,
-            width: x2 - x1,
-            height: y2 - y1,
-            status: 'approved',
-            isNew: true,
-          },
-        ]);
+        const newAnn: EditableAnnotation = {
+          id,
+          class_id: defaultClassId,
+          class_name: cls?.name ?? 'class',
+          class_color: cls?.color ?? '#3B82F6',
+          x_center: (x1 + x2) / 2,
+          y_center: (y1 + y2) / 2,
+          width: x2 - x1,
+          height: y2 - y1,
+          status: 'approved',
+          isNew: true,
+        };
+        setAnnotations((prev) => [...prev, newAnn]);
         setSelectedId(id);
-        setDirty(true);
+        void persistCreate(newAnn);
       }
     }
+
     setDrawStart(null);
     setDrawCurrent(null);
     setDrag(null);
-  };
 
-  const deleteSelected = () => {
-    if (!selectedId) return;
-    const ann = annotations.find((a) => a.id === selectedId);
-    if (ann && !ann.isNew) setDeletedIds((d) => [...d, ann.id]);
-    setAnnotations((prev) => prev.filter((a) => a.id !== selectedId));
-    setSelectedId(null);
-    setDirty(true);
-  };
-
-  const saveAll = async () => {
-    setSaving(true);
-    try {
-      for (const id of deletedIds) {
-        await api.delete(`/api/v1/annotation/${id}`);
-      }
-      for (const ann of annotations) {
-        const payload = {
-          class_id: ann.class_id,
-          x_center: ann.x_center,
-          y_center: ann.y_center,
-          width: ann.width,
-          height: ann.height,
-        };
-        if (ann.isNew) {
-          await api.post(`/api/v1/annotation/image/${imageId}`, payload);
-        } else {
-          await api.patch(`/api/v1/annotation/${ann.id}`, payload);
-        }
-      }
-      await load();
-      onSaved?.();
-    } finally {
-      setSaving(false);
+    if (hadDrag && dragId) {
+      requestAnimationFrame(() => {
+        const ann = annotationsRef.current.find((a) => a.id === dragId);
+        if (ann) void persistUpdate(ann);
+      });
     }
   };
+
+  const deleteSelected = useCallback(() => {
+    if (!selectedId || saving) return;
+    const id = selectedId;
+    setAnnotations((prev) => prev.filter((a) => a.id !== id));
+    setSelectedId(null);
+    void persistDelete(id);
+  }, [selectedId, saving, persistDelete]);
+
+  const deleteSelectedRef = useRef(deleteSelected);
+  deleteSelectedRef.current = deleteSelected;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+      if (e.key === 'd' || e.key === 'D') {
+        setTool('draw');
+        e.preventDefault();
+      } else if (e.key === 'v' || e.key === 'V') {
+        setTool('select');
+        e.preventDefault();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deleteSelectedRef.current();
+      } else if (e.key === 'ArrowLeft' && hasNext && !saving) {
+        e.preventDefault();
+        onNextImage?.();
+      } else if (e.key === 'ArrowRight' && hasPrev && !saving) {
+        e.preventDefault();
+        onPrevImage?.();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [hasPrev, hasNext, onPrevImage, onNextImage, saving]);
 
   const selected = annotations.find((a) => a.id === selectedId);
   const previewBox =
@@ -252,7 +378,7 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
-        <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading annotations…
+        <Loader2 className="h-6 w-6 animate-spin mr-2" /> جاري التحميل…
       </div>
     );
   }
@@ -260,25 +386,15 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 items-end">
-        <Button
-          type="button"
-          size="sm"
-          variant={tool === 'select' ? 'default' : 'outline'}
-          onClick={() => setTool('select')}
-        >
-          <MousePointer2 className="h-4 w-4" /> Select / move
+        <Button type="button" size="sm" variant={tool === 'select' ? 'default' : 'outline'} onClick={() => setTool('select')} title="V" disabled={saving}>
+          <MousePointer2 className="h-4 w-4" /> تحديد
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={tool === 'draw' ? 'default' : 'outline'}
-          onClick={() => setTool('draw')}
-        >
-          <Pencil className="h-4 w-4" /> Draw box
+        <Button type="button" size="sm" variant={tool === 'draw' ? 'default' : 'outline'} onClick={() => setTool('draw')} title="D" disabled={saving}>
+          <Pencil className="h-4 w-4" /> رسم
         </Button>
         <div className="min-w-[140px]">
           <Select
-            label="Class for new box"
+            label="صنف الصندوق الجديد"
             value={defaultClassId}
             onChange={(e) => setDefaultClassId(e.target.value)}
           >
@@ -289,23 +405,20 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
         </div>
         {selected && (
           <Select
-            label="Selected class"
+            label="صنف المحدد"
             value={selected.class_id}
             onChange={(e) => {
               const cls = classes.find((c) => c.id === e.target.value);
+              const updated: EditableAnnotation = {
+                ...selected,
+                class_id: e.target.value,
+                class_name: cls?.name ?? selected.class_name,
+                class_color: cls?.color ?? selected.class_color,
+              };
               setAnnotations((prev) =>
-                prev.map((a) =>
-                  a.id === selected.id
-                    ? {
-                        ...a,
-                        class_id: e.target.value,
-                        class_name: cls?.name ?? a.class_name,
-                        class_color: cls?.color ?? a.class_color,
-                      }
-                    : a,
-                ),
+                prev.map((a) => (a.id === selected.id ? updated : a)),
               );
-              setDirty(true);
+              void persistUpdate(updated);
             }}
           >
             {classes.map((c) => (
@@ -313,17 +426,34 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
             ))}
           </Select>
         )}
-        <Button type="button" size="sm" variant="destructive" disabled={!selectedId} onClick={deleteSelected}>
-          <Trash2 className="h-4 w-4" /> Delete
+        <Button type="button" size="sm" variant="destructive" disabled={!selectedId || saving} onClick={deleteSelected}>
+          <Trash2 className="h-4 w-4" /> حذف
         </Button>
-        <Button type="button" size="sm" disabled={!dirty || saving} onClick={saveAll}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Save changes
-        </Button>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-h-[32px]">
+          {saving && (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>جاري الحفظ…</span>
+            </>
+          )}
+          {!saving && savedFlash && (
+            <>
+              <Check className="h-3.5 w-3.5 text-emerald-600" />
+              <span className="text-emerald-600">تم الحفظ</span>
+            </>
+          )}
+          {!saving && !savedFlash && (
+            <span>حفظ تلقائي عند الرسم أو التعديل</span>
+          )}
+        </div>
       </div>
 
+      {error && (
+        <p className="text-xs text-red-600">{error}</p>
+      )}
+
       <p className="text-xs text-muted-foreground">
-        Draw a box around the vehicle, drag to move, pull the bottom-right corner to resize. Save when done.
+        ارسم صندوقاً حول الهدف، اسحب للنقل، الزاوية السفلى للتكبير. يُحفظ تلقائياً — D رسم · V تحديد.
       </p>
 
       <div
@@ -331,13 +461,14 @@ export function ManualBBoxEditor({ imageId, classes, onSaved }: Props) {
         className={cn(
           'relative inline-block max-w-full select-none rounded-lg border border-border overflow-hidden',
           tool === 'draw' ? 'cursor-crosshair' : 'cursor-default',
+          saving && 'opacity-90 pointer-events-none',
         )}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={finishDraw}
         onMouseLeave={finishDraw}
       >
-        <AuthenticatedImage imageId={imageId} className="block max-w-full max-h-[520px] w-auto h-auto" />
+        <AuthenticatedImage imageId={imageId} className="block max-w-full max-h-[min(70vh,640px)] w-auto h-auto" />
         {annotations.map((ann) => (
           <div
             key={ann.id}

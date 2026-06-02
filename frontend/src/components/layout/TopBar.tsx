@@ -22,7 +22,7 @@ function getPageTitle(pathname: string): string {
   if (pathname.includes('/datasets')) return 'Datasets';
   if (pathname.includes('/training')) return 'Training';
   if (pathname.includes('/model')) return 'Model';
-  if (pathname.includes('/annotation')) return 'Review';
+  if (pathname.includes('/annotation')) return 'Annotation';
   if (pathname.includes('/classes')) return 'Classes';
   if (pathname.includes('/monitoring')) return 'Monitoring';
   if (pathname.match(/\/projects\/[^/]+$/)) return 'Overview';

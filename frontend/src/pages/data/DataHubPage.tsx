@@ -244,7 +244,7 @@ export default function DataHubPage() {
               </div>
               <p className="text-xs">
                 ارفع صور الحوادث بصنف <strong>حوادث</strong>، وصور الحفر بصنف <strong>حفر</strong>، ثم{' '}
-                <Link to={`/projects/${projectId}/annotation`} className="text-primary underline">Annotation</Link>{' '}
+                <Link to={`/projects/${projectId}/annotation`} className="text-primary underline font-medium">التسمية</Link>{' '}
                 و Retrain.
               </p>
             </CardContent>
@@ -327,7 +327,7 @@ export default function DataHubPage() {
           )}
 
           <p className="text-xs text-muted-foreground text-center">
-            Need precise boxes? Use <Link to={`/projects/${projectId}/annotation`} className="underline text-primary">Annotation</Link> to refine labels.
+            للصناديق الدقيقة استخدم قسم <Link to={`/projects/${projectId}/annotation`} className="underline text-primary font-medium">التسمية</Link>.
           </p>
         </>
       )}

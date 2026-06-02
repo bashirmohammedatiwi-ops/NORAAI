@@ -8,7 +8,7 @@ const tabs = [
   { path: 'data', label: 'Data' },
   { path: 'datasets', label: 'Datasets' },
   { path: 'classes', label: 'Classes' },
-  { path: 'annotation', label: 'Review' },
+  { path: 'annotation', label: 'Annotation' },
   { path: 'model', label: 'Model' },
   { path: 'training', label: 'Training' },
   { path: 'monitoring', label: 'Monitor' },

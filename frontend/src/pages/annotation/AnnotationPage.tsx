@@ -1,224 +1,226 @@
-import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
-import { AuthenticatedImage } from '@/components/datasets/AuthenticatedImage';
-import { ManualBBoxEditor, type ClassOption } from '@/components/annotation/ManualBBoxEditor';
-import { ImageAnnotationOverlay } from '@/components/datasets/ImageAnnotationOverlay';
+import { AnnotationGuide } from '@/components/annotation/AnnotationGuide';
+import { AnnotationImageList, type ImageFilter } from '@/components/annotation/AnnotationImageList';
+import { AnnotationReviewQueue } from '@/components/annotation/AnnotationReviewQueue';
+import { AnnotationStatsBar } from '@/components/annotation/AnnotationStatsBar';
+import { ManualBBoxEditor } from '@/components/annotation/ManualBBoxEditor';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAnnotationWorkspace } from '@/hooks/useAnnotationWorkspace';
 import { cn } from '@/lib/utils';
+import {
+  BookOpen, ChevronLeft, ChevronRight, ClipboardCheck, Database, PenTool,
+} from 'lucide-react';
 
-interface PendingAnn {
-  id: string;
-  image_id: string;
-  class_id: string;
-  x_center: number;
-  y_center: number;
-  width: number;
-  height: number;
-  confidence: number;
-  status: string;
-}
-
-interface ProjectImage {
-  id: string;
-  filename: string;
-}
+type Section = 'label' | 'review' | 'guide';
 
 export default function AnnotationPage() {
   const { id: projectId } = useParams();
-  const [pending, setPending] = useState<PendingAnn[]>([]);
-  const [activeLearning, setActiveLearning] = useState<{ id: string; image_id: string; uncertainty_score: number; confidence: number }[]>([]);
-  const [classes, setClasses] = useState<ClassOption[]>([]);
-  const [classNames, setClassNames] = useState<Record<string, { name: string; color: string }>>({});
-  const [images, setImages] = useState<ProjectImage[]>([]);
+  const { stats, images, classes, classMap, pending, loading, reload } = useAnnotationWorkspace(projectId);
+  const [section, setSection] = useState<Section>('label');
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'manual' | 'review'>('manual');
+  const [imageFilter, setImageFilter] = useState<ImageFilter>('all');
+  const [editorSaving, setEditorSaving] = useState(false);
 
-  const load = () => {
-    if (!projectId) return;
-    api.get<PendingAnn[]>(`/api/v1/annotation/project/${projectId}/pending`).then(setPending).catch(() => {});
-    api.get<typeof activeLearning>(`/api/v1/annotation/active-learning/${projectId}`).then(setActiveLearning).catch(() => {});
-    api.get<{ id: string; name: string; color: string }[]>(`/api/v1/projects/${projectId}/classes`).then((list) => {
-      setClasses(list.map((c) => ({ id: c.id, name: c.name, color: c.color || '#3B82F6' })));
-      const map: Record<string, { name: string; color: string }> = {};
-      list.forEach((c) => { map[c.id] = { name: c.name, color: c.color }; });
-      setClassNames(map);
-    }).catch(() => {});
-    api.get<ProjectImage[]>(`/api/v1/ingestion/images/${projectId}`).then((list) => {
-      setImages(list);
-      setSelectedImageId((prev) => prev ?? list[0]?.id ?? null);
-    }).catch(() => {});
-  };
+  useEffect(() => {
+    if (!selectedImageId && images.length > 0) {
+      setSelectedImageId(images[0].id);
+    }
+  }, [images, selectedImageId]);
 
-  useEffect(() => { load(); }, [projectId]);
+  const filteredIds = useMemo(() => {
+    let list = images;
+    if (imageFilter === 'unlabeled') list = list.filter((i) => !i.has_labels);
+    if (imageFilter === 'labeled') list = list.filter((i) => i.has_labels);
+    if (imageFilter === 'pending') list = list.filter((i) => i.needs_review);
+    if (imageFilter === 'manual') list = list.filter((i) => i.has_manual_labels);
+    if (imageFilter === 'no_manual') list = list.filter((i) => !i.has_manual_labels);
+    return list.map((i) => i.id);
+  }, [images, imageFilter]);
+
+  const currentIndex = selectedImageId ? filteredIds.indexOf(selectedImageId) : -1;
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex >= 0 && currentIndex < filteredIds.length - 1;
+
+  const goPrev = useCallback(() => {
+    if (hasPrev) setSelectedImageId(filteredIds[currentIndex - 1]);
+  }, [hasPrev, filteredIds, currentIndex]);
+
+  const goNext = useCallback(() => {
+    if (hasNext) setSelectedImageId(filteredIds[currentIndex + 1]);
+  }, [hasNext, filteredIds, currentIndex]);
+
+  const selectedMeta = images.find((i) => i.id === selectedImageId);
 
   const approve = async (annId: string) => {
     await api.post(`/api/v1/annotation/${annId}/approve`);
-    load();
+    await reload();
   };
 
   const reject = async (annId: string) => {
     await api.post(`/api/v1/annotation/${annId}/reject`);
-    load();
+    await reload();
   };
 
-  const annToOverlay = (a: PendingAnn) => {
-    const cls = classNames[a.class_id];
-    return [{
-      class_name: cls?.name ?? 'class',
-      class_color: cls?.color ?? '#3B82F6',
-      x_center: a.x_center,
-      y_center: a.y_center,
-      width: a.width,
-      height: a.height,
-      status: a.status,
-    }];
+  const openEditFromReview = (imageId: string) => {
+    setSelectedImageId(imageId);
+    setSection('label');
   };
+
+  const sections: { id: Section; label: string; labelAr: string; icon: typeof PenTool; badge?: number }[] = [
+    { id: 'label', label: 'Label', labelAr: 'تسمية', icon: PenTool },
+    { id: 'review', label: 'Review', labelAr: 'مراجعة', icon: ClipboardCheck, badge: pending.length },
+    { id: 'guide', label: 'Guide', labelAr: 'دليل', icon: BookOpen },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Annotation</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Draw and edit vehicle boxes manually, or review auto-labels before training.
-        </p>
+    <div className="space-y-5 -mx-1 sm:mx-0">
+      <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/8 via-card to-card p-5 sm:p-6">
+        <PageHeader
+          title="التسمية · Annotation"
+          description="قسم مستقل لتعديل الصناديق ومراجعة التسميات التلقائية قبل التدريب."
+        >
+          <Link to={`/projects/${projectId}/data`}>
+            <Button type="button" variant="outline" size="sm" className="gap-1.5">
+              <Database className="h-4 w-4" />
+              البيانات
+            </Button>
+          </Link>
+        </PageHeader>
+        <div className="mt-4">
+          <AnnotationStatsBar stats={stats} loading={loading} />
+        </div>
       </div>
 
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant={tab === 'manual' ? 'default' : 'outline'}
-          onClick={() => setTab('manual')}
-        >
-          Manual edit
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={tab === 'review' ? 'default' : 'outline'}
-          onClick={() => setTab('review')}
-        >
-          Pending review ({pending.length})
-        </Button>
-      </div>
+      <nav className="flex flex-wrap gap-2 p-1 rounded-xl bg-secondary/50 border border-border w-fit">
+        {sections.map(({ id, label, labelAr, icon: Icon, badge }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setSection(id)}
+            className={cn(
+              'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+              section === id
+                ? 'bg-card text-foreground shadow-sm border border-border'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            <span>{labelAr}</span>
+            <span className="hidden sm:inline text-muted-foreground font-normal">({label})</span>
+            {badge != null && badge > 0 && (
+              <span className="text-[10px] min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-amber-500 text-white font-bold px-1">
+                {badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </nav>
 
-      {tab === 'manual' && (
-        <div className="grid grid-cols-1 xl:grid-cols-[240px_1fr] gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Images</CardTitle>
-              <CardDescription>{images.length} in project</CardDescription>
-            </CardHeader>
-            <CardContent className="max-h-[560px] overflow-auto space-y-1 p-2">
-              {images.map((img) => (
-                <button
-                  key={img.id}
-                  type="button"
-                  onClick={() => setSelectedImageId(img.id)}
-                  className={cn(
-                    'w-full text-left text-xs px-2 py-2 rounded border truncate',
-                    selectedImageId === img.id
-                      ? 'border-primary bg-primary/10'
-                      : 'border-border hover:bg-secondary/50',
-                  )}
-                >
-                  {img.filename}
-                </button>
-              ))}
-              {images.length === 0 && (
-                <p className="text-sm text-muted-foreground p-2">Upload images in Data Hub first.</p>
-              )}
-            </CardContent>
-          </Card>
+      {section === 'label' && (
+        <div className="grid grid-cols-1 xl:grid-cols-[220px_1fr] gap-0 xl:gap-4 min-h-[560px] rounded-2xl border border-border bg-card overflow-hidden">
+          <aside className="xl:border-r border-border flex flex-col min-h-[240px] xl:min-h-[600px] max-h-[40vh] xl:max-h-none">
+            <AnnotationImageList
+              images={images}
+              selectedId={selectedImageId}
+              onSelect={setSelectedImageId}
+              filter={imageFilter}
+              onFilterChange={setImageFilter}
+            />
+          </aside>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Manual bounding boxes</CardTitle>
-              <CardDescription>
-                One box per vehicle — class Accident/Vehicle labels the whole car.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {selectedImageId && classes.length > 0 ? (
+          <main className="flex flex-col min-h-0 p-4 sm:p-5">
+            {images.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center py-16 px-4">
+                <PenTool className="h-12 w-12 text-muted-foreground/40 mb-4" />
+                <p className="font-medium">لا توجد صور بعد</p>
+                <p className="text-sm text-muted-foreground mt-2 max-w-sm">
+                  ارفع صور الحوادث والحفر من مركز البيانات، ثم ارجع هنا لرسم الصناديق.
+                </p>
+                <Link to={`/projects/${projectId}/data`} className="mt-4">
+                  <Button>فتح مركز البيانات</Button>
+                </Link>
+              </div>
+            ) : selectedImageId && classes.length > 0 ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3 shrink-0">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate" title={selectedMeta?.filename}>
+                      {selectedMeta?.filename ?? 'صورة'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {currentIndex >= 0 ? `${currentIndex + 1} / ${filteredIds.length}` : '—'}
+                      {selectedMeta && selectedMeta.annotation_count > 0 && (
+                        <> · {selectedMeta.annotation_count} صندوق</>
+                      )}
+                      {selectedMeta?.has_manual_labels && (
+                        <span className="text-emerald-600"> · تسمية يدوية</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button type="button" size="sm" variant="outline" disabled={!hasPrev || editorSaving} onClick={goPrev}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={!hasNext || editorSaving} onClick={goNext}>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {classes.map((c) => (
+                    <span
+                      key={c.id}
+                      className="text-xs px-2 py-1 rounded-full border"
+                      style={{ borderColor: c.color, color: c.color, backgroundColor: `${c.color}18` }}
+                    >
+                      {c.name}
+                    </span>
+                  ))}
+                </div>
+
                 <ManualBBoxEditor
                   key={selectedImageId}
                   imageId={selectedImageId}
                   classes={classes}
-                  onSaved={load}
+                  onSaved={reload}
+                  onSavingChange={setEditorSaving}
+                  onPrevImage={goPrev}
+                  onNextImage={goNext}
+                  hasPrev={hasPrev}
+                  hasNext={hasNext}
                 />
-              ) : (
-                <p className="text-muted-foreground text-sm">Select an image to annotate.</p>
-              )}
-            </CardContent>
-          </Card>
+              </>
+            ) : (
+              <p className="text-muted-foreground text-sm py-12 text-center">
+                {classes.length === 0 ? 'أضف أصنافاً من قسم Classes أولاً.' : 'اختر صورة من القائمة.'}
+              </p>
+            )}
+          </main>
         </div>
       )}
 
-      {tab === 'review' && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader><CardTitle>Pending Review ({pending.length})</CardTitle></CardHeader>
-            <CardContent className="space-y-4 max-h-[70vh] overflow-auto">
-              {pending.map((a) => (
-                <div key={a.id} className="flex flex-col sm:flex-row gap-3 p-3 rounded border border-border">
-                  <div className="relative w-full sm:w-40 aspect-square shrink-0 rounded overflow-hidden bg-secondary">
-                    <AuthenticatedImage imageId={a.image_id} className="w-full h-full object-cover" />
-                    <ImageAnnotationOverlay annotations={annToOverlay(a)} />
-                  </div>
-                  <div className="flex-1 flex flex-col justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-medium">
-                        {classNames[a.class_id]?.name ?? 'Unknown class'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Confidence: {((a.confidence ?? 0) * 100).toFixed(1)}%
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => approve(a.id)}>Approve</Button>
-                      <Button size="sm" variant="destructive" onClick={() => reject(a.id)}>Reject</Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedImageId(a.image_id);
-                          setTab('manual');
-                        }}
-                      >
-                        Edit manually
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {pending.length === 0 && <p className="text-muted-foreground">No pending annotations</p>}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader><CardTitle>Active Learning ({activeLearning.length})</CardTitle></CardHeader>
-            <CardContent className="space-y-4 max-h-[70vh] overflow-auto">
-              {activeLearning.map((q) => (
-                <div key={q.id} className="flex gap-3 p-3 rounded border border-yellow-500/30 bg-yellow-500/5">
-                  <div className="relative w-24 aspect-square shrink-0 rounded overflow-hidden bg-secondary">
-                    <AuthenticatedImage imageId={q.image_id} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-1 flex items-center justify-between gap-2">
-                    <p className="text-xs text-yellow-600">
-                      Uncertainty: {(q.uncertainty_score * 100).toFixed(1)}% · Conf: {(q.confidence * 100).toFixed(1)}%
-                    </p>
-                    <Button size="sm" variant="outline" onClick={() => api.post(`/api/v1/annotation/active-learning/${q.id}/resolve`).then(load)}>
-                      Resolve
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {activeLearning.length === 0 && <p className="text-muted-foreground">No uncertain predictions</p>}
-            </CardContent>
-          </Card>
+      {section === 'review' && (
+        <div className="rounded-2xl border border-border bg-card p-4 sm:p-6">
+          <h3 className="text-lg font-semibold mb-1">مراجعة التسميات التلقائية</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            وافق على الصندوق إن كان صحيحاً، أو عدّل يدوياً من تبويب التسمية.
+          </p>
+          <AnnotationReviewQueue
+            pending={pending}
+            classMap={classMap}
+            onApprove={approve}
+            onReject={reject}
+            onEdit={openEditFromReview}
+          />
         </div>
+      )}
+
+      {section === 'guide' && projectId && (
+        <AnnotationGuide projectId={projectId} />
       )}
     </div>
   );

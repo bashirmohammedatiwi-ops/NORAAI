@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -18,6 +18,124 @@ from app.schemas import AnnotationCreate, AnnotationResponse, AnnotationUpdate, 
 from workers.labeling.tasks import auto_label_images
 
 router = APIRouter(prefix="/annotation", tags=["annotation"])
+
+_ACTIVE_STATUSES = (
+    AnnotationStatus.APPROVED,
+    AnnotationStatus.EDITED,
+    AnnotationStatus.PENDING_REVIEW,
+)
+
+
+@router.get("/project/{project_id}/workspace")
+async def annotation_workspace(project_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Stats and per-image annotation summary for the labeling workspace."""
+    from app.models import ClassLabel, Image
+
+    classes_result = await db.execute(
+        select(ClassLabel)
+        .where(ClassLabel.project_id == project_id, ClassLabel.is_archived == False)
+        .order_by(ClassLabel.name)
+    )
+    classes = [
+        {"id": str(c.id), "name": c.name, "color": c.color or "#3B82F6"}
+        for c in classes_result.scalars().all()
+    ]
+
+    images_result = await db.execute(
+        select(Image.id, Image.filename, Image.created_at)
+        .where(Image.project_id == project_id)
+        .order_by(Image.created_at.desc())
+        .limit(500)
+    )
+    image_rows = images_result.all()
+    image_ids = [row[0] for row in image_rows]
+
+    counts_by_image: dict[UUID, tuple[int, int]] = {}
+    manual_by_image: dict[UUID, int] = {}
+    if image_ids:
+        agg = await db.execute(
+            select(
+                Annotation.image_id,
+                func.count(Annotation.id),
+                func.sum(
+                    case(
+                        (Annotation.status == AnnotationStatus.PENDING_REVIEW, 1),
+                        else_=0,
+                    )
+                ),
+            )
+            .where(
+                Annotation.image_id.in_(image_ids),
+                Annotation.status.in_(_ACTIVE_STATUSES),
+            )
+            .group_by(Annotation.image_id)
+        )
+        for image_id, total, pending in agg.all():
+            counts_by_image[image_id] = (int(total or 0), int(pending or 0))
+
+        manual_agg = await db.execute(
+            select(Annotation.image_id, func.count(Annotation.id))
+            .where(
+                Annotation.image_id.in_(image_ids),
+                Annotation.status.in_(_ACTIVE_STATUSES),
+                or_(
+                    Annotation.source == "manual",
+                    Annotation.status == AnnotationStatus.EDITED,
+                ),
+            )
+            .group_by(Annotation.image_id)
+        )
+        for image_id, manual_count in manual_agg.all():
+            manual_by_image[image_id] = int(manual_count or 0)
+
+    pending_total = await db.execute(
+        select(func.count(Annotation.id))
+        .join(Image, Image.id == Annotation.image_id)
+        .where(
+            Image.project_id == project_id,
+            Annotation.status == AnnotationStatus.PENDING_REVIEW,
+        )
+    )
+
+    images_payload = []
+    annotated = 0
+    unannotated = 0
+    manual_images = 0
+    for image_id, filename, created_at in image_rows:
+        total, pending = counts_by_image.get(image_id, (0, 0))
+        manual_count = manual_by_image.get(image_id, 0)
+        has_manual = manual_count > 0
+        if total > 0:
+            annotated += 1
+        else:
+            unannotated += 1
+        if has_manual:
+            manual_images += 1
+        images_payload.append({
+            "id": str(image_id),
+            "filename": filename,
+            "annotation_count": total,
+            "manual_count": manual_count,
+            "pending_count": pending,
+            "has_labels": total > 0,
+            "has_manual_labels": has_manual,
+            "needs_review": pending > 0,
+            "created_at": created_at.isoformat() if created_at else None,
+        })
+
+    return {
+        "stats": {
+            "total_images": len(image_rows),
+            "annotated_images": annotated,
+            "unannotated_images": unannotated,
+            "manual_annotated_images": manual_images,
+            "without_manual_images": len(image_rows) - manual_images,
+            "pending_review": int(pending_total.scalar() or 0),
+            "total_boxes": sum(c[0] for c in counts_by_image.values()),
+        },
+        "images": images_payload,
+        "classes": classes,
+    }
 
 
 @router.get("/project/{project_id}/pending")
@@ -130,6 +248,7 @@ async def update_annotation(
         ann.height = max(0.01, min(1.0, data.height))
 
     ann.status = AnnotationStatus.EDITED
+    ann.source = "manual"
     db.add(AnnotationReview(annotation_id=annotation_id, reviewer_id=user.id, action="edit"))
     await db.flush()
     return ann
