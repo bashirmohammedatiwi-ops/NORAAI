@@ -8,21 +8,32 @@ from app.models import ClassAuditLog, ClassLabel, ModelDefinition, Organization,
 
 
 DEFAULT_CLASSES = [
+    # Vehicle + accident (yes/no on detected cars)
+    "Vehicle",
     "Accident",
     "Vehicle_Damage",
-    "Vehicle",
+    # Road condition (potholes, cracks, damage)
+    "Pothole",
+    "Road_Crack",
+    "Damaged_Road",
+    "Flooded_Road",
+    # Optional fleet / traffic
     "Truck",
     "Bus",
     "Motorcycle",
-    "Pothole",
-    "Road_Crack", "Barrier", "Road_Closed", "Construction",
-    "Speed_Sign", "Traffic_Light", "Flooded_Road", "Damaged_Road",
+    "Barrier",
+    "Road_Closed",
+    "Construction",
+    "Speed_Sign",
+    "Traffic_Light",
 ]
 
 DEFAULT_MODELS = [
-    "Accident Detection", "Pothole Detection", "Road Crack Detection",
-    "Barrier Detection", "Road Closed Detection", "Speed Sign Detection",
-    "Vehicle Detection", "Traffic Density Detection",
+    "Accident Detection",
+    "Pothole Detection",
+    "Road Crack Detection",
+    "Vehicle Detection",
+    "Road Condition Detection",
 ]
 
 

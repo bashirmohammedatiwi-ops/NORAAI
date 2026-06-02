@@ -152,10 +152,10 @@ def detect_with_project_model(
             )
 
     tips: list[str] = []
+    if has_damage or needs_vehicles:
+        tips.append("Vehicles: detector finds cars; trained model answers accident yes/no.")
     if has_road:
-        tips.append(
-            "Potholes/road defects: label each pothole or crack with its own box on the road surface."
-        )
+        tips.append("Road: model detects potholes, cracks, and surface defects on the pavement.")
     if needs_vehicles and not vehicles:
         tips.append("No vehicle found in this image.")
 

@@ -230,22 +230,26 @@ export default function DataHubPage() {
 
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">How to label · طريقة التسمية</CardTitle>
+              <CardTitle className="text-base">Project goal · هدف المشروع</CardTitle>
               <CardDescription>
-                The model detects <strong>regions</strong>, not whole images — draw tight boxes around each target.
+                Dual detection: <strong>vehicles + accident</strong> and <strong>road defects</strong>.
               </CardDescription>
             </CardHeader>
-            <CardContent className="text-sm space-y-2 text-muted-foreground">
-              <p>
-                <strong className="text-foreground">Accident / Vehicle_Damage:</strong> draw one box around the{' '}
-                <span className="text-blue-600">whole vehicle</span> (not the damaged part only).
-              </p>
-              <p>
-                <strong className="text-foreground">Pothole / Road_Crack:</strong> box on each hole or crack on the pavement.
-              </p>
+            <CardContent className="text-sm space-y-3 text-muted-foreground">
+              <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3 space-y-1">
+                <p className="font-medium text-blue-800 dark:text-blue-200">1) المركبات · Vehicles</p>
+                <p>يكتشف السيارات — إذا وُجدت مركبة يحدد: <strong>حادث نعم / لا</strong>.</p>
+                <p className="text-xs">صندوق أزرق حول السيارة · صنف Accident للحوادث.</p>
+              </div>
+              <div className="rounded-md border border-orange-500/20 bg-orange-500/5 p-3 space-y-1">
+                <p className="font-medium text-orange-800 dark:text-orange-200">2) الطريق · Road</p>
+                <p>يكتشف الطريق — يحدد: <strong>حفر أو مشاكل نعم / لا</strong> (Pothole, Road_Crack, …).</p>
+                <p className="text-xs">صندوق برتقالي على الحفرة أو التشقق في الإسفلت.</p>
+              </div>
               <p className="text-xs">
-                Auto-label adds a vehicle box only when a car/truck is detected — otherwise annotate manually in{' '}
-                <Link to={`/projects/${projectId}/annotation`} className="text-primary underline">Annotation</Link>.
+                ارفع صور الحوادث مع Accident، وصور الحفر مع Pothole/Road_Crack، ثم{' '}
+                <Link to={`/projects/${projectId}/annotation`} className="text-primary underline">Annotation</Link>{' '}
+                و Retrain.
               </p>
             </CardContent>
           </Card>

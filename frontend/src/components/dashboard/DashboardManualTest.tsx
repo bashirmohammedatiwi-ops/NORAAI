@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import { detectionBoxClass, detectionLabelClass } from '@/lib/detectionDisplay';
+import { DetectionSummaryCard } from '@/components/dashboard/DetectionSummaryCard';
+import type { DetectionSummary } from '@/lib/detectionSummary';
 import type { ProjectListItem } from '@/hooks/useProjects';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +32,7 @@ interface PredictResponse {
   raw_detection_count?: number;
   vehicle_count?: number;
   detected_vehicles?: { bbox: number[]; confidence: number; vehicle_type?: string; label: string }[];
+  summary?: DetectionSummary;
   warnings?: string[];
   latency_ms: number;
   message: string;
@@ -153,7 +155,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
           Manual Test · اختبار يدوي
         </CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
-          Step 1: detect vehicle · Step 2: classify. Blue = car location, green = class.
+          مساران: <strong>مركبات + حادث (نعم/لا)</strong> · <strong>طريق + حفر/عيوب (نعم/لا)</strong>
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -312,6 +314,10 @@ export function DashboardManualTest({ projects, compact }: Props) {
 
             {result && (
               <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
+                {result.summary && (
+                  <DetectionSummaryCard summary={result.summary} />
+                )}
+
                 {result.primary_class ? (
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Detected class</p>

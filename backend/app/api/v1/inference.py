@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models import Deployment, InferenceLog, User
+from app.services.inference.summary import build_detection_summary
 from app.services.driver.detection import run_detection
 from app.services.models.active_model import get_active_model
 
@@ -45,6 +46,11 @@ async def predict(
         raise HTTPException(status_code=422, detail=error)
 
     primary = max(predictions, key=lambda p: p["confidence"]) if predictions else None
+    summary = build_detection_summary(
+        predictions,
+        detected_vehicles=meta.get("detected_vehicles"),
+        vehicle_count=meta.get("vehicle_count", 0),
+    )
 
     dep_result = await db.execute(
         select(Deployment).where(Deployment.project_id == project_id, Deployment.name == "Live Model")
@@ -74,12 +80,17 @@ async def predict(
         "detected_vehicles": meta.get("detected_vehicles", []),
         "pipeline": meta.get("pipeline", "localized"),
         "detection_modes": meta.get("detection_modes", []),
+        "summary": summary,
         "warnings": meta.get("warnings", []),
         "latency_ms": round(latency_ms, 1),
         "message": (
             f"Detected: {primary['class']}"
             if primary
-            else "No objects detected"
+            else (
+                "Vehicle(s) found — no accident confirmed"
+                if summary["vehicles"]["found"] and not summary["vehicles"]["accident"]["detected"]
+                else "No objects detected"
+            )
         ),
     }
 
