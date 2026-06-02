@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { AnnotationGuide } from '@/components/annotation/AnnotationGuide';
 import { AnnotationImageList, type ImageFilter } from '@/components/annotation/AnnotationImageList';
 import { AnnotationReviewQueue } from '@/components/annotation/AnnotationReviewQueue';
 import { AnnotationStatsBar } from '@/components/annotation/AnnotationStatsBar';
-import { ManualBBoxEditor } from '@/components/annotation/ManualBBoxEditor';
+import { ManualBBoxEditor, type ManualBBoxEditorHandle } from '@/components/annotation/ManualBBoxEditor';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { useAnnotationWorkspace } from '@/hooks/useAnnotationWorkspace';
@@ -24,6 +24,25 @@ export default function AnnotationPage() {
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [imageFilter, setImageFilter] = useState<ImageFilter>('all');
   const [editorSaving, setEditorSaving] = useState(false);
+  const [editorDirty, setEditorDirty] = useState(false);
+  const editorRef = useRef<ManualBBoxEditorHandle>(null);
+
+  const flushEditor = useCallback(async () => {
+    if (section !== 'label') return true;
+    return editorRef.current?.flush() ?? true;
+  }, [section]);
+
+  const changeImage = useCallback(async (id: string) => {
+    if (id === selectedImageId) return;
+    await flushEditor();
+    setSelectedImageId(id);
+  }, [selectedImageId, flushEditor]);
+
+  const changeSection = useCallback(async (next: Section) => {
+    if (next === section) return;
+    await flushEditor();
+    setSection(next);
+  }, [section, flushEditor]);
 
   useEffect(() => {
     if (!selectedImageId && images.length > 0) {
@@ -45,13 +64,17 @@ export default function AnnotationPage() {
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex >= 0 && currentIndex < filteredIds.length - 1;
 
-  const goPrev = useCallback(() => {
-    if (hasPrev) setSelectedImageId(filteredIds[currentIndex - 1]);
-  }, [hasPrev, filteredIds, currentIndex]);
+  const goPrev = useCallback(async () => {
+    if (!hasPrev) return;
+    await flushEditor();
+    setSelectedImageId(filteredIds[currentIndex - 1]);
+  }, [hasPrev, filteredIds, currentIndex, flushEditor]);
 
-  const goNext = useCallback(() => {
-    if (hasNext) setSelectedImageId(filteredIds[currentIndex + 1]);
-  }, [hasNext, filteredIds, currentIndex]);
+  const goNext = useCallback(async () => {
+    if (!hasNext) return;
+    await flushEditor();
+    setSelectedImageId(filteredIds[currentIndex + 1]);
+  }, [hasNext, filteredIds, currentIndex, flushEditor]);
 
   const selectedMeta = images.find((i) => i.id === selectedImageId);
 
@@ -65,7 +88,8 @@ export default function AnnotationPage() {
     await reload();
   };
 
-  const openEditFromReview = (imageId: string) => {
+  const openEditFromReview = async (imageId: string) => {
+    await flushEditor();
     setSelectedImageId(imageId);
     setSection('label');
   };
@@ -100,7 +124,7 @@ export default function AnnotationPage() {
           <button
             key={id}
             type="button"
-            onClick={() => setSection(id)}
+            onClick={() => void changeSection(id)}
             className={cn(
               'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
               section === id
@@ -126,7 +150,7 @@ export default function AnnotationPage() {
             <AnnotationImageList
               images={images}
               selectedId={selectedImageId}
-              onSelect={setSelectedImageId}
+              onSelect={(id) => void changeImage(id)}
               filter={imageFilter}
               onFilterChange={setImageFilter}
             />
@@ -156,16 +180,19 @@ export default function AnnotationPage() {
                       {selectedMeta && selectedMeta.annotation_count > 0 && (
                         <> · {selectedMeta.annotation_count} صندوق</>
                       )}
-                      {selectedMeta?.has_manual_labels && (
+                      {selectedMeta?.has_manual_labels && !editorDirty && (
                         <span className="text-emerald-600"> · تسمية يدوية</span>
+                      )}
+                      {editorDirty && !editorSaving && (
+                        <span className="text-amber-600"> · غير محفوظ</span>
                       )}
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button type="button" size="sm" variant="outline" disabled={!hasPrev || editorSaving} onClick={goPrev}>
+                    <Button type="button" size="sm" variant="outline" disabled={!hasPrev || editorSaving} onClick={() => void goPrev()}>
                       <ChevronRight className="h-4 w-4" />
                     </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={!hasNext || editorSaving} onClick={goNext}>
+                    <Button type="button" size="sm" variant="outline" disabled={!hasNext || editorSaving} onClick={() => void goNext()}>
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
                   </div>
@@ -187,13 +214,14 @@ export default function AnnotationPage() {
                 </div>
 
                 <ManualBBoxEditor
-                  key={selectedImageId}
+                  ref={editorRef}
                   imageId={selectedImageId}
                   classes={classes}
                   onSaved={reload}
                   onSavingChange={setEditorSaving}
-                  onPrevImage={goPrev}
-                  onNextImage={goNext}
+                  onDirtyChange={setEditorDirty}
+                  onPrevImage={() => void goPrev()}
+                  onNextImage={() => void goNext()}
                   hasPrev={hasPrev}
                   hasNext={hasNext}
                 />

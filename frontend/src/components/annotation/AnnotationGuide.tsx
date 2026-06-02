@@ -49,7 +49,7 @@ export function AnnotationGuide({ projectId }: Props) {
             ))}
           </dl>
           <p className="text-xs text-muted-foreground mt-3">
-            يُحفظ كل تغيير تلقائياً عند رسم صندوق أو تعديله أو حذفه.
+            يُحفظ تلقائياً عند الانتقال لصورة أخرى، تغيير التبويب، أو مغادرة الصفحة.
           </p>
         </CardContent>
       </Card>

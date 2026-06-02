@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import { api } from '@/lib/api';
 import { colorForClass } from '@/lib/classColors';
 import { AnnotationCanvasImage } from '@/components/annotation/AnnotationCanvasImage';
@@ -25,6 +32,11 @@ export interface EditableAnnotation {
   isNew?: boolean;
 }
 
+export interface ManualBBoxEditorHandle {
+  flush: () => Promise<boolean>;
+  hasUnsavedChanges: () => boolean;
+}
+
 interface BoxGeom {
   x_center: number;
   y_center: number;
@@ -37,6 +49,7 @@ interface Props {
   classes: ClassOption[];
   onSaved?: () => void;
   onSavingChange?: (saving: boolean) => void;
+  onDirtyChange?: (dirty: boolean) => void;
   onPrevImage?: () => void;
   onNextImage?: () => void;
   hasPrev?: boolean;
@@ -102,12 +115,22 @@ function resolveClass(classes: ClassOption[], classId: string) {
   };
 }
 
+function annChanged(a: EditableAnnotation, b: EditableAnnotation) {
+  return (
+    a.class_id !== b.class_id
+    || Math.abs(a.x_center - b.x_center) > 1e-5
+    || Math.abs(a.y_center - b.y_center) > 1e-5
+    || Math.abs(a.width - b.width) > 1e-5
+    || Math.abs(a.height - b.height) > 1e-5
+  );
+}
+
 function BBoxLayer({
   ann,
   selected,
   showHandle,
 }: {
-  ann: BoxGeom & { id?: string; class_name: string; class_color: string };
+  ann: BoxGeom & { class_name: string; class_color: string };
   selected?: boolean;
   showHandle?: boolean;
 }) {
@@ -135,20 +158,26 @@ function BBoxLayer({
   );
 }
 
-export function ManualBBoxEditor({
-  imageId,
-  classes,
-  onSaved,
-  onSavingChange,
-  onPrevImage,
-  onNextImage,
-  hasPrev,
-  hasNext,
-}: Props) {
+export const ManualBBoxEditor = forwardRef<ManualBBoxEditorHandle, Props>(function ManualBBoxEditor(
+  {
+    imageId,
+    classes,
+    onSaved,
+    onSavingChange,
+    onDirtyChange,
+    onPrevImage,
+    onNextImage,
+    hasPrev,
+    hasNext,
+  },
+  ref,
+) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const annotationsRef = useRef<EditableAnnotation[]>([]);
-  const saveOpsRef = useRef(0);
-  const notifyTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const baselineRef = useRef<Record<string, EditableAnnotation>>({});
+  const deletedIdsRef = useRef<string[]>([]);
+  const imageIdRef = useRef(imageId);
+  const flushRef = useRef<() => Promise<boolean>>(async () => true);
   const interactionRef = useRef<'draw' | 'move' | 'resize' | null>(null);
 
   const [annotations, setAnnotations] = useState<EditableAnnotation[]>([]);
@@ -157,13 +186,13 @@ export function ManualBBoxEditor({
   const [defaultClassId, setDefaultClassId] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [drawPreview, setDrawPreview] = useState<BoxGeom | null>(null);
   const [dragOrig, setDragOrig] = useState<EditableAnnotation | null>(null);
-  const [dragMode, setDragMode] = useState<'move' | 'resize' | null>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [liveBox, setLiveBox] = useState<(BoxGeom & { class_name: string; class_color: string }) | null>(null);
 
@@ -171,16 +200,27 @@ export function ManualBBoxEditor({
     annotationsRef.current = annotations;
   }, [annotations]);
 
-  const setSavingCount = useCallback((delta: number) => {
-    saveOpsRef.current = Math.max(0, saveOpsRef.current + delta);
-    const active = saveOpsRef.current > 0;
-    setSaving(active);
-    onSavingChange?.(active);
-  }, [onSavingChange]);
+  useEffect(() => {
+    imageIdRef.current = imageId;
+  }, [imageId]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty]);
+
+  const markDirty = useCallback(() => setDirty(true), []);
 
   const notifySaved = useCallback(() => {
-    if (notifyTimerRef.current) clearTimeout(notifyTimerRef.current);
-    notifyTimerRef.current = setTimeout(() => onSaved?.(), 350);
+    onSaved?.();
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 1200);
   }, [onSaved]);
@@ -197,6 +237,16 @@ export function ManualBBoxEditor({
     },
     [classes],
   );
+
+  const computeDirty = useCallback(() => {
+    if (deletedIdsRef.current.length > 0) return true;
+    for (const ann of annotationsRef.current) {
+      if (ann.isNew || isTempId(ann.id)) return true;
+      const base = baselineRef.current[ann.id];
+      if (base && annChanged(ann, base)) return true;
+    }
+    return false;
+  }, []);
 
   const load = useCallback(async () => {
     if (!imageId) return;
@@ -225,8 +275,11 @@ export function ManualBBoxEditor({
           isNew: false,
         }),
       );
+      baselineRef.current = Object.fromEntries(mapped.map((a) => [a.id, { ...a }]));
+      deletedIdsRef.current = [];
       setAnnotations(mapped);
       setSelectedId(null);
+      setDirty(false);
     } catch {
       setError('تعذّر تحميل التسميات');
     } finally {
@@ -234,76 +287,89 @@ export function ManualBBoxEditor({
     }
   }, [imageId, classes, enrich]);
 
+  const flushSave = useCallback(async (): Promise<boolean> => {
+    if (!computeDirty()) {
+      setDirty(false);
+      return true;
+    }
+    const imgId = imageIdRef.current;
+    const toDelete = [...deletedIdsRef.current];
+    const toSave = [...annotationsRef.current];
+
+    setSaving(true);
+    onSavingChange?.(true);
+    setError(null);
+
+    try {
+      for (const id of toDelete) {
+        if (!isTempId(id)) {
+          await api.delete(`/api/v1/annotation/${id}`);
+        }
+      }
+
+      const nextBaseline: Record<string, EditableAnnotation> = {};
+      const nextAnnotations: EditableAnnotation[] = [];
+
+      for (const ann of toSave) {
+        if (ann.isNew || isTempId(ann.id)) {
+          const created = await api.post<{ id: string; status: string }>(
+            `/api/v1/annotation/image/${imgId}`,
+            annPayload(ann),
+          );
+          const saved = enrich({
+            ...ann,
+            id: String(created.id),
+            isNew: false,
+            status: created.status ?? 'approved',
+          });
+          nextAnnotations.push(saved);
+          nextBaseline[saved.id] = { ...saved };
+        } else {
+          const base = baselineRef.current[ann.id];
+          if (!base || annChanged(ann, base)) {
+            await api.patch(`/api/v1/annotation/${ann.id}`, annPayload(ann));
+          }
+          nextAnnotations.push(ann);
+          nextBaseline[ann.id] = { ...ann };
+        }
+      }
+
+      baselineRef.current = nextBaseline;
+      deletedIdsRef.current = [];
+      annotationsRef.current = nextAnnotations;
+      setAnnotations(nextAnnotations);
+      setDirty(false);
+      notifySaved();
+      return true;
+    } catch {
+      setError('فشل الحفظ — حاول مرة أخرى');
+      return false;
+    } finally {
+      setSaving(false);
+      onSavingChange?.(false);
+    }
+  }, [computeDirty, enrich, notifySaved, onSavingChange]);
+
+  flushRef.current = flushSave;
+
+  useImperativeHandle(ref, () => ({
+    flush: () => flushRef.current(),
+    hasUnsavedChanges: () => computeDirty(),
+  }), [computeDirty]);
+
   useEffect(() => {
     load().catch(() => {});
   }, [load]);
 
   useEffect(() => {
+    return () => {
+      void flushRef.current();
+    };
+  }, [imageId]);
+
+  useEffect(() => {
     if (!defaultClassId && classes[0]) setDefaultClassId(classes[0].id);
   }, [classes, defaultClassId]);
-
-  const persistCreate = useCallback(
-    async (ann: EditableAnnotation) => {
-      setSavingCount(1);
-      try {
-        const created = await api.post<{
-          id: string;
-          status: string;
-        }>(`/api/v1/annotation/image/${imageId}`, annPayload(ann));
-        const saved = enrich({
-          ...ann,
-          id: String(created.id),
-          isNew: false,
-          status: created.status ?? 'approved',
-        });
-        setAnnotations((prev) => prev.map((a) => (a.id === ann.id ? saved : a)));
-        setSelectedId(saved.id);
-        notifySaved();
-        return saved;
-      } catch {
-        setError('فشل الحفظ التلقائي');
-        setAnnotations((prev) => prev.filter((a) => a.id !== ann.id));
-        return null;
-      } finally {
-        setSavingCount(-1);
-      }
-    },
-    [imageId, enrich, notifySaved, setSavingCount],
-  );
-
-  const persistUpdate = useCallback(
-    async (ann: EditableAnnotation) => {
-      if (ann.isNew || isTempId(ann.id)) {
-        return persistCreate(ann);
-      }
-      setSavingCount(1);
-      try {
-        await api.patch(`/api/v1/annotation/${ann.id}`, annPayload(ann));
-        notifySaved();
-      } catch {
-        setError('فشل حفظ التعديل');
-      } finally {
-        setSavingCount(-1);
-      }
-    },
-    [persistCreate, notifySaved, setSavingCount],
-  );
-
-  const persistDelete = useCallback(
-    async (id: string) => {
-      if (isTempId(id)) return;
-      setSavingCount(1);
-      try {
-        await api.delete(`/api/v1/annotation/${id}`);
-        notifySaved();
-      } catch {
-        setError('فشل الحذف');
-      } finally {
-        setSavingCount(-1);
-      }
-    },
-    [notifySaved, setSavingCount],
-  );
 
   const normFromClient = useCallback((clientX: number, clientY: number) => {
     const el = canvasRef.current;
@@ -321,7 +387,6 @@ export function ManualBBoxEditor({
     setDrawStart(null);
     setDrawPreview(null);
     setDragOrig(null);
-    setDragMode(null);
     setDragStart(null);
     setLiveBox(null);
   }, []);
@@ -330,8 +395,7 @@ export function ManualBBoxEditor({
     if (e.button !== 0 || saving) return;
     e.preventDefault();
     e.stopPropagation();
-    const layer = e.currentTarget;
-    layer.setPointerCapture(e.pointerId);
+    e.currentTarget.setPointerCapture(e.pointerId);
 
     const p = normFromClient(e.clientX, e.clientY);
 
@@ -357,7 +421,6 @@ export function ManualBBoxEditor({
     const mode = nearHandle ? 'resize' : 'move';
     interactionRef.current = mode;
     setDragOrig(hit);
-    setDragMode(mode);
     setDragStart(p);
     setLiveBox({
       x_center: hit.x_center,
@@ -408,19 +471,17 @@ export function ManualBBoxEditor({
     const mode = interactionRef.current;
     if (!mode) return;
     e.preventDefault();
-
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
-      /* already released */
+      /* ok */
     }
 
     if (mode === 'draw' && drawStart && drawPreview && defaultClassId) {
       if (drawPreview.width >= MIN_BOX && drawPreview.height >= MIN_BOX) {
         const { name, color } = resolveClass(classes, defaultClassId);
-        const id = `new-${Date.now()}`;
         const newAnn: EditableAnnotation = {
-          id,
+          id: `new-${Date.now()}`,
           class_id: defaultClassId,
           class_name: name,
           class_color: color,
@@ -429,34 +490,39 @@ export function ManualBBoxEditor({
           isNew: true,
         };
         setAnnotations((prev) => [...prev, newAnn]);
-        setSelectedId(id);
-        void persistCreate(newAnn);
+        setSelectedId(newAnn.id);
+        markDirty();
       }
     }
 
     if ((mode === 'move' || mode === 'resize') && dragOrig && liveBox && selectedId) {
       const updated: EditableAnnotation = { ...dragOrig, ...liveBox };
       setAnnotations((prev) => prev.map((a) => (a.id === selectedId ? updated : a)));
-      void persistUpdate(updated);
+      markDirty();
     }
 
-    resetInteraction();
-  };
-
-  const onPointerCancel = () => {
     resetInteraction();
   };
 
   const deleteSelected = useCallback(() => {
     if (!selectedId || saving) return;
     const id = selectedId;
+    if (!isTempId(id)) {
+      deletedIdsRef.current = [...deletedIdsRef.current, id];
+    }
     setAnnotations((prev) => prev.filter((a) => a.id !== id));
     setSelectedId(null);
-    void persistDelete(id);
-  }, [selectedId, saving, persistDelete]);
+    markDirty();
+  }, [selectedId, saving, markDirty]);
 
   const deleteSelectedRef = useRef(deleteSelected);
   deleteSelectedRef.current = deleteSelected;
+
+  const navigateAfterFlush = useCallback(async (navigate: () => void) => {
+    if (saving) return;
+    await flushRef.current();
+    navigate();
+  }, [saving]);
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
@@ -474,18 +540,17 @@ export function ManualBBoxEditor({
         deleteSelectedRef.current();
       } else if (ev.key === 'ArrowLeft' && hasNext && !saving) {
         ev.preventDefault();
-        onNextImage?.();
+        void navigateAfterFlush(() => onNextImage?.());
       } else if (ev.key === 'ArrowRight' && hasPrev && !saving) {
         ev.preventDefault();
-        onPrevImage?.();
+        void navigateAfterFlush(() => onPrevImage?.());
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [hasPrev, hasNext, onPrevImage, onNextImage, saving]);
+  }, [hasPrev, hasNext, onPrevImage, onNextImage, saving, navigateAfterFlush]);
 
-  const defaultClass = classes.find((c) => c.id === defaultClassId);
-  const previewClass = defaultClass
+  const previewClass = defaultClassId
     ? resolveClass(classes, defaultClassId)
     : { name: '', color: '#2563EB' };
 
@@ -502,22 +567,10 @@ export function ManualBBoxEditor({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 items-center">
-        <Button
-          type="button"
-          size="sm"
-          variant={tool === 'select' ? 'default' : 'outline'}
-          onClick={() => setTool('select')}
-          disabled={saving}
-        >
+        <Button type="button" size="sm" variant={tool === 'select' ? 'default' : 'outline'} onClick={() => setTool('select')} disabled={saving}>
           <MousePointer2 className="h-4 w-4" /> تحديد
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={tool === 'draw' ? 'default' : 'outline'}
-          onClick={() => setTool('draw')}
-          disabled={saving}
-        >
+        <Button type="button" size="sm" variant={tool === 'draw' ? 'default' : 'outline'} onClick={() => setTool('draw')} disabled={saving}>
           <Pencil className="h-4 w-4" /> رسم
         </Button>
 
@@ -538,7 +591,7 @@ export function ManualBBoxEditor({
                     if (ann) {
                       const updated = enrich({ ...ann, class_id: c.id });
                       setAnnotations((prev) => prev.map((a) => (a.id === selectedId ? updated : a)));
-                      void persistUpdate(updated);
+                      markDirty();
                     }
                   }
                 }}
@@ -558,31 +611,27 @@ export function ManualBBoxEditor({
           })}
         </div>
 
-        <Button
-          type="button"
-          size="sm"
-          variant="destructive"
-          disabled={!selectedId || saving}
-          onClick={deleteSelected}
-          className="mr-auto"
-        >
+        <Button type="button" size="sm" variant="destructive" disabled={!selectedId || saving} onClick={deleteSelected} className="mr-auto">
           <Trash2 className="h-4 w-4" /> حذف
         </Button>
 
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground w-full sm:w-auto">
+        <div className="flex items-center gap-1.5 text-xs min-h-[32px] w-full sm:w-auto">
           {saving && (
-            <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span>جاري الحفظ…</span>
-            </>
+            <span className="text-muted-foreground flex items-center gap-1">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> جاري الحفظ…
+            </span>
           )}
           {!saving && savedFlash && (
-            <>
-              <Check className="h-3.5 w-3.5 text-emerald-600" />
-              <span className="text-emerald-600">تم الحفظ</span>
-            </>
+            <span className="text-emerald-600 flex items-center gap-1">
+              <Check className="h-3.5 w-3.5" /> تم الحفظ
+            </span>
           )}
-          {!saving && !savedFlash && <span>حفظ تلقائي — اسحب لرسم الصندوق</span>}
+          {!saving && !savedFlash && dirty && (
+            <span className="text-amber-600">تغييرات غير محفوظة — تُحفظ عند تغيير الصورة</span>
+          )}
+          {!saving && !savedFlash && !dirty && (
+            <span className="text-muted-foreground">يُحفظ تلقائياً عند الانتقال لصورة أخرى أو الخروج</span>
+          )}
         </div>
       </div>
 
@@ -596,7 +645,6 @@ export function ManualBBoxEditor({
         )}
       >
         <AnnotationCanvasImage imageId={imageId} />
-
         <div
           className={cn(
             'absolute inset-0 z-10',
@@ -606,7 +654,7 @@ export function ManualBBoxEditor({
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerCancel={onPointerCancel}
+          onPointerCancel={resetInteraction}
           style={{ touchAction: 'none' }}
         >
           {staticAnnotations.map((ann) => (
@@ -617,15 +665,9 @@ export function ManualBBoxEditor({
               showHandle={ann.id === selectedId && tool === 'select' && !liveBox}
             />
           ))}
-
           {liveBox && selectedId && (
-            <BBoxLayer
-              ann={liveBox}
-              selected
-              showHandle={tool === 'select'}
-            />
+            <BBoxLayer ann={liveBox} selected showHandle={tool === 'select'} />
           )}
-
           {drawPreview && drawPreview.width > 0.001 && (
             <div
               className="absolute border-2 border-dashed z-30 pointer-events-none box-border"
@@ -640,4 +682,4 @@ export function ManualBBoxEditor({
       </div>
     </div>
   );
-}
+});
