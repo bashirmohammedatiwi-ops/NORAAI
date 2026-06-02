@@ -432,6 +432,11 @@ class DriverConfigResponse(BaseModel):
     road_speed_enabled: bool = False
     detection_enabled: bool = False
     message: str | None = None
+    scan_interval_ms: int = 2000
+    scan_interval_fast_ms: int = 1200
+    speed_fast_kmh: float = 40.0
+    capture_max_width: int = 640
+    jpeg_quality: float = 0.72
 
 
 class DriverSpeedLimitResponse(BaseModel):
@@ -449,6 +454,8 @@ class DriverDetectResponse(BaseModel):
     events_created: int
     model_ready: bool = True
     message: str | None = None
+    latency_ms: float | None = None
+    pipeline: str | None = None
 
 
 class DriverNearbyEvent(BaseModel):

@@ -36,6 +36,11 @@ export interface ServerConfig {
   road_speed_enabled: boolean;
   detection_enabled: boolean;
   message: string | null;
+  scan_interval_ms?: number;
+  scan_interval_fast_ms?: number;
+  speed_fast_kmh?: number;
+  capture_max_width?: number;
+  jpeg_quality?: number;
 }
 
 export interface RoadSpeedLimit {
@@ -62,6 +67,16 @@ export interface DetectResult {
   events_created: number;
   model_ready: boolean;
   message: string | null;
+  latency_ms?: number | null;
+  pipeline?: string | null;
+}
+
+export async function warmupModel(config: DriverConfig): Promise<void> {
+  const res = await fetch(`${baseUrl(config)}/api/v1/driver/warmup`, {
+    method: 'POST',
+    headers: headers(config),
+  });
+  if (!res.ok) await parseError(res);
 }
 
 async function parseError(res: Response) {

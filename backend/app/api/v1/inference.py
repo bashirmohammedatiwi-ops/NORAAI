@@ -1,5 +1,6 @@
 """Inference using the project's single active model."""
 
+import hashlib
 import time
 import uuid
 
@@ -60,7 +61,7 @@ async def predict(
     if deployment:
         log = InferenceLog(
             deployment_id=deployment.id,
-            input_hash=str(hash(content))[:16],
+            input_hash=hashlib.sha256(content).hexdigest()[:16],
             predictions={"detections": predictions, "meta": meta},
             confidence=primary["confidence"] if primary else 0.0,
             latency_ms=latency_ms,

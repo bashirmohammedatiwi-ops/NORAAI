@@ -178,6 +178,12 @@ def run_training_job(job_id: str):
             weights_bytes = Path(weights_path).read_bytes() if Path(weights_path).exists() else b"mock"
             minio_key = f"projects/{job.project_id}/models/{job.id}/best.pt"
             upload_bytes(minio_key, weights_bytes, "application/octet-stream")
+            try:
+                from app.services.inference.model_cache import invalidate_weights
+
+                invalidate_weights(minio_key)
+            except Exception:
+                pass
 
             onnx_path = os.path.join(tmpdir, "model.onnx")
             adapter.export_onnx(weights_path, onnx_path)

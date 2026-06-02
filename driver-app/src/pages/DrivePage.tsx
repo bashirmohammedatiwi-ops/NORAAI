@@ -9,9 +9,11 @@ import {
   detectFrame,
   fetchNearby,
   sendTelemetry,
+  warmupModel,
   type NearbyEvent,
   type ServerConfig,
 } from '../lib/api';
+import { captureFrameBlob } from '../lib/frameCapture';
 import { buildClassMetaFromServer, getEventMeta } from '../lib/eventMeta';
 import { formatDistanceKm } from '../lib/mapGeo';
 import { formatAccuracy, openSystemLocationSettings } from '../lib/location';
@@ -44,6 +46,7 @@ export default function DrivePage({ config, onLogout }: Props) {
   const [nearby, setNearby] = useState<NearbyEvent[]>([]);
   const [scanning, setScanning] = useState(false);
   const [camOk, setCamOk] = useState(false);
+  const detectInFlight = useRef(false);
 
   const meta = useMemo(
     () => (cfg ? buildClassMetaFromServer(cfg.project_classes, cfg.alert_types) : buildClassMetaFromServer([])),
@@ -66,6 +69,7 @@ export default function DrivePage({ config, onLogout }: Props) {
             setCfg(c);
             setOnline(true);
             setErr('');
+            if (c.detection_enabled) warmupModel(config).catch(() => {});
           }
         })
         .catch((e) => {
@@ -134,36 +138,69 @@ export default function DrivePage({ config, onLogout }: Props) {
 
   useEffect(() => {
     if (!loc.location || !camOk || !aiOn) return;
-    const run = () => {
+
+    let cancelled = false;
+    let timer = 0;
+
+    const intervalMs = () => {
+      const speed = loc.location?.speed ?? 0;
+      const fast = cfg?.speed_fast_kmh ?? 40;
+      if (speed >= fast) return cfg?.scan_interval_fast_ms ?? 1200;
+      return cfg?.scan_interval_ms ?? 2000;
+    };
+
+    const schedule = (delay: number) => {
+      timer = window.setTimeout(() => void loop(), delay);
+    };
+
+    const loop = async () => {
+      if (cancelled || !loc.location) return;
       const v = videoRef.current;
       const c = canvasRef.current;
-      if (!v || !c || v.readyState < 2) return;
+      if (!v || !c) {
+        schedule(400);
+        return;
+      }
+      if (detectInFlight.current) {
+        schedule(150);
+        return;
+      }
+      detectInFlight.current = true;
       setScanning(true);
-      c.width = v.videoWidth;
-      c.height = v.videoHeight;
-      c.getContext('2d')?.drawImage(v, 0, 0);
-      c.toBlob(async (blob) => {
-        if (!blob || !loc.location) return;
-        try {
-          const res = await detectFrame(config, blob, {
-            latitude: loc.location.lat,
-            longitude: loc.location.lon,
-            speed: loc.location.speed,
-            speed_limit: activeLimit,
-          });
-          for (const a of res.alerts) pushAlert(a.type, a.class_name || a.label || a.type, a.confidence);
-          if (res.events_created > 0) {
-            fetchNearby(config, loc.location.lat, loc.location.lon, 15).then(setNearby).catch(() => {});
-          }
-        } finally {
-          setScanning(false);
+      try {
+        const blob = await captureFrameBlob(v, c, {
+          maxWidth: cfg?.capture_max_width ?? 640,
+          jpegQuality: cfg?.jpeg_quality ?? 0.72,
+        });
+        if (!blob || cancelled || !loc.location) return;
+        const res = await detectFrame(config, blob, {
+          latitude: loc.location.lat,
+          longitude: loc.location.lon,
+          speed: loc.location.speed,
+          speed_limit: activeLimit,
+        });
+        for (const a of res.alerts) {
+          pushAlert(a.type, a.class_name || a.label || a.type, a.confidence);
         }
-      }, 'image/jpeg', 0.85);
+        if (res.events_created > 0) {
+          fetchNearby(config, loc.location.lat, loc.location.lon, 15).then(setNearby).catch(() => {});
+        }
+      } catch {
+        /* next frame */
+      } finally {
+        detectInFlight.current = false;
+        setScanning(false);
+        if (!cancelled) schedule(intervalMs());
+      }
     };
-    run();
-    const t = window.setInterval(run, 4000);
-    return () => window.clearInterval(t);
-  }, [config, loc.location, camOk, aiOn, pushAlert, activeLimit]);
+
+    void loop();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      detectInFlight.current = false;
+    };
+  }, [config, loc.location, camOk, aiOn, pushAlert, activeLimit, cfg]);
 
   const gpsBad =
     !loc.location &&

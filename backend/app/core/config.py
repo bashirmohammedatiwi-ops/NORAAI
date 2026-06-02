@@ -38,6 +38,25 @@ class Settings(BaseSettings):
     vehicle_detector_imgsz: int = 640
     vehicle_detector_conf: float = 0.25
 
+    # Fleet / camera inference performance
+    inference_imgsz: int = 640
+    inference_device: str = "cpu"
+    inference_use_half: bool = False
+    inference_model_cache_size: int = 4
+    inference_max_two_stage_vehicles: int = 3
+    inference_skip_vehicle_multipass: bool = True
+
+    # Driver app capture tuning (returned via /driver/config)
+    driver_scan_interval_ms: int = 2000
+    driver_scan_interval_fast_ms: int = 1200
+    driver_speed_fast_kmh: float = 40.0
+    driver_capture_max_width: int = 640
+    driver_jpeg_quality: float = 0.72
+
+    # Duplicate event suppression (periodic camera frames)
+    event_dedup_cooldown_seconds: int = 90
+    event_dedup_radius_meters: float = 80.0
+
     cuda_visible_devices: str = "0"
     training_cpu_fallback: bool = True
     training_export_max_workers: int = 8

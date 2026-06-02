@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -41,6 +43,34 @@ CLASS_TO_EVENT: dict[str, RoadEventType] = {
 }
 
 
+class _CachedProjectAdapter:
+    """Adapter surface for unified_detect using in-memory YOLO cache."""
+
+    def __init__(self, weights_key: str, weights_bytes: bytes, architecture: str):
+        self.weights_key = weights_key
+        self.weights_bytes = weights_bytes
+        self.architecture = architecture
+
+    def predict(
+        self,
+        _weights_path: str,
+        image_path: str,
+        *,
+        conf: float = 0.25,
+        iou: float = 0.45,
+    ) -> list[dict]:
+        from app.services.inference.model_cache import predict_cached
+
+        return predict_cached(
+            self.weights_key,
+            self.weights_bytes,
+            image_path,
+            architecture=self.architecture,
+            conf=conf,
+            iou=iou,
+        )
+
+
 def map_class_to_event(class_name: str) -> RoadEventType | None:
     key = normalize_class_name(class_name)
     if key in {e.value for e in RoadEventType}:
@@ -63,6 +93,46 @@ def build_alert_types(project_classes: list) -> list[dict]:
     return alerts
 
 
+def _run_detection_sync(
+    weights_key: str,
+    weights_data: bytes,
+    image_bytes: bytes,
+    class_names: list,
+    allowed_norm: set[str],
+    architecture: str,
+    min_confidence: float | None,
+) -> tuple[list[dict], str | None, dict]:
+    settings = get_settings()
+    t0 = time.perf_counter()
+
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as imgf:
+        imgf.write(image_bytes)
+        image_path = imgf.name
+
+    try:
+        from ml.detection.unified_detect import detect_with_project_model
+
+        adapter = _CachedProjectAdapter(weights_key, weights_data, architecture)
+        weights_stub = "cached"
+
+        predictions, meta = detect_with_project_model(
+            image_path,
+            weights_stub,
+            adapter,
+            class_names,
+            allowed_norm,
+            settings=settings,
+            min_confidence=min_confidence,
+        )
+        meta["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+        meta["model_cached"] = True
+        return predictions, None, meta
+    except Exception as exc:
+        return [], f"Inference failed: {exc}", {}
+    finally:
+        Path(image_path).unlink(missing_ok=True)
+
+
 async def run_detection(
     db: AsyncSession,
     project_id: uuid.UUID,
@@ -71,9 +141,8 @@ async def run_detection(
 ) -> tuple[list[dict], str | None, dict]:
     """
     Run YOLO using the project's active model and dashboard-defined classes only.
-    Returns (predictions, error_message, meta).
+    Inference runs in a worker thread with a warm model cache.
     """
-    settings = get_settings()
     artifact = await get_active_model(db, project_id)
     project_classes = await get_project_classes(db, project_id)
 
@@ -96,33 +165,41 @@ async def run_detection(
         if not weights_data or weights_data == b"mock_weights":
             return [], "Model weights missing or invalid. Run training again from the dashboard.", {}
 
-        with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as wf:
-            wf.write(weights_data)
-            weights_path = wf.name
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as imgf:
-            imgf.write(image_bytes)
-            image_path = imgf.name
-
-        from ml.detection.unified_detect import detect_with_project_model
-        from ml.training.adapters import get_adapter
-
-        adapter = get_adapter(artifact.architecture or "yolo11")
-
-        predictions, meta = detect_with_project_model(
-            image_path,
-            weights_path,
-            adapter,
+        return await asyncio.to_thread(
+            _run_detection_sync,
+            artifact.minio_weights_key,
+            weights_data,
+            image_bytes,
             class_names,
             allowed_norm,
-            settings=settings,
-            min_confidence=min_confidence,
+            artifact.architecture or "yolo11",
+            min_confidence,
         )
-
-        Path(weights_path).unlink(missing_ok=True)
-        Path(image_path).unlink(missing_ok=True)
-        return predictions, None, meta
     except Exception as exc:
         return [], f"Inference failed: {exc}", {}
+
+
+async def preload_project_model(db: AsyncSession, project_id: uuid.UUID) -> bool:
+    """Warm model cache for fleet camera sessions."""
+    artifact = await get_active_model(db, project_id)
+    if not is_production_model(artifact):
+        return False
+    assert artifact is not None
+    weights_data = download_bytes(artifact.minio_weights_key)
+    if not weights_data or weights_data == b"mock_weights":
+        return False
+
+    def _warm() -> None:
+        from app.services.inference.model_cache import get_cached_yolo
+
+        get_cached_yolo(
+            artifact.minio_weights_key,
+            weights_data,
+            architecture=artifact.architecture or "yolo11",
+        )
+
+    await asyncio.to_thread(_warm)
+    return True
 
 
 async def create_events_from_detections(
@@ -134,10 +211,19 @@ async def create_events_from_detections(
     detections: list[dict],
     min_confidence: float = 0.5,
 ) -> list[RoadEvent]:
+    from app.services.driver.event_dedup import filter_detections_for_events
+
+    filtered = await filter_detections_for_events(
+        project_id,
+        latitude,
+        longitude,
+        detections,
+        device_id=device.id if device else None,
+        min_confidence=min_confidence,
+    )
+
     created: list[RoadEvent] = []
-    for det in detections:
-        if det.get("confidence", 0) < min_confidence:
-            continue
+    for det in filtered:
         event_type_str = det.get("event_type")
         if not event_type_str:
             continue

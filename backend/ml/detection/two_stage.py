@@ -49,10 +49,21 @@ def classify_vehicles_two_stage(
     Stage 1: precise COCO vehicle boxes.
     Stage 2: project model on each vehicle crop — output uses the COCO vehicle box.
     """
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    max_vehicles = max(1, settings.inference_max_two_stage_vehicles)
+
     if vehicles is None:
         vehicles = detect_vehicles(image_path, conf=vehicle_conf, iou=iou)
     if not vehicles:
         return [], []
+
+    vehicles = sorted(
+        vehicles,
+        key=lambda v: float(v.get("confidence", 0)) * float(v["width"]) * float(v["height"]),
+        reverse=True,
+    )[:max_vehicles]
 
     predictions: list[dict] = []
     for vehicle in vehicles:

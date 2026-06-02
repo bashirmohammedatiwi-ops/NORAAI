@@ -86,11 +86,12 @@ def detect_vehicles(
     base_conf = conf if conf is not None else getattr(settings, "vehicle_detector_conf", 0.25)
     image_size = imgsz or getattr(settings, "vehicle_detector_imgsz", 640)
 
-    thresholds = []
-    for value in (base_conf, base_conf * 0.75, 0.15):
-        rounded = round(value, 3)
-        if rounded not in thresholds:
-            thresholds.append(rounded)
+    thresholds = [round(base_conf, 3)]
+    if not getattr(settings, "inference_skip_vehicle_multipass", True):
+        for value in (base_conf * 0.75, 0.15):
+            rounded = round(value, 3)
+            if rounded not in thresholds:
+                thresholds.append(rounded)
 
     collected: list[dict] = []
     try:

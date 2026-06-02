@@ -49,7 +49,11 @@ def _item_to_candidate(item: dict, class_names: list[str], allowed_norm: set[str
 
 
 def _needs_precise_vehicles(class_names: list[str]) -> bool:
-    return any(detection_mode(name) in ("damage", "vehicle") for name in class_names)
+    if not any(detection_mode(name) in ("damage", "vehicle") for name in class_names):
+        return False
+    if all(is_road_class(name) for name in class_names):
+        return False
+    return True
 
 
 def detect_with_project_model(

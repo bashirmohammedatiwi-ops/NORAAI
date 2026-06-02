@@ -21,7 +21,13 @@ from app.schemas import (
     DriverSpeedLimitResponse,
     TelemetryRequest,
 )
-from app.services.driver.detection import build_alert_types, create_events_from_detections, run_detection
+from app.core.config import get_settings
+from app.services.driver.detection import (
+    build_alert_types,
+    create_events_from_detections,
+    preload_project_model,
+    run_detection,
+)
 from app.services.driver.speed_limit import get_road_speed_limit
 from app.services.driver.project_classes import (
     allowed_detection_classes,
@@ -82,6 +88,7 @@ async def driver_config(device: FleetDevice = Depends(get_fleet_device), db: Asy
     allowed = allowed_detection_classes(project_classes, artifact) if model_ready else []
     message = _config_message(project_classes, artifact, model_ready)
 
+    settings = get_settings()
     return DriverConfigResponse(
         project_id=device.project_id,
         device_id=device.device_id,
@@ -98,7 +105,22 @@ async def driver_config(device: FleetDevice = Depends(get_fleet_device), db: Asy
         road_speed_enabled=True,
         detection_enabled=model_ready and bool(allowed),
         message=message,
+        scan_interval_ms=settings.driver_scan_interval_ms,
+        scan_interval_fast_ms=settings.driver_scan_interval_fast_ms,
+        speed_fast_kmh=settings.driver_speed_fast_kmh,
+        capture_max_width=settings.driver_capture_max_width,
+        jpeg_quality=settings.driver_jpeg_quality,
     )
+
+
+@router.post("/warmup")
+async def driver_warmup(
+    device: FleetDevice = Depends(get_fleet_device),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pre-load YOLO weights for low-latency camera frames."""
+    ok = await preload_project_model(db, device.project_id)
+    return {"ready": ok}
 
 
 @router.get("/speed-limit", response_model=DriverSpeedLimitResponse)
@@ -163,7 +185,7 @@ async def driver_detect(
     artifact = await get_active_model(db, device.project_id)
     model_ready = is_production_model(artifact)
 
-    detections, infer_message, _meta = await run_detection(db, device.project_id, content)
+    detections, infer_message, meta = await run_detection(db, device.project_id, content)
     alerts: list[dict] = []
 
     for det in detections:
@@ -210,6 +232,8 @@ async def driver_detect(
         events_created=len(events),
         model_ready=model_ready,
         message=infer_message,
+        latency_ms=meta.get("latency_ms"),
+        pipeline=meta.get("pipeline"),
     )
 
 
@@ -221,11 +245,19 @@ async def nearby_events(
     device: FleetDevice = Depends(get_fleet_device),
     db: AsyncSession = Depends(get_db),
 ):
+    delta_lat = radius_km / 111.0
+    cos_lat = max(math.cos(math.radians(latitude)), 0.2)
+    delta_lon = radius_km / (111.0 * cos_lat)
+
     result = await db.execute(
         select(RoadEvent).where(
             RoadEvent.project_id == device.project_id,
             RoadEvent.is_active == True,
-        ).limit(500)
+            RoadEvent.latitude >= latitude - delta_lat,
+            RoadEvent.latitude <= latitude + delta_lat,
+            RoadEvent.longitude >= longitude - delta_lon,
+            RoadEvent.longitude <= longitude + delta_lon,
+        ).limit(200)
     )
     nearby: list[DriverNearbyEvent] = []
     for event in result.scalars().all():
