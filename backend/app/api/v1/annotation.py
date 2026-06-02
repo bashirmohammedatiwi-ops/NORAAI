@@ -25,6 +25,15 @@ _ACTIVE_STATUSES = (
     AnnotationStatus.PENDING_REVIEW,
 )
 
+_CLASS_COLORS = {"حوادث": "#2563EB", "حفر": "#EA580C"}
+
+
+def _class_display_color(name: str, stored: str | None) -> str:
+    c = (stored or "").upper()
+    if name in _CLASS_COLORS and (not c or c == "#3B82F6"):
+        return _CLASS_COLORS[name]
+    return stored or "#3B82F6"
+
 
 @router.get("/project/{project_id}/workspace")
 async def annotation_workspace(project_id: UUID, db: AsyncSession = Depends(get_db)):
@@ -37,7 +46,11 @@ async def annotation_workspace(project_id: UUID, db: AsyncSession = Depends(get_
         .order_by(ClassLabel.name)
     )
     classes = [
-        {"id": str(c.id), "name": c.name, "color": c.color or "#3B82F6"}
+        {
+            "id": str(c.id),
+            "name": c.name,
+            "color": _class_display_color(c.name, c.color),
+        }
         for c in classes_result.scalars().all()
     ]
 
@@ -188,7 +201,7 @@ async def list_image_annotations(image_id: UUID, db: AsyncSession = Depends(get_
             "image_id": str(a.image_id),
             "class_id": str(a.class_id),
             "class_name": cls.name,
-            "class_color": cls.color,
+            "class_color": _class_display_color(cls.name, cls.color),
             "x_center": a.x_center,
             "y_center": a.y_center,
             "width": a.width,

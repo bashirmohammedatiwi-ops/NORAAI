@@ -12,6 +12,11 @@ DEFAULT_CLASSES = [
     "حفر",
 ]
 
+DEFAULT_CLASS_COLORS = {
+    "حوادث": "#2563EB",
+    "حفر": "#EA580C",
+}
+
 DEFAULT_MODELS = [
     "كشف حوادث",
     "كشف حفر",
@@ -37,7 +42,13 @@ async def create_project(db: AsyncSession, org_id: uuid.UUID, data: dict) -> Pro
     await db.flush()
 
     for cls_name in DEFAULT_CLASSES:
-        db.add(ClassLabel(project_id=project.id, name=cls_name))
+        db.add(
+            ClassLabel(
+                project_id=project.id,
+                name=cls_name,
+                color=DEFAULT_CLASS_COLORS.get(cls_name, "#3B82F6"),
+            )
+        )
 
     for model_name in DEFAULT_MODELS:
         db.add(ModelDefinition(project_id=project.id, name=model_name, task_type="detection"))

@@ -9,7 +9,7 @@ import { ManualBBoxEditor } from '@/components/annotation/ManualBBoxEditor';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { useAnnotationWorkspace } from '@/hooks/useAnnotationWorkspace';
-import { cn } from '@/lib/utils';
+import { colorForClass } from '@/lib/classColors';
 import {
   BookOpen, ChevronLeft, ChevronRight, ClipboardCheck, Database, PenTool,
 } from 'lucide-react';
@@ -171,15 +171,18 @@ export default function AnnotationPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 mb-3">
-                  {classes.map((c) => (
-                    <span
-                      key={c.id}
-                      className="text-xs px-2 py-1 rounded-full border"
-                      style={{ borderColor: c.color, color: c.color, backgroundColor: `${c.color}18` }}
-                    >
-                      {c.name}
-                    </span>
-                  ))}
+                  {classes.map((c, i) => {
+                    const hex = colorForClass(c.name, i, c.color);
+                    return (
+                      <span
+                        key={c.id}
+                        className="text-xs px-2 py-1 rounded-full border-2 font-medium"
+                        style={{ borderColor: hex, color: hex, backgroundColor: `${hex}18` }}
+                      >
+                        {c.name}
+                      </span>
+                    );
+                  })}
                 </div>
 
                 <ManualBBoxEditor

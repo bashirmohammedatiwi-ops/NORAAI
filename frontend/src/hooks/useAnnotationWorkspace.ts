@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { withClassColors } from '@/lib/classColors';
 import type { ClassOption } from '@/components/annotation/ManualBBoxEditor';
 
 export interface WorkspaceImage {
@@ -59,7 +60,7 @@ export function useAnnotationWorkspace(projectId: string | undefined) {
       ]);
       setStats(workspace.stats);
       setImages(workspace.images);
-      setClasses(workspace.classes);
+      setClasses(withClassColors(workspace.classes));
       setPending(pendingList);
     } catch {
       setStats(null);
