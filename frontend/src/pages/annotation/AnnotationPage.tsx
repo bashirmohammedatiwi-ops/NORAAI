@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { useAnnotationWorkspace } from '@/hooks/useAnnotationWorkspace';
 import { colorForClass } from '@/lib/classColors';
+import { cn } from '@/lib/utils';
 import {
   BookOpen, ChevronLeft, ChevronRight, ClipboardCheck, Database, PenTool,
 } from 'lucide-react';
