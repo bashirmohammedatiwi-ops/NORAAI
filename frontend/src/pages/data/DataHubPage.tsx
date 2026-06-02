@@ -211,7 +211,9 @@ export default function DataHubPage() {
                       </Badge>
                     )}
                   </CardTitle>
-                  <CardDescription>Detects the car first, then applies the class label to that region</CardDescription>
+                  <CardDescription>
+                    ارفع بصنف <strong>{selectedClass?.name ?? '…'}</strong> — إن لم يُرسم صندوق (يدوياً أو تلقائياً) تُسجَّل الصورة <strong>سليمة</strong> ضمن نفس الصنف
+                  </CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -236,11 +238,11 @@ export default function DataHubPage() {
             <CardContent className="text-sm space-y-3 text-muted-foreground">
               <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3 space-y-1">
                 <p className="font-medium text-blue-800 dark:text-blue-200">حوادث</p>
-                <p>صورة فيها سيارة → صندوق حول المركبة → هل يوجد حادث؟ (نعم/لا)</p>
+                <p>صورة فيها حادث → ارسم صندوقاً في <strong>التسمية</strong>. صورة بدون حادث → ارفعها هنا فقط (تُسجَّل سليمة).</p>
               </div>
               <div className="rounded-md border border-orange-500/20 bg-orange-500/5 p-3 space-y-1">
                 <p className="font-medium text-orange-800 dark:text-orange-200">حفر</p>
-                <p>صورة للطريق → صندوق على الحفرة أو العيب في الإسفلت</p>
+                <p>صورة فيها حفرة → صندوق على العيب. طريق سليم → ارفع بصنف <strong>حفر</strong> بدون صندوق (تُسجَّل سليمة).</p>
               </div>
               <p className="text-xs">
                 ارفع صور الحوادث بصنف <strong>حوادث</strong>، وصور الحفر بصنف <strong>حفر</strong>، ثم{' '}
@@ -250,20 +252,16 @@ export default function DataHubPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Normal images (no accident) · صور سليمة</CardTitle>
+          <Card className="border-sky-500/20 bg-sky-500/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">صور سليمة ضمن الصنف</CardTitle>
               <CardDescription>
-                Upload cars without accidents — no labels. Add at least 30–50% of your accident count, then retrain.
+                اختر الصنف أعلاه ثم ارفع صوراً <strong>بدون</strong> حادث أو حفرة — لا حاجة لصندوق. يُفضَّل 30–50٪ من عدد الصور ذات الصناديق ثم Retrain.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <BulkImageUpload
-                datasetId={selectedId}
-                backgroundMode
-                disabled={!selectedId}
-                onComplete={uploadComplete}
-              />
+            <CardContent className="text-sm text-muted-foreground space-y-2">
+              <p>مثال: صور سيارات سليمة بصنف <strong>حوادث</strong>، أو طرق سليمة بصنف <strong>حفر</strong>.</p>
+              <p className="text-xs">لا تُنشأ صناديق تلقائية عند الرفع — التسمية اليدوية من قسم Annotation عند الحاجة فقط.</p>
             </CardContent>
           </Card>
 
@@ -277,8 +275,12 @@ export default function DataHubPage() {
                     <p className="text-2xl font-bold">{stats.image_count}</p>
                   </div>
                   <div className="rounded-xl bg-secondary/50 p-4">
-                    <p className="text-xs text-muted-foreground">Auto-labeled</p>
+                    <p className="text-xs text-muted-foreground">With boxes · بصناديق</p>
                     <p className="text-2xl font-bold">{stats.annotated_count}</p>
+                  </div>
+                  <div className="rounded-xl bg-secondary/50 p-4">
+                    <p className="text-xs text-muted-foreground">Healthy · سليمة</p>
+                    <p className="text-2xl font-bold">{stats.healthy_count ?? 0}</p>
                   </div>
                   <div className="md:col-span-2 flex items-center gap-2 rounded-xl border border-border/60 p-4">
                     {stats.ready_for_training ? (
@@ -300,6 +302,9 @@ export default function DataHubPage() {
                       <Badge key={c.class_id} variant="outline" className="gap-1.5 py-1">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
                         {c.name}: {c.count ?? c.image_count ?? 0}
+                        {(c.healthy_count ?? 0) > 0 && (
+                          <span className="text-sky-600 text-xs"> · سليمة {c.healthy_count}</span>
+                        )}
                       </Badge>
                     ))}
                   </div>

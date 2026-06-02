@@ -194,9 +194,14 @@ def link_image_to_dataset_and_class_sync(
     dataset_id: uuid.UUID | None,
     class_id: uuid.UUID | None,
 ) -> None:
+    """
+    Link image to dataset; per-class upload without bbox → سليمة (negative healthy) for that class.
+    Auto bbox on upload is disabled — use Annotation or batch auto-label instead.
+    """
+    from app.services.datasets.class_samples import mark_negative_healthy_sync
     from app.services.datasets.dataset_images import append_images_to_dataset_sync
 
     if dataset_id:
         append_images_to_dataset_sync(session, dataset_id, [image_id])
     if class_id:
-        auto_annotate_class_on_image_sync(session, image_id, class_id)
+        mark_negative_healthy_sync(session, image_id, class_id, source="upload")

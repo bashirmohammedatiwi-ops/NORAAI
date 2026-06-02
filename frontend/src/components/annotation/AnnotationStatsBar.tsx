@@ -9,8 +9,8 @@ interface Props {
 
 const items = [
   { key: 'total_images' as const, label: 'صور', labelEn: 'Images', icon: ImageIcon },
-  { key: 'manual_annotated_images' as const, label: 'تسمية يدوية', labelEn: 'Manual', icon: CheckCircle2 },
-  { key: 'without_manual_images' as const, label: 'بدون يدوي', labelEn: 'Not manual', icon: PenLine },
+  { key: 'annotated_images' as const, label: 'بصناديق', labelEn: 'With boxes', icon: CheckCircle2 },
+  { key: 'healthy_images' as const, label: 'سليمة', labelEn: 'Healthy', icon: PenLine },
   { key: 'pending_review' as const, label: 'بانتظار المراجعة', labelEn: 'Pending', icon: Timer },
 ];
 
@@ -22,7 +22,7 @@ export function AnnotationStatsBar({ stats, loading }: Props) {
           key={key}
           className={cn(
             'rounded-xl border border-border bg-card px-4 py-3 flex items-center gap-3',
-            key === 'manual_annotated_images' && (stats?.manual_annotated_images ?? 0) > 0 && 'border-emerald-500/30 bg-emerald-500/5',
+            key === 'healthy_images' && (stats?.healthy_images ?? 0) > 0 && 'border-sky-500/30 bg-sky-500/5',
             key === 'pending_review' && (stats?.pending_review ?? 0) > 0 && 'border-amber-500/40 bg-amber-500/5',
           )}
         >

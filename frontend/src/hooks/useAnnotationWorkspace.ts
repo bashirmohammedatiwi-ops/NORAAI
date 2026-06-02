@@ -11,6 +11,8 @@ export interface WorkspaceImage {
   pending_count: number;
   has_labels: boolean;
   has_manual_labels: boolean;
+  is_healthy: boolean;
+  healthy_classes: { class_id: string; name: string; color: string }[];
   needs_review: boolean;
   created_at: string | null;
 }
@@ -18,11 +20,13 @@ export interface WorkspaceImage {
 export interface WorkspaceStats {
   total_images: number;
   annotated_images: number;
+  healthy_images: number;
   unannotated_images: number;
   manual_annotated_images: number;
   without_manual_images: number;
   pending_review: number;
   total_boxes: number;
+  healthy_by_class: Record<string, number>;
 }
 
 export interface PendingAnn {

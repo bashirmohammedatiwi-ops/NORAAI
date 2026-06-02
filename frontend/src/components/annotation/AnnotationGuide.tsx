@@ -15,7 +15,7 @@ export function AnnotationGuide({ projectId }: Props) {
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
           <p>ارسم صندوقاً حول <strong>المركبة بالكامل</strong> — ليس جزءاً منها فقط.</p>
-          <p>صورة بها حادث → صنف <strong>حوادث</strong>. صورة سليمة → لا صندوق (أو ارفعها كخلفية من البيانات).</p>
+          <p>صورة بها عيب → ارسم صندوقاً في <strong>التسمية</strong>. صورة سليمة → ارفعها من <strong>مركز البيانات</strong> باختيار الصنف (بدون صندوق).</p>
         </CardContent>
       </Card>
 
@@ -25,7 +25,7 @@ export function AnnotationGuide({ projectId }: Props) {
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
           <p>ارسم صندوقاً على <strong>الحفرة أو العيب</strong> في الإسفلت.</p>
-          <p>صورة للطريق فقط → صنف <strong>حفر</strong>.</p>
+          <p>طريق سليم → ارفع بصنف <strong>حفر</strong> من مركز البيانات بدون صندوق (تُسجَّل سليمة).</p>
         </CardContent>
       </Card>
 

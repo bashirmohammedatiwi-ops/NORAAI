@@ -9,7 +9,9 @@ from sqlalchemy.orm import selectinload
 from app.models import (
     Annotation,
     AnnotationStatus,
+    ClassImageSample,
     ClassLabel,
+    ClassSampleType,
     Dataset,
     DatasetImage,
     DatasetVersion,
@@ -53,7 +55,14 @@ async def _per_class_image_counts(
             select(ClassLabel).where(ClassLabel.project_id == project_id, ClassLabel.is_archived == False)
         )
         return [
-            {"class_id": str(c.id), "name": c.name, "color": c.color, "image_count": 0, "annotation_count": 0}
+            {
+                "class_id": str(c.id),
+                "name": c.name,
+                "color": c.color,
+                "image_count": 0,
+                "annotation_count": 0,
+                "healthy_count": 0,
+            }
             for c in classes_result.scalars().all()
         ], 0
 
@@ -72,6 +81,16 @@ async def _per_class_image_counts(
     class_image_counts = {str(row[0]): row[1] for row in ann_result.all()}
     class_ann_counts = {str(row[0]): row[2] for row in ann_result.all()}
 
+    healthy_result = await db.execute(
+        select(ClassImageSample.class_id, func.count(func.distinct(ClassImageSample.image_id)))
+        .where(
+            ClassImageSample.image_id.in_(image_ids),
+            ClassImageSample.sample_type == ClassSampleType.NEGATIVE_HEALTHY,
+        )
+        .group_by(ClassImageSample.class_id)
+    )
+    class_healthy_counts = {str(row[0]): row[1] for row in healthy_result.all()}
+
     annotated_images = await db.execute(
         select(func.count(func.distinct(Annotation.image_id))).where(
             Annotation.image_id.in_(image_ids),
@@ -79,7 +98,6 @@ async def _per_class_image_counts(
         )
     )
     annotated_total = annotated_images.scalar() or 0
-    unlabeled_count = max(0, len(image_ids) - annotated_total)
 
     classes_result = await db.execute(
         select(ClassLabel).where(ClassLabel.project_id == project_id, ClassLabel.is_archived == False)
@@ -94,8 +112,17 @@ async def _per_class_image_counts(
                 "color": cls.color,
                 "image_count": class_image_counts.get(cid, 0),
                 "annotation_count": class_ann_counts.get(cid, 0),
+                "healthy_count": class_healthy_counts.get(cid, 0),
             }
         )
+    healthy_images_result = await db.execute(
+        select(func.count(func.distinct(ClassImageSample.image_id))).where(
+            ClassImageSample.image_id.in_(image_ids),
+            ClassImageSample.sample_type == ClassSampleType.NEGATIVE_HEALTHY,
+        )
+    )
+    healthy_total = healthy_images_result.scalar() or 0
+    unlabeled_count = max(0, len(image_ids) - annotated_total - healthy_total)
     return per_class, unlabeled_count
 
 
@@ -104,6 +131,7 @@ async def get_dataset_gallery(
     dataset_id: uuid.UUID,
     class_id: uuid.UUID | None = None,
     unlabeled_only: bool = False,
+    healthy_only: bool = False,
     limit: int = 48,
     offset: int = 0,
 ) -> dict | None:
@@ -115,7 +143,7 @@ async def get_dataset_gallery(
     per_class, unlabeled_count = await _per_class_image_counts(db, dataset.project_id, all_ids)
 
     filtered_ids = all_ids
-    if class_id or unlabeled_only:
+    if class_id or unlabeled_only or healthy_only:
         ann_result = await db.execute(
             select(Annotation.image_id, Annotation.class_id, Annotation.status).where(
                 Annotation.image_id.in_(all_ids),
@@ -130,11 +158,46 @@ async def get_dataset_gallery(
             if status in (AnnotationStatus.APPROVED, AnnotationStatus.EDITED):
                 approved_images.add(key)
 
-        if unlabeled_only:
-            filtered_ids = [i for i in all_ids if str(i) not in approved_images]
+        healthy_by_image: set[str] = set()
+        if class_id or healthy_only:
+            hq = select(ClassImageSample.image_id).where(
+                ClassImageSample.image_id.in_(all_ids),
+                ClassImageSample.sample_type == ClassSampleType.NEGATIVE_HEALTHY,
+            )
+            if class_id:
+                hq = hq.where(ClassImageSample.class_id == class_id)
+            hres = await db.execute(hq)
+            healthy_by_image = {str(row[0]) for row in hres.all()}
+
+        if healthy_only and class_id:
+            filtered_ids = [i for i in all_ids if str(i) in healthy_by_image]
+        elif healthy_only:
+            hres = await db.execute(
+                select(ClassImageSample.image_id).where(
+                    ClassImageSample.image_id.in_(all_ids),
+                    ClassImageSample.sample_type == ClassSampleType.NEGATIVE_HEALTHY,
+                )
+            )
+            healthy_set = {str(row[0]) for row in hres.all()}
+            filtered_ids = [i for i in all_ids if str(i) in healthy_set]
+        elif unlabeled_only:
+            hres = await db.execute(
+                select(ClassImageSample.image_id).where(
+                    ClassImageSample.image_id.in_(all_ids),
+                    ClassImageSample.sample_type == ClassSampleType.NEGATIVE_HEALTHY,
+                )
+            )
+            any_healthy = {str(row[0]) for row in hres.all()}
+            filtered_ids = [
+                i for i in all_ids
+                if str(i) not in approved_images and str(i) not in any_healthy
+            ]
         elif class_id:
             cid = str(class_id)
-            filtered_ids = [i for i in all_ids if cid in by_image.get(str(i), set())]
+            filtered_ids = [
+                i for i in all_ids
+                if cid in by_image.get(str(i), set()) or str(i) in healthy_by_image
+            ]
 
     total = len(filtered_ids)
     page_ids = filtered_ids[offset : offset + limit]
@@ -149,6 +212,7 @@ async def get_dataset_gallery(
             "offset": offset,
             "class_filter": str(class_id) if class_id else None,
             "unlabeled_only": unlabeled_only,
+            "healthy_only": healthy_only,
             "unlabeled_count": unlabeled_count,
             "per_class": per_class,
             "items": [],
@@ -173,6 +237,22 @@ async def get_dataset_gallery(
     anns_by_image: dict[uuid.UUID, list] = {}
     for ann in ann_result.scalars().all():
         anns_by_image.setdefault(ann.image_id, []).append(ann)
+
+    sample_rows = await db.execute(
+        select(ClassImageSample, ClassLabel)
+        .join(ClassLabel, ClassLabel.id == ClassImageSample.class_id)
+        .where(
+            ClassImageSample.image_id.in_(page_ids),
+            ClassImageSample.sample_type == ClassSampleType.NEGATIVE_HEALTHY,
+        )
+    )
+    healthy_map: dict[uuid.UUID, list[dict]] = {}
+    for sample, cls in sample_rows.all():
+        healthy_map.setdefault(sample.image_id, []).append({
+            "class_id": str(cls.id),
+            "name": cls.name,
+            "color": cls.color,
+        })
 
     items = []
     for img_id in page_ids:
@@ -207,6 +287,7 @@ async def get_dataset_gallery(
                 }
             )
 
+        healthy_list = healthy_map.get(img_id, [])
         items.append(
             {
                 "id": str(img.id),
@@ -219,6 +300,10 @@ async def get_dataset_gallery(
                 "created_at": img.created_at,
                 "classes": list(classes_map.values()),
                 "annotations": annotations,
+                "healthy_classes": healthy_list,
+                "is_healthy": len(healthy_list) > 0 and not any(
+                    a.status in (AnnotationStatus.APPROVED, AnnotationStatus.EDITED) for a in anns
+                ),
                 "is_annotated": any(
                     a.status in (AnnotationStatus.APPROVED, AnnotationStatus.EDITED) for a in anns
                 ),

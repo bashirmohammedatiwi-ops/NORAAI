@@ -15,6 +15,7 @@ export interface GalleryClassStat {
   color: string;
   image_count: number;
   annotation_count?: number;
+  healthy_count?: number;
 }
 
 export interface GalleryImageItem {
@@ -41,6 +42,8 @@ export interface GalleryImageItem {
     source: string;
   }[];
   is_annotated: boolean;
+  is_healthy?: boolean;
+  healthy_classes?: { class_id: string; name: string; color: string }[];
 }
 
 export interface DatasetGalleryData {
@@ -65,6 +68,7 @@ interface DatasetGalleryProps {
 export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader = true }: DatasetGalleryProps) {
   const [classFilter, setClassFilter] = useState<string | null>(null);
   const [unlabeledOnly, setUnlabeledOnly] = useState(false);
+  const [healthyOnly, setHealthyOnly] = useState(false);
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<GalleryImageItem | null>(null);
 
@@ -79,6 +83,7 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
     offset,
     classId: classFilter,
     unlabeledOnly,
+    healthyOnly,
   });
 
   const loading = isLoading && !gallery;
@@ -86,7 +91,7 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
 
   useEffect(() => {
     setOffset(0);
-  }, [classFilter, unlabeledOnly]);
+  }, [classFilter, unlabeledOnly, healthyOnly]);
 
   const total = typedGallery?.total ?? 0;
   const page = Math.floor(offset / pageSize) + 1;
@@ -128,10 +133,10 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
           <Filter className="h-4 w-4 text-muted-foreground" />
           <button
             type="button"
-            onClick={() => { setClassFilter(null); setUnlabeledOnly(false); }}
+            onClick={() => { setClassFilter(null); setUnlabeledOnly(false); setHealthyOnly(false); }}
             className={cn(
               'text-sm px-3 py-1 rounded-full border transition-colors',
-              !classFilter && !unlabeledOnly ? 'bg-primary/10 border-primary/40 text-primary' : 'border-border hover:border-primary/30'
+              !classFilter && !unlabeledOnly && !healthyOnly ? 'bg-primary/10 border-primary/40 text-primary' : 'border-border hover:border-primary/30'
             )}
           >
             All ({total})
@@ -140,20 +145,33 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
             <button
               key={c.class_id}
               type="button"
-              onClick={() => { setClassFilter(c.class_id); setUnlabeledOnly(false); }}
+              onClick={() => { setClassFilter(c.class_id); setUnlabeledOnly(false); setHealthyOnly(false); }}
               className={cn(
                 'text-sm px-3 py-1 rounded-full border transition-colors inline-flex items-center gap-1.5',
                 classFilter === c.class_id ? 'bg-primary/10 border-primary/40' : 'border-border hover:border-primary/30'
               )}
             >
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
-              {c.name} ({c.image_count})
+              {c.name} ({c.image_count}
+              {(c.healthy_count ?? 0) > 0 && ` · ${c.healthy_count} سليمة`})
             </button>
           ))}
+          {(typedGallery.per_class.some((c) => (c.healthy_count ?? 0) > 0) || healthyOnly) && (
+            <button
+              type="button"
+              onClick={() => { setHealthyOnly((v) => !v); setUnlabeledOnly(false); }}
+              className={cn(
+                'text-sm px-3 py-1 rounded-full border transition-colors',
+                healthyOnly ? 'bg-sky-500/10 border-sky-500/40 text-sky-700' : 'border-border'
+              )}
+            >
+              سليمة ✓{classFilter ? ` (${typedGallery.per_class.find((c) => c.class_id === classFilter)?.name ?? ''})` : ''}
+            </button>
+          )}
           {typedGallery.unlabeled_count > 0 && (
             <button
               type="button"
-              onClick={() => { setUnlabeledOnly(true); setClassFilter(null); }}
+              onClick={() => { setUnlabeledOnly(true); setClassFilter(null); setHealthyOnly(false); }}
               className={cn(
                 'text-sm px-3 py-1 rounded-full border transition-colors',
                 unlabeledOnly ? 'bg-yellow-500/10 border-yellow-500/40 text-yellow-700' : 'border-border'
@@ -198,8 +216,11 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
                 <p className="text-[10px] text-white truncate">{img.filename}</p>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {img.classes.length === 0 ? (
-                    <span className="text-[9px] px-1 rounded bg-yellow-500/80 text-black">unlabeled</span>
+                  {img.is_healthy && (
+                    <span className="text-[9px] px-1 rounded bg-sky-500/90 text-white">سليمة</span>
+                  )}
+                  {img.classes.length === 0 && !img.is_healthy ? (
+                    <span className="text-[9px] px-1 rounded bg-yellow-500/80 text-black">بدون صنف</span>
                   ) : (
                     img.classes.map((c) => (
                       <span
@@ -211,6 +232,14 @@ export function DatasetGallery({ datasetId, projectId, pageSize = 24, showHeader
                       </span>
                     ))
                   )}
+                  {img.healthy_classes?.map((c) => (
+                    <span
+                      key={`h-${c.class_id}`}
+                      className="text-[9px] px-1 rounded border border-sky-400/80 text-sky-100 bg-sky-900/40"
+                    >
+                      {c.name} سليمة
+                    </span>
+                  ))}
                 </div>
               </div>
               <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">

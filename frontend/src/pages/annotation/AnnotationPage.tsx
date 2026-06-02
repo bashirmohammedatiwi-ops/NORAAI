@@ -57,6 +57,7 @@ export default function AnnotationPage() {
     if (imageFilter === 'pending') list = list.filter((i) => i.needs_review);
     if (imageFilter === 'manual') list = list.filter((i) => i.has_manual_labels);
     if (imageFilter === 'no_manual') list = list.filter((i) => !i.has_manual_labels);
+    if (imageFilter === 'healthy') list = list.filter((i) => i.is_healthy);
     return list.map((i) => i.id);
   }, [images, imageFilter]);
 
@@ -180,8 +181,8 @@ export default function AnnotationPage() {
                       {selectedMeta && selectedMeta.annotation_count > 0 && (
                         <> · {selectedMeta.annotation_count} صندوق</>
                       )}
-                      {selectedMeta?.has_manual_labels && !editorDirty && (
-                        <span className="text-emerald-600"> · تسمية يدوية</span>
+                      {selectedMeta?.is_healthy && (
+                        <span className="text-sky-600"> · سليمة ({selectedMeta.healthy_classes.map((c) => c.name).join('، ')})</span>
                       )}
                       {editorDirty && !editorSaving && (
                         <span className="text-amber-600"> · غير محفوظ</span>

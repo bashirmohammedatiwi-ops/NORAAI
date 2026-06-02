@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Annotation, AnnotationStatus, ClassLabel, Dataset, DatasetImage, DatasetVersion, Image
+from app.models import Annotation, AnnotationStatus, ClassImageSample, ClassLabel, ClassSampleType, Dataset, DatasetImage, DatasetVersion, Image
 
 
 async def get_builder_stats(db: AsyncSession, dataset_id: uuid.UUID) -> dict | None:
@@ -34,6 +34,7 @@ async def get_builder_stats(db: AsyncSession, dataset_id: uuid.UUID) -> dict | N
 
     per_class: list[dict] = []
     unlabeled_count = 0
+    healthy_count = 0
     if image_ids:
         uuids = [uuid.UUID(i) for i in image_ids]
         ann_result = await db.execute(
@@ -51,6 +52,16 @@ async def get_builder_stats(db: AsyncSession, dataset_id: uuid.UUID) -> dict | N
         class_image_counts = {str(row[0]): row[1] for row in ann_result.all()}
         class_ann_counts = {str(row[0]): row[2] for row in ann_result.all()}
 
+        healthy_result = await db.execute(
+            select(ClassImageSample.class_id, func.count(ClassImageSample.id))
+            .where(
+                ClassImageSample.image_id.in_(uuids),
+                ClassImageSample.sample_type == ClassSampleType.NEGATIVE_HEALTHY,
+            )
+            .group_by(ClassImageSample.class_id)
+        )
+        class_healthy_counts = {str(row[0]): row[1] for row in healthy_result.all()}
+
         classes_result = await db.execute(
             select(ClassLabel).where(
                 ClassLabel.project_id == dataset.project_id,
@@ -66,6 +77,7 @@ async def get_builder_stats(db: AsyncSession, dataset_id: uuid.UUID) -> dict | N
                     "color": cls.color,
                     "count": class_ann_counts.get(cid, 0),
                     "image_count": class_image_counts.get(cid, 0),
+                    "healthy_count": class_healthy_counts.get(cid, 0),
                 }
             )
 
@@ -76,7 +88,14 @@ async def get_builder_stats(db: AsyncSession, dataset_id: uuid.UUID) -> dict | N
             )
         )
         annotated_count = img_with_ann.scalar() or 0
-        unlabeled_count = max(0, len(uuids) - annotated_count)
+        healthy_total = await db.execute(
+            select(func.count(func.distinct(ClassImageSample.image_id))).where(
+                ClassImageSample.image_id.in_(uuids),
+                ClassImageSample.sample_type == ClassSampleType.NEGATIVE_HEALTHY,
+            )
+        )
+        healthy_count = healthy_total.scalar() or 0
+        unlabeled_count = max(0, len(uuids) - annotated_count - healthy_count)
 
     return {
         "dataset_id": str(dataset.id),
@@ -84,7 +103,8 @@ async def get_builder_stats(db: AsyncSession, dataset_id: uuid.UUID) -> dict | N
         "head_version_id": str(dataset.head_version_id) if dataset.head_version_id else None,
         "image_count": image_count,
         "annotated_count": annotated_count,
-        "ready_for_training": image_count > 0 and annotated_count > 0,
+        "healthy_count": healthy_count,
+        "ready_for_training": image_count > 0 and (annotated_count > 0 or healthy_count > 0),
         "unlabeled_count": unlabeled_count,
         "per_class": per_class,
     }

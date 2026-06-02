@@ -88,12 +88,19 @@ async def dataset_gallery(
     dataset_id: UUID,
     class_id: UUID | None = Query(None),
     unlabeled_only: bool = Query(False),
+    healthy_only: bool = Query(False),
     limit: int = Query(48, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
     gallery = await get_dataset_gallery(
-        db, dataset_id, class_id=class_id, unlabeled_only=unlabeled_only, limit=limit, offset=offset
+        db,
+        dataset_id,
+        class_id=class_id,
+        unlabeled_only=unlabeled_only,
+        healthy_only=healthy_only,
+        limit=limit,
+        offset=offset,
     )
     if not gallery:
         raise HTTPException(status_code=404, detail="Dataset not found")
@@ -208,7 +215,11 @@ async def upload_to_dataset(
     cls_note = ""
     if class_id:
         cls = await db.get(ClassLabel, class_id)
-        cls_note = f" with auto-label '{cls.name}'" if cls else ""
+        cls_note = (
+            f" — صنف '{cls.name}': بدون صندوق = صورة سليمة ضمن نفس الصنف"
+            if cls
+            else ""
+        )
 
     return DatasetUploadResponse(
         dataset_id=dataset_id,

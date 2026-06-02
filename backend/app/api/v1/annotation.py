@@ -12,9 +12,15 @@ from app.models import (
     Annotation,
     AnnotationReview,
     AnnotationStatus,
+    ClassImageSample,
+    ClassSampleType,
     User,
 )
 from app.schemas import AnnotationCreate, AnnotationResponse, AnnotationUpdate, AutoLabelRequest
+from app.services.datasets.class_samples import (
+    clear_negative_healthy_sync,
+    sync_class_after_annotation_change_sync,
+)
 from workers.labeling.tasks import auto_label_images
 
 router = APIRouter(prefix="/annotation", tags=["annotation"])
@@ -39,6 +45,9 @@ def _class_display_color(name: str, stored: str | None) -> str:
 async def annotation_workspace(project_id: UUID, db: AsyncSession = Depends(get_db)):
     """Stats and per-image annotation summary for the labeling workspace."""
     from app.models import ClassLabel, Image
+
+    healthy_by_class: dict[str, int] = {}
+    healthy_by_image: dict[UUID, list[dict]] = {}
 
     classes_result = await db.execute(
         select(ClassLabel)
@@ -101,6 +110,34 @@ async def annotation_workspace(project_id: UUID, db: AsyncSession = Depends(get_
         for image_id, manual_count in manual_agg.all():
             manual_by_image[image_id] = int(manual_count or 0)
 
+        healthy_agg = await db.execute(
+            select(ClassImageSample.class_id, func.count(ClassImageSample.id))
+            .join(ClassLabel, ClassLabel.id == ClassImageSample.class_id)
+            .where(
+                ClassLabel.project_id == project_id,
+                ClassImageSample.image_id.in_(image_ids),
+                ClassImageSample.sample_type == ClassSampleType.NEGATIVE_HEALTHY,
+            )
+            .group_by(ClassImageSample.class_id)
+        )
+        for class_id, cnt in healthy_agg.all():
+            healthy_by_class[str(class_id)] = int(cnt or 0)
+
+        sample_rows = await db.execute(
+            select(ClassImageSample, ClassLabel)
+            .join(ClassLabel, ClassLabel.id == ClassImageSample.class_id)
+            .where(
+                ClassImageSample.image_id.in_(image_ids),
+                ClassImageSample.sample_type == ClassSampleType.NEGATIVE_HEALTHY,
+            )
+        )
+        for sample, cls in sample_rows.all():
+            healthy_by_image.setdefault(sample.image_id, []).append({
+                "class_id": str(cls.id),
+                "name": cls.name,
+                "color": _class_display_color(cls.name, cls.color),
+            })
+
     pending_total = await db.execute(
         select(func.count(Annotation.id))
         .join(Image, Image.id == Annotation.image_id)
@@ -114,13 +151,18 @@ async def annotation_workspace(project_id: UUID, db: AsyncSession = Depends(get_
     annotated = 0
     unannotated = 0
     manual_images = 0
+    healthy_images = 0
     for image_id, filename, created_at in image_rows:
         total, pending = counts_by_image.get(image_id, (0, 0))
         manual_count = manual_by_image.get(image_id, 0)
         has_manual = manual_count > 0
+        healthy_classes = healthy_by_image.get(image_id, [])
+        is_healthy = len(healthy_classes) > 0
         if total > 0:
             annotated += 1
-        else:
+        if is_healthy:
+            healthy_images += 1
+        if total == 0 and not is_healthy:
             unannotated += 1
         if has_manual:
             manual_images += 1
@@ -132,6 +174,8 @@ async def annotation_workspace(project_id: UUID, db: AsyncSession = Depends(get_
             "pending_count": pending,
             "has_labels": total > 0,
             "has_manual_labels": has_manual,
+            "is_healthy": is_healthy,
+            "healthy_classes": healthy_classes,
             "needs_review": pending > 0,
             "created_at": created_at.isoformat() if created_at else None,
         })
@@ -140,11 +184,13 @@ async def annotation_workspace(project_id: UUID, db: AsyncSession = Depends(get_
         "stats": {
             "total_images": len(image_rows),
             "annotated_images": annotated,
+            "healthy_images": healthy_images,
             "unannotated_images": unannotated,
             "manual_annotated_images": manual_images,
             "without_manual_images": len(image_rows) - manual_images,
             "pending_review": int(pending_total.scalar() or 0),
             "total_boxes": sum(c[0] for c in counts_by_image.values()),
+            "healthy_by_class": healthy_by_class,
         },
         "images": images_payload,
         "classes": classes,
@@ -235,6 +281,7 @@ async def create_annotation(
     )
     db.add(ann)
     await db.flush()
+    await db.run_sync(lambda s: clear_negative_healthy_sync(s, image_id, data.class_id))
     return ann
 
 
@@ -264,6 +311,9 @@ async def update_annotation(
     ann.source = "manual"
     db.add(AnnotationReview(annotation_id=annotation_id, reviewer_id=user.id, action="edit"))
     await db.flush()
+    await db.run_sync(
+        lambda s: sync_class_after_annotation_change_sync(s, ann.image_id, ann.class_id)
+    )
     return ann
 
 
@@ -276,8 +326,11 @@ async def delete_annotation(
     ann = await db.get(Annotation, annotation_id)
     if not ann:
         raise HTTPException(status_code=404, detail="Annotation not found")
+    image_id, class_id = ann.image_id, ann.class_id
     await db.execute(delete(AnnotationReview).where(AnnotationReview.annotation_id == annotation_id))
     await db.execute(delete(Annotation).where(Annotation.id == annotation_id))
+    await db.flush()
+    await db.run_sync(lambda s: sync_class_after_annotation_change_sync(s, image_id, class_id))
     return {"status": "deleted"}
 
 

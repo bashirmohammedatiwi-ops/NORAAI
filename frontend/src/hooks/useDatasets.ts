@@ -17,6 +17,7 @@ export interface DatasetBuilderStats {
   head_version_id: string | null;
   image_count: number;
   annotated_count: number;
+  healthy_count?: number;
   ready_for_training: boolean;
   unlabeled_count?: number;
   per_class: {
@@ -25,6 +26,7 @@ export interface DatasetBuilderStats {
     color: string;
     count?: number;
     image_count?: number;
+    healthy_count?: number;
   }[];
 }
 
@@ -141,13 +143,25 @@ export interface DatasetGalleryData {
   limit: number;
   offset: number;
   unlabeled_count: number;
-  per_class: { class_id: string; name: string; color: string; image_count: number }[];
+  per_class: {
+    class_id: string;
+    name: string;
+    color: string;
+    image_count: number;
+    healthy_count?: number;
+  }[];
   items: unknown[];
 }
 
 export function useDatasetGallery(
   datasetId: string | undefined,
-  options: { limit: number; offset: number; classId?: string | null; unlabeledOnly?: boolean },
+  options: {
+    limit: number;
+    offset: number;
+    classId?: string | null;
+    unlabeledOnly?: boolean;
+    healthyOnly?: boolean;
+  },
 ) {
   const query = new URLSearchParams({
     limit: String(options.limit),
@@ -155,6 +169,7 @@ export function useDatasetGallery(
   });
   if (options.classId) query.set('class_id', options.classId);
   if (options.unlabeledOnly) query.set('unlabeled_only', 'true');
+  if (options.healthyOnly) query.set('healthy_only', 'true');
 
   return useQuery<DatasetGalleryData, Error>({
     queryKey: datasetKeys.gallery(datasetId ?? '', query.toString()),

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Search } from 'lucide-react';
 
-export type ImageFilter = 'all' | 'unlabeled' | 'labeled' | 'pending' | 'manual' | 'no_manual';
+export type ImageFilter = 'all' | 'unlabeled' | 'labeled' | 'pending' | 'manual' | 'no_manual' | 'healthy';
 
 interface Props {
   images: WorkspaceImage[];
@@ -31,6 +31,7 @@ export function AnnotationImageList({
     if (filter === 'pending') list = list.filter((i) => i.needs_review);
     if (filter === 'manual') list = list.filter((i) => i.has_manual_labels);
     if (filter === 'no_manual') list = list.filter((i) => !i.has_manual_labels);
+    if (filter === 'healthy') list = list.filter((i) => i.is_healthy);
     const q = query.trim().toLowerCase();
     if (q) list = list.filter((i) => i.filename.toLowerCase().includes(q));
     return list;
@@ -38,6 +39,7 @@ export function AnnotationImageList({
 
   const filters: { id: ImageFilter; label: string }[] = [
     { id: 'all', label: 'الكل' },
+    { id: 'healthy', label: 'سليمة ✓' },
     { id: 'manual', label: 'يدوي ✓' },
     { id: 'no_manual', label: 'بدون يدوي' },
     { id: 'unlabeled', label: 'فارغة' },
@@ -91,7 +93,12 @@ export function AnnotationImageList({
           >
             <div className="relative aspect-video bg-secondary">
               <AuthenticatedImage imageId={img.id} className="w-full h-full object-cover" />
-              {img.has_manual_labels && (
+              {img.is_healthy && (
+                <span className="absolute top-1 left-1 text-[9px] px-1 rounded bg-sky-600 text-white font-medium">
+                  سليمة
+                </span>
+              )}
+              {img.has_manual_labels && !img.is_healthy && (
                 <span className="absolute top-1 left-1 text-[9px] px-1 rounded bg-emerald-600 text-white font-medium">
                   يدوي
                 </span>

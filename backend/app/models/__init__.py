@@ -29,6 +29,7 @@ from app.models.annotation_models import (
     AnnotationReview,
     AnnotationStatus,
 )
+from app.models.class_sample_models import ClassImageSample, ClassSampleType
 from app.models.training_models import (
     EvaluationResult,
     HyperparameterTrial,
@@ -80,6 +81,8 @@ __all__ = [
     "Annotation",
     "AnnotationReview",
     "AnnotationStatus",
+    "ClassImageSample",
+    "ClassSampleType",
     "ActiveLearningQueue",
     "ActiveLearningStatus",
     "TrainingJob",

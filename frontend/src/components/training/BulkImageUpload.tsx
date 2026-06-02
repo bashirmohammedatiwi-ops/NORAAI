@@ -140,8 +140,8 @@ export function BulkImageUpload({
             </p>
             <p className="text-sm text-muted-foreground mt-1">
               {backgroundMode
-                ? 'Background upload — no labels (reduces false accident alerts)'
-                : 'Bulk upload — detects car region, then applies class label'}
+                ? 'رفع صور سليمة — بدون صناديق (اختر صنفاً من الأعلى لربطها كسليمة)'
+                : `رفع لصنف ${className ?? ''} — بدون صندوق = سليمة ضمن نفس الصنف`}
             </p>
             {className && ready && (
               <span
