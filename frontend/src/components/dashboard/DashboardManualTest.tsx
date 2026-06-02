@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { DetectionSummaryCard } from '@/components/dashboard/DetectionSummaryCard';
+import { detectionBoxClass, detectionLabelClass } from '@/lib/detectionDisplay';
 import type { DetectionSummary } from '@/lib/detectionSummary';
 import type { ProjectListItem } from '@/hooks/useProjects';
 import { Button } from '@/components/ui/button';
