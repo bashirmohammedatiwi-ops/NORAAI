@@ -192,7 +192,7 @@ export default function DataHubPage() {
                 ))}
               </div>
               <div className="flex gap-2 max-w-md">
-                <Input placeholder="New class name (e.g. pothole)" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} />
+                <Input placeholder="اسم صنف جديد (مثال: حفر)" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} />
                 <Button variant="secondary" onClick={addClass}><Plus className="h-4 w-4 mr-1" /> Add</Button>
               </div>
             </CardContent>
@@ -231,23 +231,19 @@ export default function DataHubPage() {
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Project goal · هدف المشروع</CardTitle>
-              <CardDescription>
-                Dual detection: <strong>vehicles + accident</strong> and <strong>road defects</strong>.
-              </CardDescription>
+              <CardDescription>صنفان فقط: <strong>حوادث</strong> و <strong>حفر</strong></CardDescription>
             </CardHeader>
             <CardContent className="text-sm space-y-3 text-muted-foreground">
               <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3 space-y-1">
-                <p className="font-medium text-blue-800 dark:text-blue-200">1) المركبات · Vehicles</p>
-                <p>يكتشف السيارات — إذا وُجدت مركبة يحدد: <strong>حادث نعم / لا</strong>.</p>
-                <p className="text-xs">صندوق أزرق حول السيارة · صنف Accident للحوادث.</p>
+                <p className="font-medium text-blue-800 dark:text-blue-200">حوادث</p>
+                <p>صورة فيها سيارة → صندوق حول المركبة → هل يوجد حادث؟ (نعم/لا)</p>
               </div>
               <div className="rounded-md border border-orange-500/20 bg-orange-500/5 p-3 space-y-1">
-                <p className="font-medium text-orange-800 dark:text-orange-200">2) الطريق · Road</p>
-                <p>يكتشف الطريق — يحدد: <strong>حفر أو مشاكل نعم / لا</strong> (Pothole, Road_Crack, …).</p>
-                <p className="text-xs">صندوق برتقالي على الحفرة أو التشقق في الإسفلت.</p>
+                <p className="font-medium text-orange-800 dark:text-orange-200">حفر</p>
+                <p>صورة للطريق → صندوق على الحفرة أو العيب في الإسفلت</p>
               </div>
               <p className="text-xs">
-                ارفع صور الحوادث مع Accident، وصور الحفر مع Pothole/Road_Crack، ثم{' '}
+                ارفع صور الحوادث بصنف <strong>حوادث</strong>، وصور الحفر بصنف <strong>حفر</strong>، ثم{' '}
                 <Link to={`/projects/${projectId}/annotation`} className="text-primary underline">Annotation</Link>{' '}
                 و Retrain.
               </p>

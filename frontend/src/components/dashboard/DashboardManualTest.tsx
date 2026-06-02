@@ -278,8 +278,8 @@ export function DashboardManualTest({ projects, compact }: Props) {
                         </div>
                       ))}
                       <p className="text-[10px] text-muted-foreground pt-1">
-                        <span className="inline-block w-3 h-0.5 bg-blue-500 align-middle mr-1" /> Vehicle / accident
-                        <span className="inline-block w-3 h-0.5 bg-orange-500 align-middle mx-1 ml-3" /> Pothole / road
+                        <span className="inline-block w-3 h-0.5 bg-blue-500 align-middle mr-1" /> حوادث
+                        <span className="inline-block w-3 h-0.5 bg-orange-500 align-middle mx-1 ml-3" /> حفر
                       </p>
                     </div>
                   )}

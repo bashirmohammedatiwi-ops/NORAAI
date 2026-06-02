@@ -133,11 +133,13 @@ def detect_with_project_model(
         settings=settings,
     )
 
-    vehicle_display_class = pick_vehicle_display_class(class_names, allowed_norm) or "Vehicle"
+    vehicle_display_class = pick_vehicle_display_class(class_names, allowed_norm)
     detected_vehicles = format_detected_vehicles(vehicles)
 
-    if needs_vehicles and vehicles and not predictions:
-        vehicle_preds = build_vehicle_detector_predictions(vehicles, class_name=vehicle_display_class)
+    if needs_vehicles and vehicles and not predictions and vehicle_display_class:
+        vehicle_preds = build_vehicle_detector_predictions(
+            vehicles, class_name=vehicle_display_class,
+        )
         v_floor = max(0.15, settings.vehicle_detector_conf - 0.08)
         predictions = [p for p in vehicle_preds if float(p["confidence"]) >= v_floor]
         if predictions:

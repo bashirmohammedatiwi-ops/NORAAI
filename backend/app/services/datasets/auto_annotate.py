@@ -185,11 +185,6 @@ def auto_annotate_class_on_image_sync(
             return None
         return create_vehicle_class_annotation_sync(session, image_id, class_id, vehicle)
 
-    if vehicle:
-        vehicle_class_id = resolve_vehicle_class_id(session, image.project_id) if image else None
-        target_id = vehicle_class_id or class_id
-        return create_vehicle_class_annotation_sync(session, image_id, target_id, vehicle)
-
     return None
 
 

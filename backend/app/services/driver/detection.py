@@ -21,6 +21,10 @@ from app.services.models.active_model import get_active_model
 
 # YOLO / dataset alias -> road event type
 CLASS_TO_EVENT: dict[str, RoadEventType] = {
+    "حوادث": RoadEventType.ACCIDENT,
+    "حادث": RoadEventType.ACCIDENT,
+    "حفر": RoadEventType.POTHOLE,
+    "حفرة": RoadEventType.POTHOLE,
     "pothole": RoadEventType.POTHOLE,
     "accident": RoadEventType.ACCIDENT,
     "vehicle_damage": RoadEventType.ACCIDENT,

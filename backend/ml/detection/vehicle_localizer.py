@@ -254,7 +254,7 @@ def pick_vehicle_display_class(class_names: list[str], allowed_norm: set[str]) -
         if key in allowed_norm and key in by_norm:
             return by_norm[key]
     for name in class_names:
-        if detection_mode(name) in ("vehicle", "damage") and normalize_class_name(name) in allowed_norm:
+        if detection_mode(name) == "vehicle" and normalize_class_name(name) in allowed_norm:
             return name
     return None
 
