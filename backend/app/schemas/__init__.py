@@ -191,9 +191,13 @@ class DatasetUploadResponse(BaseModel):
 class YoloImportPreviewResponse(BaseModel):
     image_count: int
     labeled_count: int
+    raw_image_files: int = 0
+    raw_label_files: int = 0
     detected_class_ids: list[int]
     yolo_class_names: list[str]
     suggested_mapping: dict[str, str] = Field(default_factory=dict)
+    warning: str | None = None
+    valid: bool = True
 
 
 class YoloImportStartResponse(BaseModel):

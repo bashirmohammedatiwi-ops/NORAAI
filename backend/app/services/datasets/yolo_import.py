@@ -123,17 +123,43 @@ def analyze_yolo_zip(zip_bytes: bytes) -> dict:
         with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
             zf.extractall(root)
         pairs, yolo_names = discover_pairs_from_zip(root)
-        for _, label_path in pairs:
-            if not label_path:
-                continue
+        images_map, labels_map = _collect_files(root)
+
+        for label_path in labels_map.values():
             text = label_path.read_text(encoding="utf-8", errors="ignore")
             for row in _parse_yolo_lines(text):
                 detected.add(row[0])
+
+        matched = len(pairs)
+        labeled = sum(1 for _, lp in pairs if lp)
+        raw_images = len(images_map)
+        raw_labels = len(labels_map)
+        warning: str | None = None
+
+        if raw_images == 0 and raw_labels > 0:
+            warning = (
+                "الأرشيف يحتوي ملفات تسمية فقط بدون صور. "
+                "اضغط مجلد data بالكامل (images + labels-YOLO) وليس مجلد labels-YOLO وحده."
+            )
+        elif raw_images > 0 and matched == 0:
+            warning = (
+                "وُجدت صور لكن لا يوجد تطابق بأسماء ملفات التسمية. "
+                "تأكد أن 20250216_164325.jpg و 20250216_164325.txt لهما نفس الاسم."
+            )
+        elif raw_labels == 0 and raw_images > 0:
+            warning = "الأرشيف يحتوي صوراً بدون ملفات .txt للتسمية."
+        elif raw_images > 0 and labeled < matched:
+            warning = f"{matched - labeled} صورة بدون ملف تسمية مطابق (ستُستورد بدون صناديق)."
+
     return {
-        "image_count": len(pairs),
-        "labeled_count": sum(1 for _, lp in pairs if lp),
+        "image_count": matched,
+        "labeled_count": labeled,
+        "raw_image_files": raw_images,
+        "raw_label_files": raw_labels,
         "detected_class_ids": sorted(detected),
         "yolo_class_names": yolo_names,
+        "warning": warning,
+        "valid": matched > 0,
     }
 
 

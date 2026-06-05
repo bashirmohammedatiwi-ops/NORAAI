@@ -279,9 +279,13 @@ async def preview_yolo_import(
     return YoloImportPreviewResponse(
         image_count=info["image_count"],
         labeled_count=info["labeled_count"],
+        raw_image_files=info.get("raw_image_files", 0),
+        raw_label_files=info.get("raw_label_files", 0),
         detected_class_ids=info["detected_class_ids"],
         yolo_class_names=yolo_names,
         suggested_mapping=suggested,
+        warning=info.get("warning"),
+        valid=bool(info.get("valid", info["image_count"] > 0)),
     )
 
 
@@ -310,6 +314,16 @@ async def start_yolo_import(
         raise HTTPException(status_code=400, detail="Empty archive")
     if len(content) > 1024 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Archive too large (max 1GB)")
+
+    try:
+        check = analyze_yolo_zip(content)
+        if not check.get("valid"):
+            detail = check.get("warning") or "لا توجد صور مطابقة في الأرشيف"
+            raise HTTPException(status_code=400, detail=detail)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid archive: {exc}") from exc
 
     import_id = uuid.uuid4()
     minio_key = f"imports/yolo/{import_id}.zip"

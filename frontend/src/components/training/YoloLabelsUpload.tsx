@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Archive, CheckCircle2, FileText, Loader2, Upload } from 'lucide-react';
+import { AlertTriangle, Archive, CheckCircle2, FileText, Loader2, Upload } from 'lucide-react';
 
 interface ProjectClass {
   id: string;
@@ -13,9 +13,13 @@ interface ProjectClass {
 interface PreviewData {
   image_count: number;
   labeled_count: number;
+  raw_image_files?: number;
+  raw_label_files?: number;
   detected_class_ids: number[];
   yolo_class_names: string[];
   suggested_mapping: Record<string, string>;
+  warning?: string | null;
+  valid?: boolean;
 }
 
 interface Props {
@@ -39,6 +43,7 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
 
   const classNames = classes.map((c) => c.name);
   const defaultClass = classNames[0] ?? 'حفر';
+  const canImport = Boolean(preview?.valid && preview.image_count > 0);
 
   const reset = () => {
     setPreview(null);
@@ -49,18 +54,13 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
     setError('');
   };
 
-  const handleFile = (f: File | null) => {
-    setFile(f);
-    reset();
-  };
-
-  const runPreview = useCallback(async () => {
-    if (!file || !datasetId) return;
+  const runPreview = useCallback(async (f: File) => {
+    if (!f || !datasetId) return;
     setLoading('preview');
     setError('');
     try {
       const form = new FormData();
-      form.append('archive', file);
+      form.append('archive', f);
       const data = await api.post<PreviewData>(
         `/api/v1/datasets/${datasetId}/import-yolo/preview`,
         form,
@@ -74,15 +74,25 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
         if (!base[key]) base[key] = defaultClass;
       }
       setMapping(base);
+      if (!data.valid || data.image_count === 0) {
+        setError(data.warning ?? 'الأرشيف غير صالح — لا توجد صور مطابقة');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'فشل تحليل الأرشيف');
+      setPreview(null);
     } finally {
       setLoading(null);
     }
-  }, [datasetId, file, defaultClass]);
+  }, [datasetId, defaultClass]);
+
+  const handleFile = (f: File | null) => {
+    setFile(f);
+    reset();
+    if (f) void runPreview(f);
+  };
 
   const startImport = async () => {
-    if (!file || !datasetId || !preview) return;
+    if (!file || !datasetId || !preview || !canImport) return;
     setLoading('import');
     setError('');
     try {
@@ -147,7 +157,7 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
   return (
     <div className="space-y-4">
       <div
-        onClick={() => ready && inputRef.current?.click()}
+        onClick={() => ready && !loading && inputRef.current?.click()}
         className={cn(
           'rounded-2xl border-2 border-dashed p-6 text-center cursor-pointer transition-colors',
           ready ? 'border-violet-300/60 bg-violet-500/5 hover:border-violet-400' : 'opacity-50 cursor-not-allowed',
@@ -158,68 +168,105 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
           type="file"
           accept=".zip,application/zip"
           className="hidden"
-          disabled={!ready}
+          disabled={!ready || loading === 'preview'}
           onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
         />
         <Archive className="h-8 w-8 mx-auto text-violet-600 mb-2" />
         <p className="font-medium">رفع أرشيف YOLO (ZIP)</p>
         <p className="text-sm text-muted-foreground mt-1">
-          مجلد <code className="text-xs">images/</code> + <code className="text-xs">labels-YOLO/</code> بنفس أسماء الملفات
+          يجب أن يحتوي على مجلدين: <code className="text-xs">images/</code> + <code className="text-xs">labels-YOLO/</code>
         </p>
-        {file && <p className="text-xs mt-2 text-violet-700">{file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)</p>}
+        {file && (
+          <p className="text-xs mt-2 text-violet-700">
+            {file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)
+            {file.size < 5 * 1024 * 1024 && (
+              <span className="block text-amber-700 mt-1">حجم صغير — غالباً تسميات فقط بدون صور</span>
+            )}
+          </p>
+        )}
       </div>
 
-      {file && !preview && (
-        <Button type="button" onClick={runPreview} disabled={loading === 'preview'} className="w-full">
-          {loading === 'preview' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-          تحليل الأرشيف
-        </Button>
+      {loading === 'preview' && (
+        <p className="text-sm text-muted-foreground flex items-center gap-2 justify-center">
+          <Loader2 className="h-4 w-4 animate-spin" /> جاري تحليل الأرشيف…
+        </p>
       )}
 
       {preview && (
         <div className="rounded-xl border border-border p-4 space-y-3 text-sm">
           <p>
-            <strong>{preview.image_count}</strong> صورة · <strong>{preview.labeled_count}</strong> بملف تسمية
+            <strong>{preview.image_count}</strong> زوج صورة+تسمية
+            {(preview.raw_image_files ?? 0) > 0 && (
+              <span className="text-muted-foreground text-xs"> · {preview.raw_image_files} صورة في الأرشيف</span>
+            )}
+            {(preview.raw_label_files ?? 0) > 0 && (
+              <span className="text-muted-foreground text-xs"> · {preview.raw_label_files} ملف .txt</span>
+            )}
           </p>
+
+          {preview.warning && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-100 text-xs flex gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div>
+                <p>{preview.warning}</p>
+                <p className="mt-2 font-medium">الصحيح في PowerShell:</p>
+                <code className="block mt-1 text-[10px] break-all bg-black/5 dark:bg-white/5 p-2 rounded">
+                  Compress-Archive -Path &quot;...\data\*&quot; -DestinationPath road-dataset.zip
+                </code>
+              </div>
+            </div>
+          )}
+
           {preview.yolo_class_names.length > 0 && (
             <p className="text-muted-foreground text-xs">
               أصناف الأرشيف: {preview.yolo_class_names.map((n, i) => `${i}=${n}`).join('، ')}
             </p>
           )}
-          <div className="space-y-2">
-            <p className="font-medium text-xs">ربط أصناف YOLO بأصناف المشروع:</p>
-            {(preview.detected_class_ids.length ? preview.detected_class_ids : Object.keys(mapping).map(Number)).map((id) => {
-              const yoloName = preview.yolo_class_names[id] ?? `class_${id}`;
-              return (
-                <div key={id} className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-mono bg-secondary px-2 py-1 rounded">{id} · {yoloName}</span>
-                  <span className="text-muted-foreground">→</span>
-                  <select
-                    className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                    value={mapping[String(id)] ?? defaultClass}
-                    onChange={(e) => setMapping((m) => ({ ...m, [String(id)]: e.target.value }))}
-                  >
-                    {classNames.map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </div>
-              );
-            })}
-          </div>
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input type="checkbox" checked={trainAfter} onChange={(e) => setTrainAfter(e.target.checked)} />
-            بدء التدريب تلقائياً بعد الاستيراد
-          </label>
-          <Button
-            type="button"
-            onClick={startImport}
-            disabled={loading === 'import' || !!taskId}
-            className="w-full"
-          >
-            {loading === 'import' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            استيراد والتدريب
-          </Button>
+
+          {canImport && (
+            <>
+              <div className="space-y-2">
+                <p className="font-medium text-xs">ربط أصناف YOLO بأصناف المشروع:</p>
+                {preview.detected_class_ids.map((id) => {
+                  const yoloName = preview.yolo_class_names[id] ?? `class_${id}`;
+                  return (
+                    <div key={id} className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono bg-secondary px-2 py-1 rounded">{id} · {yoloName}</span>
+                      <span className="text-muted-foreground">→</span>
+                      <select
+                        className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                        value={mapping[String(id)] ?? defaultClass}
+                        onChange={(e) => setMapping((m) => ({ ...m, [String(id)]: e.target.value }))}
+                      >
+                        {classNames.map((n) => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input type="checkbox" checked={trainAfter} onChange={(e) => setTrainAfter(e.target.checked)} />
+                بدء التدريب تلقائياً بعد الاستيراد
+              </label>
+              <Button
+                type="button"
+                onClick={startImport}
+                disabled={loading === 'import' || !!taskId}
+                className="w-full"
+              >
+                {loading === 'import' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                استيراد والتدريب ({preview.image_count} صورة)
+              </Button>
+            </>
+          )}
+
+          {!canImport && file && (
+            <Button type="button" variant="outline" onClick={() => runPreview(file)} className="w-full">
+              <FileText className="h-4 w-4" /> إعادة التحليل
+            </Button>
+          )}
         </div>
       )}
 
@@ -232,11 +279,6 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
         </p>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
-
-      <p className="text-xs text-muted-foreground">
-        مثال: اضغط مجلد <strong>data</strong> (يحتوي images + labels-YOLO) كـ ZIP ثم ارفعه هنا.
-        صيغة السطر: <code>class x_center y_center width height</code>
-      </p>
     </div>
   );
 }
