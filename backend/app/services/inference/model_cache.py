@@ -119,6 +119,9 @@ def predict_cached(
         source = image_source
 
     model = get_cached_yolo(weights_key, weights_bytes, architecture=architecture)
+    from app.services.inference.class_names import names_from_yolo_model
+
+    model_names = names_from_yolo_model(model)
     results = model.predict(
         source,
         verbose=False,
@@ -133,8 +136,11 @@ def predict_cached(
         if r.boxes is None:
             continue
         for box in r.boxes:
+            cls_id = int(box.cls[0])
+            class_name = model_names[cls_id] if cls_id < len(model_names) else None
             predictions.append({
-                "class_id": int(box.cls[0]),
+                "class_id": cls_id,
+                "class_name": class_name,
                 "confidence": float(box.conf[0]),
                 "x_center": float(box.xywhn[0][0]),
                 "y_center": float(box.xywhn[0][1]),

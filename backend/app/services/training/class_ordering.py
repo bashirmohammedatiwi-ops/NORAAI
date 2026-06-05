@@ -12,7 +12,6 @@ from app.models import Annotation, AnnotationStatus, ClassLabel
 
 
 def load_project_classes(session: Session, project_id: uuid.UUID) -> list[ClassLabel]:
-    """Order by creation time (stable) then name — matches typical YOLO import order."""
     result = session.execute(
         select(ClassLabel)
         .where(ClassLabel.project_id == project_id, ClassLabel.is_archived == False)
@@ -21,13 +20,67 @@ def load_project_classes(session: Session, project_id: uuid.UUID) -> list[ClassL
     return list(result.scalars().all())
 
 
-def build_class_manifest(classes: list[ClassLabel]) -> dict:
+def load_classes_for_export(
+    session: Session,
+    project_id: uuid.UUID,
+    image_ids: list[uuid.UUID],
+    version_manifest: dict | None = None,
+) -> list[ClassLabel]:
+    """
+    Export only classes present in annotations, ordered by original YOLO index when known.
+    Reduces nc and keeps class IDs aligned with imported YOLO datasets.
+    """
+    all_classes = load_project_classes(session, project_id)
+    by_id = {str(c.id): c for c in all_classes}
+    if not image_ids:
+        return all_classes
+
+    used_ids: set[str] = set()
+    rows = session.execute(
+        select(Annotation.class_id).where(
+            Annotation.image_id.in_(image_ids),
+            Annotation.status.in_([AnnotationStatus.APPROVED, AnnotationStatus.EDITED]),
+        )
+    )
+    for (class_id,) in rows.all():
+        used_ids.add(str(class_id))
+
+    used = [by_id[cid] for cid in used_ids if cid in by_id]
+    if not used:
+        return all_classes
+
+    manifest = version_manifest or {}
+    yolo_indices: dict[str, int] = manifest.get("yolo_indices") or {}
+    if yolo_indices:
+        used.sort(key=lambda c: (int(yolo_indices.get(str(c.id), 9999)), c.name))
+        return used
+
+    counts = annotation_class_counts(session, image_ids, class_id_to_index(all_classes))
+    full_index = class_id_to_index(all_classes)
+    used.sort(
+        key=lambda c: (
+            -counts.get(full_index.get(str(c.id), 0), 0),
+            c.created_at,
+            c.name,
+        )
+    )
+    return used
+
+
+def build_class_manifest(classes: list[ClassLabel], version_manifest: dict | None = None) -> dict:
     names = [c.name for c in classes]
-    return {
+    manifest = {
         "names": names,
         "class_ids": [str(c.id) for c in classes],
         "nc": max(len(names), 1),
     }
+    if version_manifest:
+        yolo_indices = version_manifest.get("yolo_indices")
+        if yolo_indices:
+            manifest["yolo_indices"] = {
+                str(cid): int(idx) for cid, idx in yolo_indices.items() if str(cid) in manifest["class_ids"]
+            }
+    return manifest
 
 
 def class_id_to_index(classes: list[ClassLabel]) -> dict[str, int]:

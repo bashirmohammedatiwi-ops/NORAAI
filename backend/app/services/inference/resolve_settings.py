@@ -17,8 +17,6 @@ def resolve_inference_imgsz(
         training_sz = artifact.metrics.get("image_size")
         if training_sz:
             return int(training_sz)
-    if manual_test:
-        return max(cfg.inference_imgsz, 640)
     return cfg.inference_imgsz
 
 

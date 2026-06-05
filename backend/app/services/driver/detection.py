@@ -110,17 +110,23 @@ def _run_detection_sync(
     t0 = time.perf_counter()
 
     try:
+        from app.services.inference.class_names import get_weights_class_names
         from ml.detection.unified_detect import detect_simple_with_project_model, detect_with_project_model
 
         adapter = _CachedProjectAdapter(weights_key, weights_data, architecture)
         weights_stub = "cached"
+
+        model_class_names = get_weights_class_names(
+            weights_key, weights_data, architecture=architecture,
+        )
+        effective_class_names = model_class_names or class_names
 
         if simple:
             predictions, meta = detect_simple_with_project_model(
                 image_bytes,
                 weights_stub,
                 adapter,
-                class_names,
+                effective_class_names,
                 allowed_norm,
                 settings=settings,
                 min_confidence=min_confidence,
@@ -131,13 +137,15 @@ def _run_detection_sync(
                 image_bytes,
                 weights_stub,
                 adapter,
-                class_names,
+                effective_class_names,
                 allowed_norm,
                 settings=settings,
                 min_confidence=min_confidence,
             )
         meta["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         meta["model_cached"] = True
+        meta["model_class_names"] = model_class_names
+        meta["artifact_class_names"] = class_names
         return predictions, None, meta
     except Exception as exc:
         return [], f"Inference failed: {exc}", {}
@@ -171,10 +179,10 @@ async def run_detection(
     class_names = list(artifact.classes_used or [])
     fast_path = simple or settings.driver_inference_simple
     if fast_path:
-        allowed = class_names or allowed_detection_classes(project_classes, artifact)
+        allowed = list({*(class_names or []), *[c.name for c in project_classes]})
     else:
         allowed = allowed_detection_classes(project_classes, artifact)
-    if not allowed:
+    if not allowed and not fast_path:
         return [], "Model classes do not match dashboard classes. Retrain after updating classes.", {}
 
     allowed_norm = {normalize_class_name(n) for n in allowed}

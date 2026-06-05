@@ -17,14 +17,23 @@ from ml.detection.vehicle_localizer import (
 )
 
 
-def _item_to_candidate(item: dict, class_names: list[str], allowed_norm: set[str]) -> dict | None:
+def _item_to_candidate(
+    item: dict,
+    class_names: list[str],
+    allowed_norm: set[str],
+    *,
+    strict_allowlist: bool = True,
+) -> dict | None:
     from app.services.driver.detection import map_class_to_event
 
-    idx = int(item.get("class_id", 0))
-    if not class_names or idx < 0 or idx >= len(class_names):
+    name = item.get("class_name")
+    if not name and class_names:
+        idx = int(item.get("class_id", 0))
+        if 0 <= idx < len(class_names):
+            name = class_names[idx]
+    if not name:
         return None
-    name = class_names[idx]
-    if allowed_norm and normalize_class_name(name) not in allowed_norm:
+    if strict_allowlist and allowed_norm and normalize_class_name(name) not in allowed_norm:
         return None
 
     cx = float(item.get("x_center", 0.5))
@@ -201,7 +210,7 @@ def detect_simple_with_project_model(
     )
     candidates: list[dict] = []
     for item in raw:
-        cand = _item_to_candidate(item, class_names, allowed_norm)
+        cand = _item_to_candidate(item, class_names, allowed_norm, strict_allowlist=False)
         if cand:
             candidates.append(cand)
 

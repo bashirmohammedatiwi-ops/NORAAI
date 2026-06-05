@@ -22,6 +22,7 @@ from app.models import (
     AnnotationStatus,
     ClassLabel,
     Dataset,
+    DatasetVersion,
     Image,
     ImageQualityScore,
     ImageStatus,
@@ -456,6 +457,44 @@ def import_yolo_pairs_sync(
     return result
 
 
+def _persist_yolo_class_manifest(
+    session: Session,
+    dataset_id: uuid.UUID,
+    class_index_map: dict[int, uuid.UUID],
+    yolo_names: list[str],
+) -> None:
+    """Store original YOLO class indices on the dataset head version for correct export order."""
+    dataset = session.get(Dataset, dataset_id)
+    if not dataset or not dataset.head_version_id:
+        return
+
+    version = session.get(DatasetVersion, dataset.head_version_id)
+    if not version:
+        return
+
+    classes = session.execute(
+        select(ClassLabel).where(ClassLabel.project_id == dataset.project_id, ClassLabel.is_archived == False)
+    ).scalars().all()
+    by_id = {c.id: c for c in classes}
+
+    yolo_indices: dict[str, int] = {}
+    names_by_idx: dict[int, str] = {}
+    for yolo_idx, class_uuid in class_index_map.items():
+        label = by_id.get(class_uuid)
+        if not label:
+            continue
+        yolo_indices[str(class_uuid)] = int(yolo_idx)
+        names_by_idx[int(yolo_idx)] = label.name
+
+    ordered_names = [names_by_idx[i] for i in sorted(names_by_idx.keys())]
+    version.class_manifest = {
+        "yolo_indices": yolo_indices,
+        "names": ordered_names,
+        "source_yolo_names": yolo_names,
+    }
+    session.flush()
+
+
 def import_yolo_zip_sync(
     session: Session,
     *,
@@ -499,5 +538,7 @@ def import_yolo_zip_sync(
             class_index_map=class_index_map,
             progress_callback=progress_callback,
         )
+        _persist_yolo_class_manifest(session, dataset_id, class_index_map, yolo_names)
+        session.commit()
         result.yolo_class_names = yolo_names
         return result

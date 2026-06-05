@@ -106,9 +106,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
       .then((data) => {
         if (cancelled) return;
         setStatus(data);
-        if (data.recommended_confidence != null) {
-          setMinConfidence(Math.max(0.05, data.recommended_confidence));
-        }
+        setMinConfidence(0.05);
       })
       .catch(() => { if (!cancelled) setStatus({ ready: false }); });
     api.post(`/api/v1/inference/project/${projectId}/warmup`, {}).catch(() => {});
@@ -134,8 +132,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
     setLatencyMs(null);
     setRawCount(null);
     try {
-      const maxEdge = status?.training_image_size ?? status?.inference_imgsz ?? 1280;
-      const prepared = await prepareImage(image, maxEdge);
+      const prepared = await prepareImage(image, 1920);
       const form = new FormData();
       form.append('file', prepared);
       form.append('min_confidence', '0.05');
@@ -158,13 +155,6 @@ export function DashboardManualTest({ projects, compact }: Props) {
       setRawCount(data.raw_count ?? null);
       setServerThreshold(data.confidence_threshold ?? null);
 
-      if (raw.length === 0 && (data.best_confidence ?? 0) > 0.05) {
-        const suggested = Math.max(
-          0.05,
-          Math.round(((data.best_confidence ?? 0) - 0.05) * 20) / 20,
-        );
-        setMinConfidence(Math.min(suggested, 0.95));
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'فشل الاختبار');
     } finally {
@@ -355,11 +345,13 @@ export function DashboardManualTest({ projects, compact }: Props) {
                 {detections.length}
                 {rawCount != null && rawCount > 0 ? `/${rawCount}` : ''} كشف
                 {latencyMs != null && ` · ${latencyMs.toFixed(0)} ms`}
-                {detections.length === 0 && bestConfidence != null && bestConfidence > 0 && (
+                {detections.length === 0 && rawCount != null && rawCount > 0 && (
+                  <span className="text-amber-700"> · خفّض العتبة لعرض {rawCount} كشف</span>
+                )}
+                {detections.length === 0 && (rawCount ?? 0) === 0 && bestConfidence != null && bestConfidence > 0 && (
                   <span className="text-amber-700">
                     {' '}
-                    · أعلى ثقة {(bestConfidence * 100).toFixed(0)}%
-                    {bestConfidence < minConfidence ? ' — خفّض العتبة أو أعد التدريب' : ''}
+                    · أعلى ثقة {(bestConfidence * 100).toFixed(0)}% — أعد التدريب بعد التحديث
                   </span>
                 )}
               </span>

@@ -70,6 +70,11 @@ async def predict(
             "inference_imgsz": int(meta.get("inference_imgsz", resolve_inference_imgsz(artifact, settings, manual_test=True))),
             "training_image_size": int((artifact.metrics or {}).get("image_size", 640)),
             "recommended_confidence": resolve_manual_test_confidence(artifact, settings),
+            "model_class_names": meta.get("model_class_names") or list(artifact.classes_used or []),
+            "class_names_mismatch": bool(
+                meta.get("model_class_names")
+                and list(artifact.classes_used or []) != meta.get("model_class_names")
+            ),
             "latency_ms": round(latency_ms, 1),
         }
 

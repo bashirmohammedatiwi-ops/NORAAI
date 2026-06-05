@@ -13,7 +13,7 @@ from app.services.training.class_ordering import (
     annotation_class_counts,
     build_class_manifest,
     class_id_to_index,
-    load_project_classes,
+    load_classes_for_export,
 )
 
 MIN_IMAGES_RECOMMENDED = 50
@@ -36,8 +36,10 @@ def validate_dataset_version(
         image_ids = [row[0] for row in result.all()]
 
     project_id = version.dataset.project_id
-    classes = load_project_classes(session, project_id)
-    manifest = build_class_manifest(classes)
+    classes = load_classes_for_export(
+        session, project_id, image_ids, version.class_manifest or {},
+    )
+    manifest = build_class_manifest(classes, version.class_manifest or {})
     class_index = class_id_to_index(classes)
 
     ann_rows = session.execute(

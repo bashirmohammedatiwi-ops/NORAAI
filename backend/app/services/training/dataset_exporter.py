@@ -13,7 +13,7 @@ from app.services.training.cancellation import TrainingCancelled
 from app.services.training.class_ordering import (
     build_class_manifest,
     class_id_to_index,
-    load_project_classes,
+    load_classes_for_export,
 )
 from app.services.training.dataset_validator import stratified_val_ids
 
@@ -39,10 +39,16 @@ def export_yolo_dataset_sync(
         )
         image_ids = [row[0] for row in result.all()]
 
-    classes = load_project_classes(session, version.dataset.project_id)
+    version_manifest = version.class_manifest or {}
+    classes = load_classes_for_export(
+        session,
+        version.dataset.project_id,
+        image_ids,
+        version_manifest,
+    )
     class_names = [c.name for c in classes]
     class_map = class_id_to_index(classes)
-    manifest = build_class_manifest(classes)
+    manifest = build_class_manifest(classes, version_manifest)
 
     base = Path(output_dir)
     for split in ("train", "val"):
