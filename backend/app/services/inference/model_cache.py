@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import tempfile
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from app.core.config import get_settings
 
@@ -26,8 +27,17 @@ class _CacheEntry:
 
 
 def _cache_key(weights_key: str, weights_bytes: bytes) -> str:
-    digest = hashlib.sha256(weights_bytes).hexdigest()[:16]
-    return f"{weights_key}:{len(weights_bytes)}:{digest}"
+    return f"{weights_key}:{len(weights_bytes)}"
+
+
+def _decode_image(image_bytes: bytes) -> np.ndarray:
+    import cv2
+
+    arr = np.frombuffer(image_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("Invalid image bytes")
+    return img
 
 
 def _evict_if_needed(max_size: int) -> None:
@@ -91,26 +101,32 @@ def get_cached_yolo(
 def predict_cached(
     weights_key: str,
     weights_bytes: bytes,
-    image_path: str,
+    image_source: str | bytes,
     *,
     architecture: str = "yolo11",
     conf: float = 0.25,
     iou: float = 0.45,
     imgsz: int | None = None,
 ) -> list[dict]:
-    """Single forward pass using cached weights."""
+    """Single forward pass using cached weights (path or JPEG bytes)."""
     settings = get_settings()
     size = imgsz or settings.inference_imgsz
     half = settings.inference_use_half and settings.inference_device != "cpu"
 
+    if isinstance(image_source, bytes):
+        source: str | np.ndarray = _decode_image(image_source)
+    else:
+        source = image_source
+
     model = get_cached_yolo(weights_key, weights_bytes, architecture=architecture)
     results = model.predict(
-        image_path,
+        source,
         verbose=False,
         conf=conf,
         iou=iou,
         imgsz=size,
         half=half,
+        max_det=50,
     )
     predictions: list[dict] = []
     for r in results:
@@ -129,6 +145,9 @@ def predict_cached(
 
 
 def invalidate_weights(weights_key: str) -> None:
+    from app.services.inference.weights_store import invalidate_weights_bytes
+
+    invalidate_weights_bytes(weights_key)
     with _lock:
         doomed = [k for k, e in _entries.items() if e.weights_key == weights_key]
         for k in doomed:

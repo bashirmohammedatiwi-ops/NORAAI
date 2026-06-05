@@ -243,7 +243,7 @@ async def retrain_project_model(
     project_id: UUID,
     epochs: int | None = Query(None, ge=5, le=200),
     architecture: str = Query("yolo11"),
-    preset: str = Query(DEFAULT_CPU_PRESET, pattern="^(turbo_cpu|fast_cpu|balanced)$"),
+    preset: str = Query(DEFAULT_CPU_PRESET, pattern="^(fleet_cpu|turbo_cpu|fast_cpu|balanced)$"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

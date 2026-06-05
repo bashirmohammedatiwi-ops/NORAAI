@@ -44,6 +44,14 @@ TRAINING_OPTIONS = {
     },
     "cpu_presets": [
         {
+            "value": "fleet_cpu",
+            "label": "Fleet Camera",
+            "description": "12 epochs · 416px — live road detection (recommended)",
+            "epochs": 12,
+            "image_size": 416,
+            "augmentation": "light",
+        },
+        {
             "value": "turbo_cpu",
             "label": "Turbo CPU",
             "description": "5 epochs · 320px · minimal aug — fastest",
@@ -68,7 +76,7 @@ TRAINING_OPTIONS = {
             "augmentation": "medium",
         },
     ],
-    "default_cpu_preset": "fast_cpu",
+    "default_cpu_preset": "fleet_cpu",
 }
 
 

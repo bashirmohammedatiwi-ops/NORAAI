@@ -1,6 +1,11 @@
-export type CpuPreset = 'turbo_cpu' | 'fast_cpu' | 'balanced';
+export type CpuPreset = 'fleet_cpu' | 'turbo_cpu' | 'fast_cpu' | 'balanced';
 
 export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string; epochs: number }> = {
+  fleet_cpu: {
+    label: 'Fleet Camera',
+    description: '12 epochs · 416px — live road detection (recommended)',
+    epochs: 12,
+  },
   turbo_cpu: {
     label: 'Turbo CPU',
     description: '5 epochs · 320px · minimal aug — fastest test run',
@@ -18,7 +23,7 @@ export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string
   },
 };
 
-export const DEFAULT_CPU_PRESET: CpuPreset = 'fast_cpu';
+export const DEFAULT_CPU_PRESET: CpuPreset = 'fleet_cpu';
 
 export function buildRetrainQuery(params: {
   epochs?: number;

@@ -35,23 +35,24 @@ class Settings(BaseSettings):
     inference_full_frame_min_confidence: float = 0.94
 
     vehicle_detector_weights: str = "yolo11s.pt"
-    vehicle_detector_imgsz: int = 640
+    vehicle_detector_imgsz: int = 416
     vehicle_detector_conf: float = 0.25
 
     # Fleet / camera inference performance
-    inference_imgsz: int = 640
+    inference_imgsz: int = 416
     inference_device: str = "cpu"
     inference_use_half: bool = False
-    inference_model_cache_size: int = 4
-    inference_max_two_stage_vehicles: int = 3
+    inference_model_cache_size: int = 6
+    inference_max_two_stage_vehicles: int = 2
     inference_skip_vehicle_multipass: bool = True
+    driver_inference_simple: bool = True
 
     # Driver app capture tuning (returned via /driver/config)
-    driver_scan_interval_ms: int = 2000
-    driver_scan_interval_fast_ms: int = 1200
-    driver_speed_fast_kmh: float = 40.0
-    driver_capture_max_width: int = 640
-    driver_jpeg_quality: float = 0.72
+    driver_scan_interval_ms: int = 900
+    driver_scan_interval_fast_ms: int = 550
+    driver_speed_fast_kmh: float = 35.0
+    driver_capture_max_width: int = 512
+    driver_jpeg_quality: float = 0.62
 
     # Duplicate event suppression (periodic camera frames)
     event_dedup_cooldown_seconds: int = 90
@@ -62,7 +63,7 @@ class Settings(BaseSettings):
 
     cuda_visible_devices: str = "0"
     training_cpu_fallback: bool = True
-    training_export_max_workers: int = 8
+    training_export_max_workers: int = 12
 
     prometheus_enabled: bool = True
 

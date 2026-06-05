@@ -37,7 +37,7 @@ interface Props {
   compact?: boolean;
 }
 
-const MAX_EDGE = 1280;
+const MAX_EDGE = 640;
 
 async function prepareImage(file: File): Promise<File> {
   if (!file.type.startsWith('image/')) throw new Error('صورة غير صالحة');

@@ -47,6 +47,7 @@ export default function DrivePage({ config, onLogout }: Props) {
   const [scanning, setScanning] = useState(false);
   const [camOk, setCamOk] = useState(false);
   const detectInFlight = useRef(false);
+  const lastLatencyMs = useRef(400);
 
   const meta = useMemo(
     () => (cfg ? buildClassMetaFromServer(cfg.project_classes, cfg.alert_types) : buildClassMetaFromServer([])),
@@ -144,9 +145,11 @@ export default function DrivePage({ config, onLogout }: Props) {
 
     const intervalMs = () => {
       const speed = loc.location?.speed ?? 0;
-      const fast = cfg?.speed_fast_kmh ?? 40;
-      if (speed >= fast) return cfg?.scan_interval_fast_ms ?? 1200;
-      return cfg?.scan_interval_ms ?? 2000;
+      const fast = cfg?.speed_fast_kmh ?? 35;
+      const base = speed >= fast
+        ? (cfg?.scan_interval_fast_ms ?? 550)
+        : (cfg?.scan_interval_ms ?? 900);
+      return Math.max(base, Math.round(lastLatencyMs.current * 1.15) + 80);
     };
 
     const schedule = (delay: number) => {
@@ -173,12 +176,18 @@ export default function DrivePage({ config, onLogout }: Props) {
           jpegQuality: cfg?.jpeg_quality ?? 0.72,
         });
         if (!blob || cancelled || !loc.location) return;
+        const t0 = performance.now();
         const res = await detectFrame(config, blob, {
           latitude: loc.location.lat,
           longitude: loc.location.lon,
           speed: loc.location.speed,
           speed_limit: activeLimit,
         });
+        if (res.latency_ms != null) {
+          lastLatencyMs.current = res.latency_ms;
+        } else {
+          lastLatencyMs.current = performance.now() - t0;
+        }
         for (const a of res.alerts) {
           pushAlert(a.type, a.class_name || a.label || a.type, a.confidence);
         }

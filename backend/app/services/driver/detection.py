@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import tempfile
 import time
 import uuid
-from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.minio_client import download_bytes
+from app.services.inference.weights_store import get_weights_bytes
 from app.models import FleetDevice, RoadEvent, RoadEventType
 from app.services.driver.project_classes import (
     allowed_detection_classes,
@@ -54,20 +53,22 @@ class _CachedProjectAdapter:
     def predict(
         self,
         _weights_path: str,
-        image_path: str,
+        image_source: str | bytes,
         *,
         conf: float = 0.25,
         iou: float = 0.45,
+        imgsz: int | None = None,
     ) -> list[dict]:
         from app.services.inference.model_cache import predict_cached
 
         return predict_cached(
             self.weights_key,
             self.weights_bytes,
-            image_path,
+            image_source,
             architecture=self.architecture,
             conf=conf,
             iou=iou,
+            imgsz=imgsz,
         )
 
 
@@ -107,10 +108,6 @@ def _run_detection_sync(
     settings = get_settings()
     t0 = time.perf_counter()
 
-    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as imgf:
-        imgf.write(image_bytes)
-        image_path = imgf.name
-
     try:
         from ml.detection.unified_detect import detect_simple_with_project_model, detect_with_project_model
 
@@ -119,7 +116,7 @@ def _run_detection_sync(
         detect_fn = detect_simple_with_project_model if simple else detect_with_project_model
 
         predictions, meta = detect_fn(
-            image_path,
+            image_bytes,
             weights_stub,
             adapter,
             class_names,
@@ -132,8 +129,6 @@ def _run_detection_sync(
         return predictions, None, meta
     except Exception as exc:
         return [], f"Inference failed: {exc}", {}
-    finally:
-        Path(image_path).unlink(missing_ok=True)
 
 
 async def run_detection(
@@ -158,9 +153,10 @@ async def run_detection(
         return [], "No trained model deployed. Train and activate a model from the dashboard.", {}
 
     assert artifact is not None
+    settings = get_settings()
     class_names = list(artifact.classes_used or [])
-    if simple:
-        # Manual test: all YOLO labels from the trained model (Pothole, Crack, حفر, …)
+    fast_path = simple or settings.driver_inference_simple
+    if fast_path:
         allowed = class_names or allowed_detection_classes(project_classes, artifact)
     else:
         allowed = allowed_detection_classes(project_classes, artifact)
@@ -170,7 +166,10 @@ async def run_detection(
     allowed_norm = {normalize_class_name(n) for n in allowed}
 
     try:
-        weights_data = download_bytes(artifact.minio_weights_key)
+        weights_data = get_weights_bytes(
+            artifact.minio_weights_key,
+            lambda: download_bytes(artifact.minio_weights_key),
+        )
         if not weights_data or weights_data == b"mock_weights":
             return [], "Model weights missing or invalid. Run training again from the dashboard.", {}
 
@@ -183,7 +182,7 @@ async def run_detection(
             allowed_norm,
             artifact.architecture or "yolo11",
             min_confidence,
-            simple=simple,
+            simple=fast_path,
         )
     except Exception as exc:
         return [], f"Inference failed: {exc}", {}
@@ -195,7 +194,13 @@ async def preload_project_model(db: AsyncSession, project_id: uuid.UUID) -> bool
     if not is_production_model(artifact):
         return False
     assert artifact is not None
-    weights_data = download_bytes(artifact.minio_weights_key)
+    try:
+        weights_data = get_weights_bytes(
+            artifact.minio_weights_key,
+            lambda: download_bytes(artifact.minio_weights_key),
+        )
+    except Exception:
+        return False
     if not weights_data or weights_data == b"mock_weights":
         return False
 

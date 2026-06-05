@@ -178,7 +178,7 @@ def detect_with_project_model(
 
 
 def detect_simple_with_project_model(
-    image_path: str,
+    image_source: str | bytes,
     weights_path: str,
     adapter,
     class_names: list[str],
@@ -187,12 +187,13 @@ def detect_simple_with_project_model(
     settings: Settings,
     min_confidence: float | None = None,
 ) -> tuple[list[dict], dict]:
-    """Direct YOLO on full image — all model classes, no vehicle pipeline (manual test)."""
+    """Direct YOLO on full image — single pass, optimized for camera / manual test."""
     raw = adapter.predict(
         weights_path,
-        image_path,
+        image_source,
         conf=0.1,
         iou=settings.inference_iou_threshold,
+        imgsz=settings.inference_imgsz,
     )
     candidates: list[dict] = []
     for item in raw:

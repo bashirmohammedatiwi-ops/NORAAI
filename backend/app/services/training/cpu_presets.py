@@ -1,6 +1,24 @@
 """CPU training presets — tuned for VPS without GPU."""
 
 CPU_PRESETS: dict[str, dict] = {
+    "fleet_cpu": {
+        "label": "Fleet Camera",
+        "description": "12 epochs · 416px · tuned for live road detection on CPU",
+        "epochs": 12,
+        "batch_size": 14,
+        "learning_rate": 0.01,
+        "optimizer": "AdamW",
+        "scheduler": "cosine",
+        "augmentation": "light",
+        "image_size": 416,
+        "mixed_precision": False,
+        "val_split": 0.15,
+        "cache": True,
+        "patience": 6,
+        "close_mosaic": 2,
+        "workers": 8,
+        "device": "cpu",
+    },
     "turbo_cpu": {
         "label": "Turbo CPU",
         "description": "5 epochs · 320px · minimal aug — fastest run for quick tests",
@@ -33,6 +51,7 @@ CPU_PRESETS: dict[str, dict] = {
         "cache": True,
         "patience": 5,
         "close_mosaic": 3,
+        "workers": 6,
         "device": "cpu",
     },
     "balanced": {
@@ -53,7 +72,7 @@ CPU_PRESETS: dict[str, dict] = {
     },
 }
 
-DEFAULT_CPU_PRESET = "fast_cpu"
+DEFAULT_CPU_PRESET = "fleet_cpu"
 
 
 def build_retrain_config(epochs: int | None, preset: str = DEFAULT_CPU_PRESET) -> dict:
