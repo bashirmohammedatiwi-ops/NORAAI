@@ -149,6 +149,88 @@ def process_image(record_id: str, image_bytes_b64: str | None = None, minio_key:
         session.close()
 
 
+@celery_app.task(bind=True, name="workers.ingestion.tasks.import_yolo_dataset")
+def import_yolo_dataset(
+    self,
+    minio_key: str,
+    project_id: str,
+    dataset_id: str,
+    class_mapping: dict,
+    user_id: str | None = None,
+    train_after_import: bool = False,
+):
+    from app.core.minio_client import download_bytes, remove_object
+    from app.models import Dataset, TrainingJob, TrainingMode, ModelArchitecture
+    from app.services.datasets.yolo_import import import_yolo_zip_sync
+    from app.services.training.cpu_presets import DEFAULT_CPU_PRESET, build_retrain_config
+    from workers.training.tasks import run_training_job
+
+    session = SessionLocal()
+    try:
+        dataset = session.get(Dataset, uuid.UUID(dataset_id))
+        if not dataset:
+            return {"status": "failed", "error": "Dataset not found"}
+
+        zip_bytes = download_bytes(minio_key)
+        if not zip_bytes:
+            return {"status": "failed", "error": "Archive missing from storage"}
+
+        def progress(meta: dict):
+            self.update_state(state="PROGRESS", meta=meta)
+
+        result = import_yolo_zip_sync(
+            session,
+            project_id=uuid.UUID(project_id),
+            dataset_id=uuid.UUID(dataset_id),
+            zip_bytes=zip_bytes,
+            class_mapping=class_mapping,
+            progress_callback=progress,
+        )
+
+        try:
+            remove_object(minio_key)
+        except Exception:
+            pass
+
+        training_job_id = None
+        if train_after_import and result.imported > 0:
+            dataset = session.get(Dataset, uuid.UUID(dataset_id))
+            version_id = dataset.head_version_id if dataset else None
+            if version_id:
+                config = build_retrain_config(epochs=DEFAULT_CPU_PRESET["epochs"], preset=DEFAULT_CPU_PRESET)
+                job = TrainingJob(
+                    project_id=uuid.UUID(project_id),
+                    name="YOLO Import Train",
+                    architecture=ModelArchitecture.YOLO11,
+                    training_mode=TrainingMode.SINGLE_GPU,
+                    dataset_version_id=version_id,
+                    hpo_enabled=False,
+                    config=config,
+                    created_by=uuid.UUID(user_id) if user_id else None,
+                )
+                session.add(job)
+                session.commit()
+                run_training_job.delay(str(job.id))
+                training_job_id = str(job.id)
+
+        return {
+            "status": "completed",
+            "imported": result.imported,
+            "skipped": result.skipped,
+            "failed": result.failed,
+            "annotations": result.annotations,
+            "detected_class_ids": sorted(result.detected_class_ids),
+            "yolo_class_names": result.yolo_class_names,
+            "errors": result.errors[:10],
+            "training_job_id": training_job_id,
+        }
+    except Exception as exc:
+        session.rollback()
+        return {"status": "failed", "error": str(exc)}
+    finally:
+        session.close()
+
+
 @celery_app.task(name="workers.ingestion.tasks.pull_camera_snapshot")
 def pull_camera_snapshot(config_id: str, project_id: str, url: str, source_type: str):
     import httpx

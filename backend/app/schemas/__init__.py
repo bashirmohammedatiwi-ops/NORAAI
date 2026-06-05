@@ -188,6 +188,32 @@ class DatasetUploadResponse(BaseModel):
     class_id: UUID | None = None
 
 
+class YoloImportPreviewResponse(BaseModel):
+    image_count: int
+    labeled_count: int
+    detected_class_ids: list[int]
+    yolo_class_names: list[str]
+    suggested_mapping: dict[str, str] = Field(default_factory=dict)
+
+
+class YoloImportStartResponse(BaseModel):
+    task_id: str
+    status: str
+    message: str
+
+
+class YoloImportStatusResponse(BaseModel):
+    task_id: str
+    state: str
+    progress: int = 0
+    imported: int = 0
+    annotations: int = 0
+    failed: int = 0
+    training_job_id: str | None = None
+    error: str | None = None
+    result: dict | None = None
+
+
 class DatasetBuilderStatsResponse(BaseModel):
     dataset_id: UUID
     dataset_name: str

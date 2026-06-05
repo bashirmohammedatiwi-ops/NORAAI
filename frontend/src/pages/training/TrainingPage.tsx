@@ -8,6 +8,7 @@ import {
   useProjectClasses,
 } from '@/hooks/useDatasets';
 import { BulkImageUpload } from '@/components/training/BulkImageUpload';
+import { YoloLabelsUpload } from '@/components/training/YoloLabelsUpload';
 import { SimpleTrainCard } from '@/components/training/SimpleTrainCard';
 import { TrainingConfigForm } from '@/components/training/TrainingConfigForm';
 import { TrainingMetricsPanel } from '@/components/training/TrainingMetricsPanel';
@@ -295,18 +296,41 @@ export default function TrainingPage() {
                 </select>
               )}
 
-              <BulkImageUpload
-                datasetId={selectedDatasetId}
-                classId={selectedClassId}
-                className={selectedClass?.name}
-                classColor={selectedClass?.color}
-                disabled={!selectedDatasetId}
-                onComplete={(uploaded) => {
-                  if (uploaded <= 0) return;
-                  setTimeout(() => { void refetchStats(); }, 5000);
-                  setTimeout(() => { void refetchStats(); }, 15000);
-                }}
-              />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">صور فقط (تسمية لاحقاً)</p>
+                  <BulkImageUpload
+                    datasetId={selectedDatasetId}
+                    classId={selectedClassId}
+                    className={selectedClass?.name}
+                    classColor={selectedClass?.color}
+                    disabled={!selectedDatasetId}
+                    onComplete={(uploaded) => {
+                      if (uploaded <= 0) return;
+                      setTimeout(() => { void refetchStats(); }, 5000);
+                      setTimeout(() => { void refetchStats(); }, 15000);
+                    }}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">YOLO جاهز (صور + labels)</p>
+                  <YoloLabelsUpload
+                    datasetId={selectedDatasetId}
+                    classes={classes}
+                    disabled={!selectedDatasetId}
+                    onComplete={({ imported, trainingJobId }) => {
+                      if (imported > 0) {
+                        setTimeout(() => { void refetchStats(); }, 3000);
+                        void refetchHub();
+                      }
+                      if (trainingJobId) {
+                        loadJobs();
+                        setSelectedJobId(trainingJobId);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
 

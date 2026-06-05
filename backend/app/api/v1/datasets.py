@@ -1,5 +1,8 @@
+import json
+import uuid
 from uuid import UUID
 
+from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +26,9 @@ from app.schemas import (
     DatasetUploadResponse,
     DatasetVersionCreate,
     ImageResponse,
+    YoloImportPreviewResponse,
+    YoloImportStartResponse,
+    YoloImportStatusResponse,
 )
 from app.services.datasets.builder_stats import get_builder_stats
 from app.services.datasets.dataset_images import (
@@ -39,6 +45,10 @@ from app.services.datasets.gallery import get_dataset_gallery
 from app.services.deletion import delete_dataset_permanently
 from app.services.datasets.versioning import compare_versions, create_dataset, create_version, rollback_dataset
 from app.services.ingestion.batch_upload import FilePayload, ingest_files_parallel
+from app.services.datasets.yolo_import import analyze_yolo_zip, suggest_mapping_from_yolo_names
+from app.core.minio_client import upload_bytes
+from workers.celery_app import celery_app
+from workers.ingestion.tasks import import_yolo_dataset
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 logger = logging.getLogger(__name__)
@@ -228,6 +238,132 @@ async def upload_to_dataset(
         class_id=class_id,
         message=f"Queued {len(record_ids)} image(s) for '{dataset.name}'{cls_note}",
     )
+
+
+@router.post("/{dataset_id}/import-yolo/preview", response_model=YoloImportPreviewResponse)
+async def preview_yolo_import(
+    dataset_id: UUID,
+    archive: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    del user
+    dataset = await db.get(Dataset, dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    content = await archive.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty archive")
+    if len(content) > 1024 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Archive too large (max 1GB)")
+
+    try:
+        info = analyze_yolo_zip(content)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid archive: {exc}") from exc
+
+    classes = await db.execute(
+        select(ClassLabel).where(ClassLabel.project_id == dataset.project_id, ClassLabel.is_archived == False)
+    )
+    project_names = [c.name for c in classes.scalars().all()]
+    yolo_names = info.get("yolo_class_names") or []
+    if not yolo_names and info.get("detected_class_ids"):
+        yolo_names = [f"class_{i}" for i in info["detected_class_ids"]]
+
+    suggested = suggest_mapping_from_yolo_names(yolo_names, project_names)
+    if not suggested and info.get("detected_class_ids"):
+        default = project_names[0] if project_names else "حفر"
+        suggested = {str(i): default for i in info["detected_class_ids"]}
+
+    return YoloImportPreviewResponse(
+        image_count=info["image_count"],
+        labeled_count=info["labeled_count"],
+        detected_class_ids=info["detected_class_ids"],
+        yolo_class_names=yolo_names,
+        suggested_mapping=suggested,
+    )
+
+
+@router.post("/{dataset_id}/import-yolo", response_model=YoloImportStartResponse)
+async def start_yolo_import(
+    dataset_id: UUID,
+    archive: UploadFile = File(...),
+    class_mapping: str = Form(...),
+    train_after_import: bool = Form(False),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    dataset = await db.get(Dataset, dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    try:
+        mapping = json.loads(class_mapping)
+        if not isinstance(mapping, dict):
+            raise ValueError("class_mapping must be a JSON object")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid class_mapping JSON: {exc}") from exc
+
+    content = await archive.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty archive")
+    if len(content) > 1024 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Archive too large (max 1GB)")
+
+    import_id = uuid.uuid4()
+    minio_key = f"imports/yolo/{import_id}.zip"
+    upload_bytes(minio_key, content, archive.content_type or "application/zip")
+
+    try:
+        task = import_yolo_dataset.delay(
+            minio_key,
+            str(dataset.project_id),
+            str(dataset_id),
+            mapping,
+            str(user.id),
+            train_after_import,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Import worker unavailable: {exc}") from exc
+
+    msg = "جاري استيراد صور + تسميات YOLO"
+    if train_after_import:
+        msg += " ثم بدء التدريب تلقائياً"
+    return YoloImportStartResponse(task_id=task.id, status="processing", message=msg)
+
+
+@router.get("/import-yolo/{task_id}/status", response_model=YoloImportStatusResponse)
+async def yolo_import_status(task_id: str, user: User = Depends(get_current_user)):
+    del user
+    result = AsyncResult(task_id, app=celery_app)
+    state = result.state or "PENDING"
+    meta = result.info if isinstance(result.info, dict) else {}
+    payload = result.result if isinstance(result.result, dict) else None
+
+    if state == "PROGRESS":
+        return YoloImportStatusResponse(
+            task_id=task_id,
+            state=state,
+            progress=int(meta.get("progress", 0)),
+            imported=int(meta.get("imported", 0)),
+            annotations=int(meta.get("annotations", 0)),
+        )
+    if state == "SUCCESS" and payload:
+        return YoloImportStatusResponse(
+            task_id=task_id,
+            state="completed",
+            progress=100,
+            imported=int(payload.get("imported", 0)),
+            annotations=int(payload.get("annotations", 0)),
+            failed=int(payload.get("failed", 0)),
+            training_job_id=payload.get("training_job_id"),
+            result=payload,
+        )
+    if state == "FAILURE":
+        err = str(result.result) if result.result else "Import failed"
+        return YoloImportStatusResponse(task_id=task_id, state="failed", error=err)
+    return YoloImportStatusResponse(task_id=task_id, state=state.lower())
 
 
 @router.get("/{dataset_id}/versions")

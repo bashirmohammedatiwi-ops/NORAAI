@@ -14,6 +14,7 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { SimpleTrainingPanel } from '@/components/training/SimpleTrainingPanel';
 import { BulkImageUpload } from '@/components/training/BulkImageUpload';
+import { YoloLabelsUpload } from '@/components/training/YoloLabelsUpload';
 import { DatasetGallery } from '@/components/datasets/DatasetGallery';
 import { DatasetLoadError } from '@/components/datasets/DatasetLoadError';
 import {
@@ -227,6 +228,28 @@ export default function DataHubPage() {
                 onComplete={uploadComplete}
               />
               {message && <p className="text-sm text-primary mt-3">{message}</p>}
+            </CardContent>
+          </Card>
+
+          <Card className="border-violet-500/25 bg-violet-500/5">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <span className="step-badge">4</span>
+                <div>
+                  <CardTitle className="text-base">استيراد YOLO (صور + labels)</CardTitle>
+                  <CardDescription>
+                    ارفع ZIP يحتوي <strong>images/</strong> و <strong>labels-YOLO/</strong> — تدريب مباشر بدون تسمية يدوية
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <YoloLabelsUpload
+                datasetId={selectedId}
+                classes={classes}
+                disabled={!selectedId}
+                onComplete={() => uploadComplete(1)}
+              />
             </CardContent>
           </Card>
 
