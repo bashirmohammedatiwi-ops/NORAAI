@@ -1,4 +1,6 @@
 from io import BytesIO
+from pathlib import Path
+from typing import BinaryIO
 
 from minio import Minio
 
@@ -61,3 +63,70 @@ def download_bytes(key: str) -> bytes:
     finally:
         response.close()
         response.release_conn()
+
+
+def upload_stream(
+    key: str,
+    stream: BinaryIO,
+    size: int,
+    content_type: str = "application/octet-stream",
+) -> str:
+    client = get_minio()
+    ensure_bucket()
+    client.put_object(settings.minio_bucket, key, stream, size, content_type=content_type)
+    return key
+
+
+def upload_file_limited(
+    key: str,
+    file_obj: BinaryIO,
+    max_bytes: int,
+    content_type: str = "application/octet-stream",
+    part_size: int = 16 * 1024 * 1024,
+) -> int:
+    """Stream upload from a file-like object without loading into RAM. Returns bytes written."""
+
+    class LimitedReader:
+        def __init__(self, inner: BinaryIO, limit: int):
+            self._inner = inner
+            self._limit = limit
+            self.total = 0
+
+        def read(self, n: int = -1) -> bytes:
+            data = self._inner.read(n)
+            self.total += len(data)
+            if self.total > self._limit:
+                raise ValueError(f"File exceeds max size ({self._limit} bytes)")
+            return data
+
+    client = get_minio()
+    ensure_bucket()
+    reader = LimitedReader(file_obj, max_bytes)
+    client.put_object(
+        settings.minio_bucket,
+        key,
+        reader,
+        length=-1,
+        part_size=part_size,
+        content_type=content_type,
+    )
+    if reader.total == 0:
+        raise ValueError("Empty file")
+    return reader.total
+
+
+def download_to_path(key: str, dest: Path, chunk_size: int = 8 * 1024 * 1024) -> Path:
+    client = get_minio()
+    response = client.get_object(settings.minio_bucket, key)
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with dest.open("wb") as out:
+            while True:
+                chunk = response.read(chunk_size)
+                if not chunk:
+                    break
+                out.write(chunk)
+    finally:
+        response.close()
+        response.release_conn()
+    return dest

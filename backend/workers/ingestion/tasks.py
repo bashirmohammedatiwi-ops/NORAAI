@@ -159,7 +159,10 @@ def import_yolo_dataset(
     user_id: str | None = None,
     train_after_import: bool = False,
 ):
-    from app.core.minio_client import download_bytes, remove_object
+    import tempfile
+    from pathlib import Path
+
+    from app.core.minio_client import download_to_path, remove_object
     from app.models import Dataset, TrainingJob, TrainingMode, ModelArchitecture
     from app.services.datasets.yolo_import import import_yolo_zip_sync
     from app.services.training.cpu_presets import DEFAULT_CPU_PRESET, build_retrain_config
@@ -171,21 +174,29 @@ def import_yolo_dataset(
         if not dataset:
             return {"status": "failed", "error": "Dataset not found"}
 
-        zip_bytes = download_bytes(minio_key)
-        if not zip_bytes:
-            return {"status": "failed", "error": "Archive missing from storage"}
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            zip_path = Path(tmp.name)
+
+        try:
+            download_to_path(minio_key, zip_path)
+        except Exception as exc:
+            zip_path.unlink(missing_ok=True)
+            return {"status": "failed", "error": f"Archive missing from storage: {exc}"}
 
         def progress(meta: dict):
             self.update_state(state="PROGRESS", meta=meta)
 
-        result = import_yolo_zip_sync(
-            session,
-            project_id=uuid.UUID(project_id),
-            dataset_id=uuid.UUID(dataset_id),
-            zip_bytes=zip_bytes,
-            class_mapping=class_mapping,
-            progress_callback=progress,
-        )
+        try:
+            result = import_yolo_zip_sync(
+                session,
+                project_id=uuid.UUID(project_id),
+                dataset_id=uuid.UUID(dataset_id),
+                zip_path=zip_path,
+                class_mapping=class_mapping,
+                progress_callback=progress,
+            )
+        finally:
+            zip_path.unlink(missing_ok=True)
 
         try:
             remove_object(minio_key)

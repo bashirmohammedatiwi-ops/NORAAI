@@ -188,6 +188,12 @@ class DatasetUploadResponse(BaseModel):
     class_id: UUID | None = None
 
 
+class YoloUploadResponse(BaseModel):
+    upload_id: str
+    size_bytes: int
+    message: str
+
+
 class YoloImportPreviewResponse(BaseModel):
     image_count: int
     labeled_count: int

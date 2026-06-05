@@ -3,6 +3,7 @@ const TOKEN_KEY = 'token';
 const REFRESH_KEY = 'refresh_token';
 const DEFAULT_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 600_000;
+const LARGE_UPLOAD_TIMEOUT_MS = 7_200_000;
 const AUTH_PATHS = ['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/refresh'];
 
 function isAuthPath(path: string): boolean {
@@ -175,6 +176,80 @@ class ApiClient {
       method: 'POST',
       body: isUpload ? body : JSON.stringify(body),
     }, timeoutMs ?? (isUpload ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
+  }
+
+  /** Multipart upload with XMLHttpRequest progress events (large ZIP archives). */
+  postFormWithProgress<T>(
+    path: string,
+    form: FormData,
+    onProgress?: (loaded: number, total: number) => void,
+    timeoutMs = LARGE_UPLOAD_TIMEOUT_MS,
+  ): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const url = API_URL ? `${API_URL}${path}` : path;
+      const token = readToken();
+
+      xhr.upload.onprogress = (event) => {
+        if (!onProgress) return;
+        const total = event.lengthComputable ? event.total : 0;
+        onProgress(event.loaded, total);
+      };
+
+      xhr.onload = () => {
+        void (async () => {
+          if (xhr.status === 401) {
+            const refreshed = await this.refreshSession();
+            if (refreshed) {
+              try {
+                const data = await this.postFormWithProgress<T>(path, form, onProgress, timeoutMs);
+                resolve(data);
+              } catch (err) {
+                reject(err);
+              }
+              return;
+            }
+            this.redirectToLogin();
+            reject(new Error('Session expired — please sign in again.'));
+            return;
+          }
+
+          if (xhr.status >= 200 && xhr.status < 300) {
+            if (!xhr.responseText) {
+              resolve({} as T);
+              return;
+            }
+            try {
+              resolve(JSON.parse(xhr.responseText) as T);
+            } catch {
+              reject(new Error('Invalid server response'));
+            }
+            return;
+          }
+
+          try {
+            const err = JSON.parse(xhr.responseText) as { detail?: unknown };
+            reject(new Error(formatApiError(err.detail, xhr.statusText || 'Upload failed')));
+          } catch {
+            reject(new Error(xhr.statusText || 'Upload failed'));
+          }
+        })();
+      };
+
+      xhr.onerror = () => {
+        reject(new Error(
+          'تعذّر الاتصال بالخادم — تحقق أن الموقع يعمل (منفذ 8080) أو أن حجم الملف لا يتجاوز حد الرفع (4GB). أعد المحاولة بعد دقيقة.',
+        ));
+      };
+      xhr.ontimeout = () => {
+        reject(new Error('انتهت مهلة الرفع — الملف كبير جداً أو الاتصال بطيء. أعد المحاولة.');
+      };
+
+      xhr.open('POST', url);
+      xhr.timeout = timeoutMs;
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.send(form);
+    });
   }
 
   /** Login without sending stale tokens or retrying refresh on 401. */

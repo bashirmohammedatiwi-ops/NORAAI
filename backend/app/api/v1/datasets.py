@@ -1,5 +1,7 @@
 import json
+import tempfile
 import uuid
+from pathlib import Path
 from uuid import UUID
 
 from celery.result import AsyncResult
@@ -29,6 +31,7 @@ from app.schemas import (
     YoloImportPreviewResponse,
     YoloImportStartResponse,
     YoloImportStatusResponse,
+    YoloUploadResponse,
 )
 from app.services.datasets.builder_stats import get_builder_stats
 from app.services.datasets.dataset_images import (
@@ -45,8 +48,13 @@ from app.services.datasets.gallery import get_dataset_gallery
 from app.services.deletion import delete_dataset_permanently
 from app.services.datasets.versioning import compare_versions, create_dataset, create_version, rollback_dataset
 from app.services.ingestion.batch_upload import FilePayload, ingest_files_parallel
-from app.services.datasets.yolo_import import analyze_yolo_zip, suggest_mapping_from_yolo_names
-from app.core.minio_client import upload_bytes
+from app.core.config import get_settings
+from app.services.datasets.yolo_import import (
+    analyze_yolo_zip,
+    analyze_yolo_zip_from_path,
+    suggest_mapping_from_yolo_names,
+)
+from app.core.minio_client import download_to_path, upload_bytes, upload_file_limited
 from workers.celery_app import celery_app
 from workers.ingestion.tasks import import_yolo_dataset
 
@@ -240,8 +248,38 @@ async def upload_to_dataset(
     )
 
 
-@router.post("/{dataset_id}/import-yolo/preview", response_model=YoloImportPreviewResponse)
-async def preview_yolo_import(
+def _yolo_minio_key(upload_id: uuid.UUID) -> str:
+    return f"imports/yolo/{upload_id}.zip"
+
+
+def _yolo_max_bytes() -> int:
+    return get_settings().yolo_import_max_bytes
+
+
+def _yolo_max_gb_label() -> str:
+    return f"{_yolo_max_bytes() // (1024 ** 3)}GB"
+
+
+async def _analyze_yolo_from_upload_id(upload_id: str) -> dict:
+    try:
+        uid = uuid.UUID(upload_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid upload_id") from exc
+
+    minio_key = _yolo_minio_key(uid)
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        zip_path = Path(tmp.name)
+    try:
+        download_to_path(minio_key, zip_path)
+        return analyze_yolo_zip_from_path(zip_path)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Archive not found or invalid: {exc}") from exc
+    finally:
+        zip_path.unlink(missing_ok=True)
+
+
+@router.post("/{dataset_id}/import-yolo/upload", response_model=YoloUploadResponse)
+async def upload_yolo_archive(
     dataset_id: UUID,
     archive: UploadFile = File(...),
     user: User = Depends(get_current_user),
@@ -252,14 +290,58 @@ async def preview_yolo_import(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    content = await archive.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Empty archive")
-    if len(content) > 1024 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Archive too large (max 1GB)")
+    upload_id = uuid.uuid4()
+    minio_key = _yolo_minio_key(upload_id)
+    max_bytes = _yolo_max_bytes()
 
     try:
-        info = analyze_yolo_zip(content)
+        await archive.seek(0)
+        size = upload_file_limited(
+            minio_key,
+            archive.file,
+            max_bytes,
+            archive.content_type or "application/zip",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
+
+    return YoloUploadResponse(
+        upload_id=str(upload_id),
+        size_bytes=size,
+        message=f"تم رفع الأرشيف ({size / (1024 * 1024):.1f} MB)",
+    )
+
+
+@router.post("/{dataset_id}/import-yolo/preview", response_model=YoloImportPreviewResponse)
+async def preview_yolo_import(
+    dataset_id: UUID,
+    upload_id: str | None = Form(None),
+    archive: UploadFile | None = File(None),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    del user
+    dataset = await db.get(Dataset, dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    max_bytes = _yolo_max_bytes()
+    try:
+        if upload_id:
+            info = await _analyze_yolo_from_upload_id(upload_id)
+        elif archive:
+            content = await archive.read()
+            if not content:
+                raise HTTPException(status_code=400, detail="Empty archive")
+            if len(content) > max_bytes:
+                raise HTTPException(status_code=400, detail=f"Archive too large (max {_yolo_max_gb_label()})")
+            info = analyze_yolo_zip(content)
+        else:
+            raise HTTPException(status_code=400, detail="Provide upload_id or archive")
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Invalid archive: {exc}") from exc
 
@@ -292,9 +374,10 @@ async def preview_yolo_import(
 @router.post("/{dataset_id}/import-yolo", response_model=YoloImportStartResponse)
 async def start_yolo_import(
     dataset_id: UUID,
-    archive: UploadFile = File(...),
     class_mapping: str = Form(...),
     train_after_import: bool = Form(False),
+    upload_id: str | None = Form(None),
+    archive: UploadFile | None = File(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -309,14 +392,24 @@ async def start_yolo_import(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Invalid class_mapping JSON: {exc}") from exc
 
-    content = await archive.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Empty archive")
-    if len(content) > 1024 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Archive too large (max 1GB)")
-
+    max_bytes = _yolo_max_bytes()
     try:
-        check = analyze_yolo_zip(content)
+        if upload_id:
+            check = await _analyze_yolo_from_upload_id(upload_id)
+            minio_key = _yolo_minio_key(uuid.UUID(upload_id))
+        elif archive:
+            content = await archive.read()
+            if not content:
+                raise HTTPException(status_code=400, detail="Empty archive")
+            if len(content) > max_bytes:
+                raise HTTPException(status_code=400, detail=f"Archive too large (max {_yolo_max_gb_label()})")
+            check = analyze_yolo_zip(content)
+            import_id = uuid.uuid4()
+            minio_key = _yolo_minio_key(import_id)
+            upload_bytes(minio_key, content, archive.content_type or "application/zip")
+        else:
+            raise HTTPException(status_code=400, detail="Provide upload_id or archive")
+
         if not check.get("valid"):
             detail = check.get("warning") or "لا توجد صور مطابقة في الأرشيف"
             raise HTTPException(status_code=400, detail=detail)
@@ -324,10 +417,6 @@ async def start_yolo_import(
         raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Invalid archive: {exc}") from exc
-
-    import_id = uuid.uuid4()
-    minio_key = f"imports/yolo/{import_id}.zip"
-    upload_bytes(minio_key, content, archive.content_type or "application/zip")
 
     try:
         task = import_yolo_dataset.delay(

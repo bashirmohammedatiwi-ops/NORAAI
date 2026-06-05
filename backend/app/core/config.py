@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     event_dedup_cooldown_seconds: int = 90
     event_dedup_radius_meters: float = 80.0
 
+    # YOLO dataset ZIP import (streamed to MinIO)
+    yolo_import_max_bytes: int = 4 * 1024 * 1024 * 1024
+
     cuda_visible_devices: str = "0"
     training_cpu_fallback: bool = True
     training_export_max_workers: int = 8

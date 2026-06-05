@@ -29,88 +29,137 @@ interface Props {
   onComplete?: (result: { imported: number; trainingJobId?: string | null }) => void;
 }
 
+function formatMb(bytes: number): string {
+  return (bytes / 1024 / 1024).toFixed(1);
+}
+
+function ProgressBar({ value, label }: { value: number; label: string }) {
+  const pct = Math.min(100, Math.max(0, value));
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs text-muted-foreground">
+        <span>{label}</span>
+        <span>{pct}%</span>
+      </div>
+      <div className="h-2 rounded-full bg-secondary overflow-hidden">
+        <div
+          className="h-full bg-violet-600 transition-all duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [uploadId, setUploadId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [trainAfter, setTrainAfter] = useState(true);
-  const [loading, setLoading] = useState<'preview' | 'import' | null>(null);
+  const [phase, setPhase] = useState<'idle' | 'upload' | 'preview' | 'import' | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
-  const [progress, setProgress] = useState(0);
+  const [importProgress, setImportProgress] = useState(0);
   const [error, setError] = useState('');
 
   const classNames = classes.map((c) => c.name);
   const defaultClass = classNames[0] ?? 'حفر';
   const canImport = Boolean(preview?.valid && preview.image_count > 0);
+  const busy = phase === 'upload' || phase === 'preview' || phase === 'import';
 
   const reset = () => {
+    setUploadId(null);
     setPreview(null);
     setMapping({});
     setTaskId(null);
     setStatus('');
-    setProgress(0);
+    setUploadProgress(0);
+    setImportProgress(0);
     setError('');
+    setPhase(null);
   };
 
-  const runPreview = useCallback(async (f: File) => {
+  const applyPreview = (data: PreviewData) => {
+    setPreview(data);
+    const base = { ...data.suggested_mapping };
+    for (const id of data.detected_class_ids) {
+      const key = String(id);
+      if (!base[key]) base[key] = defaultClass;
+    }
+    setMapping(base);
+    if (!data.valid || data.image_count === 0) {
+      setError(data.warning ?? 'الأرشيف غير صالح — لا توجد صور مطابقة');
+    }
+  };
+
+  const runUploadAndPreview = useCallback(async (f: File) => {
     if (!f || !datasetId) return;
-    setLoading('preview');
+    setPhase('upload');
+    setUploadProgress(0);
     setError('');
+
     try {
-      const form = new FormData();
-      form.append('archive', f);
+      const uploadForm = new FormData();
+      uploadForm.append('archive', f);
+      const uploaded = await api.postFormWithProgress<{ upload_id: string; size_bytes: number; message: string }>(
+        `/api/v1/datasets/${datasetId}/import-yolo/upload`,
+        uploadForm,
+        (loaded, total) => {
+          const pct = total > 0 ? Math.round((loaded / total) * 100) : Math.min(99, Math.round(loaded / f.size * 100));
+          setUploadProgress(pct);
+        },
+      );
+      setUploadId(uploaded.upload_id);
+      setUploadProgress(100);
+
+      setPhase('preview');
+      const previewForm = new FormData();
+      previewForm.append('upload_id', uploaded.upload_id);
       const data = await api.post<PreviewData>(
         `/api/v1/datasets/${datasetId}/import-yolo/preview`,
-        form,
+        previewForm,
         undefined,
-        300_000,
+        600_000,
       );
-      setPreview(data);
-      const base = { ...data.suggested_mapping };
-      for (const id of data.detected_class_ids) {
-        const key = String(id);
-        if (!base[key]) base[key] = defaultClass;
-      }
-      setMapping(base);
-      if (!data.valid || data.image_count === 0) {
-        setError(data.warning ?? 'الأرشيف غير صالح — لا توجد صور مطابقة');
-      }
+      applyPreview(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'فشل تحليل الأرشيف');
+      setError(e instanceof Error ? e.message : 'فشل رفع أو تحليل الأرشيف');
       setPreview(null);
+      setUploadId(null);
     } finally {
-      setLoading(null);
+      setPhase(null);
     }
   }, [datasetId, defaultClass]);
 
   const handleFile = (f: File | null) => {
     setFile(f);
     reset();
-    if (f) void runPreview(f);
+    if (f) void runUploadAndPreview(f);
   };
 
   const startImport = async () => {
-    if (!file || !datasetId || !preview || !canImport) return;
-    setLoading('import');
+    if (!uploadId || !datasetId || !preview || !canImport) return;
+    setPhase('import');
     setError('');
     try {
       const form = new FormData();
-      form.append('archive', file);
+      form.append('upload_id', uploadId);
       form.append('class_mapping', JSON.stringify(mapping));
       form.append('train_after_import', trainAfter ? 'true' : 'false');
       const res = await api.post<{ task_id: string; message: string }>(
         `/api/v1/datasets/${datasetId}/import-yolo`,
         form,
         undefined,
-        300_000,
+        120_000,
       );
       setTaskId(res.task_id);
       setStatus(res.message);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'فشل بدء الاستيراد');
-      setLoading(null);
+      setPhase(null);
     }
   };
 
@@ -128,16 +177,16 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
           error?: string;
         }>(`/api/v1/datasets/import-yolo/${taskId}/status`);
         if (cancelled) return;
-        setProgress(st.progress ?? 0);
+        setImportProgress(st.progress ?? 0);
         if (st.state === 'progress' || st.state === 'PROGRESS') {
           setStatus(`استيراد… ${st.imported ?? 0} صورة · ${st.annotations ?? 0} صندوق`);
         } else if (st.state === 'completed') {
-          setLoading(null);
+          setPhase(null);
           setStatus(`تم: ${st.imported ?? 0} صورة · ${st.annotations ?? 0} تسمية`);
           onComplete?.({ imported: st.imported ?? 0, trainingJobId: st.training_job_id });
           return;
         } else if (st.state === 'failed') {
-          setLoading(null);
+          setPhase(null);
           setError(st.error ?? 'فشل الاستيراد');
           return;
         } else {
@@ -157,7 +206,7 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
   return (
     <div className="space-y-4">
       <div
-        onClick={() => ready && !loading && inputRef.current?.click()}
+        onClick={() => ready && !busy && inputRef.current?.click()}
         className={cn(
           'rounded-2xl border-2 border-dashed p-6 text-center cursor-pointer transition-colors',
           ready ? 'border-violet-300/60 bg-violet-500/5 hover:border-violet-400' : 'opacity-50 cursor-not-allowed',
@@ -168,7 +217,7 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
           type="file"
           accept=".zip,application/zip"
           className="hidden"
-          disabled={!ready || loading === 'preview'}
+          disabled={!ready || busy}
           onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
         />
         <Archive className="h-8 w-8 mx-auto text-violet-600 mb-2" />
@@ -176,20 +225,25 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
         <p className="text-sm text-muted-foreground mt-1">
           يجب أن يحتوي على مجلدين: <code className="text-xs">images/</code> + <code className="text-xs">labels-YOLO/</code>
         </p>
+        <p className="text-xs text-muted-foreground mt-1">الحد الأقصى: 4 GB</p>
         {file && (
           <p className="text-xs mt-2 text-violet-700">
-            {file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)
+            {file.name} ({formatMb(file.size)} MB)
             {file.size < 5 * 1024 * 1024 && (
               <span className="block text-amber-700 mt-1">حجم صغير — غالباً تسميات فقط بدون صور</span>
             )}
-            {file.size > 100 * 1024 * 1024 && (
-              <span className="block text-amber-700 mt-1">ملف كبير — قد يستغرق التحليل عدة دقائق</span>
+            {file.size > 500 * 1024 * 1024 && (
+              <span className="block text-amber-700 mt-1">ملف كبير — سيستغرق الرفع عدة دقائق</span>
             )}
           </p>
         )}
       </div>
 
-      {loading === 'preview' && (
+      {phase === 'upload' && (
+        <ProgressBar value={uploadProgress} label={`جاري رفع الملف… ${uploadProgress}%`} />
+      )}
+
+      {phase === 'preview' && (
         <p className="text-sm text-muted-foreground flex items-center gap-2 justify-center">
           <Loader2 className="h-4 w-4 animate-spin" /> جاري تحليل الأرشيف…
         </p>
@@ -256,29 +310,51 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
               <Button
                 type="button"
                 onClick={startImport}
-                disabled={loading === 'import' || !!taskId}
+                disabled={phase === 'import' || !!taskId}
                 className="w-full"
               >
-                {loading === 'import' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {phase === 'import' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 استيراد والتدريب ({preview.image_count} صورة)
               </Button>
             </>
           )}
 
-          {!canImport && file && (
-            <Button type="button" variant="outline" onClick={() => runPreview(file)} className="w-full">
+          {!canImport && file && uploadId && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setPhase('preview');
+                setError('');
+                const previewForm = new FormData();
+                previewForm.append('upload_id', uploadId);
+                api.post<PreviewData>(
+                  `/api/v1/datasets/${datasetId}/import-yolo/preview`,
+                  previewForm,
+                  undefined,
+                  600_000,
+                ).then(applyPreview).catch((e) => {
+                  setError(e instanceof Error ? e.message : 'فشل التحليل');
+                }).finally(() => setPhase(null));
+              }}
+              className="w-full"
+            >
               <FileText className="h-4 w-4" /> إعادة التحليل
             </Button>
           )}
         </div>
       )}
 
+      {phase === 'import' && importProgress > 0 && importProgress < 100 && (
+        <ProgressBar value={importProgress} label={`جاري الاستيراد… ${importProgress}%`} />
+      )}
+
       {status && !error && (
         <p className="text-sm text-emerald-700 flex items-center gap-2">
-          {taskId && loading === 'import' && <Loader2 className="h-4 w-4 animate-spin" />}
-          {taskId && !loading && <CheckCircle2 className="h-4 w-4" />}
+          {taskId && phase === 'import' && <Loader2 className="h-4 w-4 animate-spin" />}
+          {taskId && !phase && <CheckCircle2 className="h-4 w-4" />}
           {status}
-          {progress > 0 && progress < 100 && ` (${progress}%)`}
+          {importProgress > 0 && importProgress < 100 && phase === 'import' && ` (${importProgress}%)`}
         </p>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
