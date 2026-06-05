@@ -137,6 +137,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
       form.append('file', prepared);
       form.append('min_confidence', '0.05');
       form.append('simple', 'true');
+      form.append('high_accuracy', 'true');
       const data = await api.post<PredictResult & {
         confidence_threshold?: number;
         training_image_size?: number;
@@ -255,6 +256,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
               {status.inference_imgsz ? ` · استدلال ${status.inference_imgsz}px` : ''}
               {status.map50_95 != null ? ` · mAP ${(status.map50_95 * 100).toFixed(1)}%` : ''}
               {serverThreshold != null ? ` · خادم ${(serverThreshold * 100).toFixed(0)}%` : ''}
+              {' · وضع دقة عالية'}
             </p>
           )}
         </div>

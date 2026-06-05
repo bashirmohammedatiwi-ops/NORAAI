@@ -3,6 +3,27 @@
 from app.services.training.cpu_tuning import tune_training_config
 
 CPU_PRESETS: dict[str, dict] = {
+    "fine_tune": {
+        "label": "Fine-tune Main Model",
+        "description": "30 epochs · 640px · low LR — continues from active Main Model (best mAP gain)",
+        "epochs": 30,
+        "batch_size": 8,
+        "learning_rate": 0.001,
+        "optimizer": "AdamW",
+        "scheduler": "cosine",
+        "augmentation": "light",
+        "image_size": 640,
+        "mixed_precision": False,
+        "val_split": 0.15,
+        "cache": True,
+        "prefer_disk_cache": True,
+        "patience": 15,
+        "close_mosaic": 5,
+        "warmup_epochs": 3,
+        "workers": "auto",
+        "device": "cpu",
+        "fine_tune_from_active": True,
+    },
     "best_accuracy": {
         "label": "Best Accuracy",
         "description": "20 epochs · 640px · medium aug — highest mAP on CPU VPS (recommended)",
@@ -21,6 +42,7 @@ CPU_PRESETS: dict[str, dict] = {
         "close_mosaic": 3,
         "workers": "auto",
         "device": "cpu",
+        "fine_tune_from_active": True,
     },
     "max_cpu": {
         "label": "Max CPU",
@@ -117,9 +139,20 @@ CPU_PRESETS: dict[str, dict] = {
 DEFAULT_CPU_PRESET = "best_accuracy"
 
 
-def build_retrain_config(epochs: int | None, preset: str = DEFAULT_CPU_PRESET) -> dict:
+def build_retrain_config(
+    epochs: int | None,
+    preset: str = DEFAULT_CPU_PRESET,
+    *,
+    fine_tune_from_active: bool | None = None,
+) -> dict:
     base = dict(CPU_PRESETS.get(preset, CPU_PRESETS[DEFAULT_CPU_PRESET]))
     if epochs is not None:
         base["epochs"] = epochs
     base["continuous"] = True
-    return tune_training_config(base)
+    if fine_tune_from_active is not None:
+        base["fine_tune_from_active"] = fine_tune_from_active
+    elif "fine_tune_from_active" not in base:
+        base["fine_tune_from_active"] = True
+    from app.services.training.fine_tune import apply_fine_tune_training_overrides
+
+    return tune_training_config(apply_fine_tune_training_overrides(base))

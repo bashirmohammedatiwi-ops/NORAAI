@@ -1,4 +1,5 @@
 export type CpuPreset =
+  | 'fine_tune'
   | 'best_accuracy'
   | 'max_cpu'
   | 'fleet_cpu'
@@ -7,9 +8,14 @@ export type CpuPreset =
   | 'balanced';
 
 export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string; epochs: number }> = {
+  fine_tune: {
+    label: 'Fine-tune Main Model',
+    description: '30 epochs · 640px · low LR — continues from active model (best mAP gain)',
+    epochs: 30,
+  },
   best_accuracy: {
     label: 'Best Accuracy',
-    description: '20 epochs · 640px · medium aug — highest mAP (recommended)',
+    description: '20 epochs · 640px · medium aug — first training from pretrained base',
     epochs: 20,
   },
   max_cpu: {
@@ -39,16 +45,18 @@ export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string
   },
 };
 
-export const DEFAULT_CPU_PRESET: CpuPreset = 'best_accuracy';
+export const DEFAULT_CPU_PRESET: CpuPreset = 'fine_tune';
 
 export function buildRetrainQuery(params: {
   epochs?: number;
   architecture?: string;
   preset?: CpuPreset;
+  fineTune?: boolean;
 }): string {
   const q = new URLSearchParams();
   if (params.epochs != null) q.set('epochs', String(params.epochs));
   if (params.architecture) q.set('architecture', params.architecture);
   q.set('preset', params.preset ?? DEFAULT_CPU_PRESET);
+  q.set('fine_tune', String(params.fineTune ?? true));
   return q.toString();
 }

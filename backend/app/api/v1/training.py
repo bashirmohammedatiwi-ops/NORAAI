@@ -243,7 +243,11 @@ async def retrain_project_model(
     project_id: UUID,
     epochs: int | None = Query(None, ge=5, le=200),
     architecture: str = Query("yolo11"),
-    preset: str = Query(DEFAULT_CPU_PRESET, pattern="^(max_cpu|fleet_cpu|turbo_cpu|fast_cpu|balanced)$"),
+    preset: str = Query(
+        DEFAULT_CPU_PRESET,
+        pattern="^(fine_tune|best_accuracy|max_cpu|fleet_cpu|turbo_cpu|fast_cpu|balanced)$",
+    ),
+    fine_tune: bool = Query(True, description="Continue training from active Main Model weights"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -268,7 +272,7 @@ async def retrain_project_model(
     if not head_version_id:
         raise HTTPException(status_code=400, detail="Dataset has no version")
 
-    config = build_retrain_config(epochs, preset)
+    config = build_retrain_config(epochs, preset, fine_tune_from_active=fine_tune)
 
     job = TrainingJob(
         project_id=project_id,

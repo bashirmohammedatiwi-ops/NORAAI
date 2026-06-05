@@ -57,6 +57,12 @@ class YOLOAdapter:
             kwargs["cos_lr"] = True
         if config.get("close_mosaic") is not None:
             kwargs["close_mosaic"] = config["close_mosaic"]
+        if config.get("warmup_epochs"):
+            kwargs["warmup_epochs"] = int(config["warmup_epochs"])
+        if config.get("lrf") is not None:
+            kwargs["lrf"] = float(config["lrf"])
+        if config.get("weight_decay") is not None:
+            kwargs["weight_decay"] = float(config["weight_decay"])
         if use_cpu:
             from app.services.training.cpu_tuning import apply_cpu_env, resolve_thread_count
 
@@ -93,7 +99,9 @@ class YOLOAdapter:
 
             from ultralytics import YOLO
 
-            model = YOLO(self.model_name)
+            weights_source = config.get("_fine_tune_weights_path") or self.model_name
+            model = YOLO(weights_source)
+            fine_tuned = bool(config.get("_fine_tune_source") == "main_model")
 
             if metrics_callback:
                 batch_state = {"last_ts": 0.0}
@@ -232,10 +240,15 @@ class YOLOAdapter:
             if not Path(weights).exists():
                 weights = str(Path(output_dir) / "train" / "weights" / "last.pt")
 
+            if fine_tuned:
+                final_metrics = dict(final_metrics)
+                final_metrics["fine_tuned_from"] = "main_model"
+
             return {
                 "weights_path": weights,
                 "metrics": final_metrics,
                 "duration_seconds": int(time.time() - start),
+                "fine_tuned_from": "main_model" if fine_tuned else "pretrained",
             }
         except Exception as exc:
             if settings.training_cpu_fallback:

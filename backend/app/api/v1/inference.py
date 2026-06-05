@@ -26,6 +26,7 @@ async def predict(
     file: UploadFile = File(...),
     min_confidence: float | None = Form(None),
     simple: bool = Form(True),
+    high_accuracy: bool = Form(True),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -40,7 +41,12 @@ async def predict(
 
     start = time.perf_counter()
     predictions, error, meta = await run_detection(
-        db, project_id, content, min_confidence=min_confidence, simple=simple,
+        db,
+        project_id,
+        content,
+        min_confidence=min_confidence,
+        simple=simple,
+        high_accuracy=high_accuracy and simple,
     )
     latency_ms = (time.perf_counter() - start) * 1000
 
@@ -75,6 +81,7 @@ async def predict(
                 meta.get("model_class_names")
                 and list(artifact.classes_used or []) != meta.get("model_class_names")
             ),
+            "high_accuracy": bool(meta.get("high_accuracy")),
             "latency_ms": round(latency_ms, 1),
         }
 

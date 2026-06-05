@@ -29,6 +29,7 @@ export function SimpleTrainCard({
 }: Props) {
   const [architecture, setArchitecture] = useState('yolo11');
   const [preset, setPreset] = useState<CpuPreset>(DEFAULT_CPU_PRESET);
+  const [fineTune, setFineTune] = useState(true);
   const [epochs, setEpochs] = useState(CPU_PRESETS[DEFAULT_CPU_PRESET].epochs);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -43,7 +44,7 @@ export function SimpleTrainCard({
     setLoading(true);
     setError('');
     try {
-      const query = buildRetrainQuery({ epochs, architecture, preset });
+      const query = buildRetrainQuery({ epochs, architecture, preset, fineTune });
       const job = await api.post<{ id: string }>(
         `/api/v1/training/project/${projectId}/retrain?${query}`,
         undefined,
@@ -129,6 +130,15 @@ export function SimpleTrainCard({
             )}
           </Button>
         </div>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+          <input
+            type="checkbox"
+            checked={fineTune}
+            onChange={(e) => setFineTune(e.target.checked)}
+            className="rounded border-border"
+          />
+          استمر من Main Model (Fine-tune) — يحافظ على ما تعلّمه النموذج ويحسّنه
+        </label>
         <p className="text-xs text-muted-foreground">{CPU_PRESETS[preset].description}</p>
         {error && (
           <p className="text-sm text-destructive rounded-lg bg-destructive/10 px-3 py-2">{error}</p>

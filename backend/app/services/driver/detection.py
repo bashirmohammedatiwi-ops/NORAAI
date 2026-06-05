@@ -58,6 +58,7 @@ class _CachedProjectAdapter:
         conf: float = 0.25,
         iou: float = 0.45,
         imgsz: int | None = None,
+        high_accuracy: bool = False,
     ) -> list[dict]:
         from app.services.inference.model_cache import predict_cached
 
@@ -69,6 +70,7 @@ class _CachedProjectAdapter:
             conf=conf,
             iou=iou,
             imgsz=imgsz,
+            high_accuracy=high_accuracy,
         )
 
 
@@ -105,6 +107,7 @@ def _run_detection_sync(
     *,
     simple: bool = False,
     inference_imgsz: int | None = None,
+    high_accuracy: bool = False,
 ) -> tuple[list[dict], str | None, dict]:
     settings = get_settings()
     t0 = time.perf_counter()
@@ -131,6 +134,7 @@ def _run_detection_sync(
                 settings=settings,
                 min_confidence=min_confidence,
                 imgsz=inference_imgsz,
+                high_accuracy=high_accuracy,
             )
         else:
             predictions, meta = detect_with_project_model(
@@ -158,6 +162,7 @@ async def run_detection(
     min_confidence: float | None = None,
     *,
     simple: bool = False,
+    high_accuracy: bool = False,
 ) -> tuple[list[dict], str | None, dict]:
     """
     Run YOLO using the project's active model and dashboard-defined classes only.
@@ -207,6 +212,7 @@ async def run_detection(
             min_confidence,
             simple=fast_path,
             inference_imgsz=inference_imgsz,
+            high_accuracy=high_accuracy and fast_path,
         )
     except Exception as exc:
         return [], f"Inference failed: {exc}", {}

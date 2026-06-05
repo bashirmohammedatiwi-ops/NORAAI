@@ -98,39 +98,7 @@ def get_cached_yolo(
         return model
 
 
-def predict_cached(
-    weights_key: str,
-    weights_bytes: bytes,
-    image_source: str | bytes,
-    *,
-    architecture: str = "yolo11",
-    conf: float = 0.25,
-    iou: float = 0.45,
-    imgsz: int | None = None,
-) -> list[dict]:
-    """Single forward pass using cached weights (path or JPEG bytes)."""
-    settings = get_settings()
-    size = imgsz or settings.inference_imgsz
-    half = settings.inference_use_half and settings.inference_device != "cpu"
-
-    if isinstance(image_source, bytes):
-        source: str | np.ndarray = _decode_image(image_source)
-    else:
-        source = image_source
-
-    model = get_cached_yolo(weights_key, weights_bytes, architecture=architecture)
-    from app.services.inference.class_names import names_from_yolo_model
-
-    model_names = names_from_yolo_model(model)
-    results = model.predict(
-        source,
-        verbose=False,
-        conf=conf,
-        iou=iou,
-        imgsz=size,
-        half=half,
-        max_det=50,
-    )
+def _boxes_to_predictions(results, model_names: list[str]) -> list[dict]:
     predictions: list[dict] = []
     for r in results:
         if r.boxes is None:
@@ -148,6 +116,103 @@ def predict_cached(
                 "height": float(box.xywhn[0][3]),
             })
     return predictions
+
+
+def _nms_merge_predictions(candidates: list[dict], iou_threshold: float = 0.5) -> list[dict]:
+    """Greedy NMS on normalized xywh candidates (multi-scale merge)."""
+    if not candidates:
+        return []
+    sorted_cands = sorted(candidates, key=lambda p: float(p.get("confidence", 0)), reverse=True)
+    kept: list[dict] = []
+
+    def iou(a: dict, b: dict) -> float:
+        ax1 = float(a["x_center"]) - float(a["width"]) / 2
+        ay1 = float(a["y_center"]) - float(a["height"]) / 2
+        ax2 = float(a["x_center"]) + float(a["width"]) / 2
+        ay2 = float(a["y_center"]) + float(a["height"]) / 2
+        bx1 = float(b["x_center"]) - float(b["width"]) / 2
+        by1 = float(b["y_center"]) - float(b["height"]) / 2
+        bx2 = float(b["x_center"]) + float(b["width"]) / 2
+        by2 = float(b["y_center"]) + float(b["height"]) / 2
+        inter_x1 = max(ax1, bx1)
+        inter_y1 = max(ay1, by1)
+        inter_x2 = min(ax2, bx2)
+        inter_y2 = min(ay2, by2)
+        inter = max(0.0, inter_x2 - inter_x1) * max(0.0, inter_y2 - inter_y1)
+        if inter <= 0:
+            return 0.0
+        area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+        area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+        union = area_a + area_b - inter
+        return inter / union if union > 0 else 0.0
+
+    for cand in sorted_cands:
+        if any(
+            int(cand.get("class_id", -1)) == int(k.get("class_id", -2))
+            and iou(cand, k) >= iou_threshold
+            for k in kept
+        ):
+            continue
+        kept.append(cand)
+    return kept
+
+
+def predict_cached(
+    weights_key: str,
+    weights_bytes: bytes,
+    image_source: str | bytes,
+    *,
+    architecture: str = "yolo11",
+    conf: float = 0.25,
+    iou: float = 0.45,
+    imgsz: int | None = None,
+    high_accuracy: bool = False,
+) -> list[dict]:
+    """Forward pass using cached weights; optional TTA + multi-scale for manual test."""
+    settings = get_settings()
+    size = imgsz or settings.inference_imgsz
+    half = settings.inference_use_half and settings.inference_device != "cpu"
+    use_conf = conf
+    if high_accuracy:
+        use_conf = min(conf, settings.inference_manual_test_conf)
+
+    if isinstance(image_source, bytes):
+        source: str | np.ndarray = _decode_image(image_source)
+    else:
+        source = image_source
+
+    model = get_cached_yolo(weights_key, weights_bytes, architecture=architecture)
+    from app.services.inference.class_names import names_from_yolo_model
+
+    model_names = names_from_yolo_model(model)
+
+    if not high_accuracy:
+        results = model.predict(
+            source,
+            verbose=False,
+            conf=use_conf,
+            iou=iou,
+            imgsz=size,
+            half=half,
+            max_det=50,
+        )
+        return _boxes_to_predictions(results, model_names)
+
+    sizes = sorted({size, max(320, int(size * 0.85))})
+    merged: list[dict] = []
+    for sz in sizes:
+        results = model.predict(
+            source,
+            verbose=False,
+            conf=use_conf,
+            iou=iou,
+            imgsz=sz,
+            half=half,
+            max_det=80,
+            augment=settings.inference_manual_test_augment,
+        )
+        merged.extend(_boxes_to_predictions(results, model_names))
+    return _nms_merge_predictions(merged, iou_threshold=iou)
 
 
 def invalidate_weights(weights_key: str) -> None:

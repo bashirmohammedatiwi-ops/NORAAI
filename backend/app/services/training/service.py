@@ -77,10 +77,12 @@ TRAINING_OPTIONS = {
         "architecture": "yolo11",
         "preset": DEFAULT_CPU_PRESET,
         "notes": [
-            "Use Best Accuracy preset for highest mAP on CPU VPS (4 cores · 16 GB RAM).",
+            "Fine-tune Main Model continues from your active weights — fastest mAP improvement.",
+            "Use Best Accuracy for first training; Fine-tune preset for retraining.",
             "Keep Mixed Precision OFF on CPU — it only helps on GPU.",
             "Review labels and add diverse road/camera images before retraining.",
         ],
+        "default_fine_tune": True,
     },
 }
 

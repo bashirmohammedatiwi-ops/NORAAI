@@ -209,6 +209,11 @@ async def get_active_model_status(db: AsyncSession, project_id: uuid.UUID) -> di
         "project_id": str(project_id),
         "project_name": project.name,
         "has_model": artifact is not None,
+        "can_fine_tune": bool(
+            artifact
+            and not (artifact.metrics or {}).get("mock")
+            and artifact.architecture in ("yolo11", "yolov10", "rt_detr")
+        ),
         "model": {
             "id": str(artifact.id),
             "name": artifact.name,

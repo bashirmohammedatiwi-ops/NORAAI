@@ -76,16 +76,14 @@ def run_training_job(job_id: str):
         from ml.training.adapters.yolo_adapter import resolve_training_device
 
         apply_cpu_env(resolve_thread_count())
-        config = tune_training_config(config)
-        publish_metric(job_id, {
-            "phase": "setup",
-            "message": (
-                f"CPU tune: {config.get('cpu_threads')} threads · "
-                f"batch {config.get('batch_size')} · workers {config.get('workers')}"
-            ),
-            "progress": 3,
-            "status": "running",
-        })
+        from app.services.training.fine_tune import (
+            apply_fine_tune_training_overrides,
+            resolve_fine_tune_weights_path,
+        )
+
+        config = apply_fine_tune_training_overrides(tune_training_config(config))
+        job.config = config
+        session.commit()
         config["device"] = resolve_training_device(config)
         adapter = get_adapter(job.architecture.value)
 
@@ -161,6 +159,37 @@ def run_training_job(job_id: str):
 
             if cancel_check():
                 raise TrainingCancelled("Training cancelled")
+
+            fine_tune_path, fine_tune_source, fine_tune_warning = resolve_fine_tune_weights_path(
+                session,
+                job.project_id,
+                job.architecture.value,
+                config,
+                work_dir=tmpdir,
+            )
+            if fine_tune_path:
+                config["_fine_tune_weights_path"] = fine_tune_path
+                config["_fine_tune_source"] = fine_tune_source
+            publish_metric(job_id, {
+                "phase": "setup",
+                "message": (
+                    "Fine-tuning from Main Model"
+                    if fine_tune_source == "main_model"
+                    else (
+                        fine_tune_warning
+                        or f"CPU tune: {config.get('cpu_threads')} threads · batch {config.get('batch_size')}"
+                    )
+                ),
+                "fine_tune_source": fine_tune_source,
+                "progress": 5,
+                "status": "running",
+            })
+            if fine_tune_warning and fine_tune_source != "main_model":
+                publish_metric(job_id, {
+                    "phase": "setup",
+                    "message": fine_tune_warning,
+                    "status": "running",
+                })
 
             if job.hpo_enabled:
                 def hpo_train_fn(params):
@@ -239,6 +268,7 @@ def run_training_job(job_id: str):
 
             training_metrics = dict(result.get("metrics", {}))
             training_metrics["image_size"] = config.get("image_size", 640)
+            training_metrics["fine_tune_source"] = config.get("_fine_tune_source") or result.get("fine_tuned_from", "pretrained")
             training_metrics["class_manifest"] = export_meta or {"names": classes_used}
             training_metrics["dataset_validation"] = (
                 validation.get("stats") if validation else None

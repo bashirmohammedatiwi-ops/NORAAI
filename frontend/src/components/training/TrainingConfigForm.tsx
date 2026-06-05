@@ -86,6 +86,7 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
   const [patience, setPatience] = useState(10);
   const [hpoEnabled, setHpoEnabled] = useState(false);
   const [hpoTrials, setHpoTrials] = useState(5);
+  const [fineTuneFromActive, setFineTuneFromActive] = useState(true);
 
   const applyCpuPreset = (presetKey: string, presets: CpuPresetOption[]) => {
     const preset = presets.find((p) => p.value === presetKey);
@@ -184,6 +185,8 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           cache: true,
           prefer_disk_cache: true,
           device: 'cpu',
+          fine_tune_from_active: fineTuneFromActive,
+          continuous: fineTuneFromActive,
         },
       });
       onStarted();
@@ -314,6 +317,21 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           </>
           )}
         </div>
+
+        <label className="flex items-center gap-2 text-sm cursor-pointer rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+          <input
+            type="checkbox"
+            checked={fineTuneFromActive}
+            onChange={(e) => setFineTuneFromActive(e.target.checked)}
+            className="rounded border-border"
+          />
+          <span>
+            <strong>استمر من Main Model</strong>
+            <span className="text-muted-foreground text-xs block">
+              Fine-tune — يكمل على أوزان النموذج النشط بدل البدء من yolo11n.pt
+            </span>
+          </span>
+        </label>
 
         <div className="border-t border-border pt-4">
           <h4 className="text-sm font-medium mb-3">{advanced ? 'Hyperparameters' : 'Training settings'}</h4>

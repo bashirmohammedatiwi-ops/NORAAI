@@ -198,15 +198,22 @@ def detect_simple_with_project_model(
     settings: Settings,
     min_confidence: float | None = None,
     imgsz: int | None = None,
+    high_accuracy: bool = False,
 ) -> tuple[list[dict], dict]:
     """Direct YOLO on full image — single pass, optimized for camera / manual test."""
     predict_imgsz = imgsz or settings.inference_imgsz
+    yolo_conf = (
+        min(0.03, settings.inference_manual_test_conf)
+        if high_accuracy
+        else 0.05
+    )
     raw = adapter.predict(
         weights_path,
         image_source,
-        conf=0.05,
+        conf=yolo_conf,
         iou=settings.inference_iou_threshold,
         imgsz=predict_imgsz,
+        high_accuracy=high_accuracy,
     )
     candidates: list[dict] = []
     for item in raw:
@@ -223,6 +230,7 @@ def detect_simple_with_project_model(
         "raw_detection_count": len(candidates),
         "best_confidence": best_conf,
         "all_candidates": candidates,
-        "pipeline": "simple",
+        "pipeline": "simple_high_accuracy" if high_accuracy else "simple",
+        "high_accuracy": high_accuracy,
         "inference_imgsz": predict_imgsz,
     }

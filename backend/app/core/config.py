@@ -40,6 +40,8 @@ class Settings(BaseSettings):
 
     # Fleet / camera inference performance
     inference_imgsz: int = 416
+    inference_manual_test_augment: bool = True
+    inference_manual_test_conf: float = 0.03
     inference_device: str = "cpu"
     inference_use_half: bool = False
     inference_model_cache_size: int = 6
