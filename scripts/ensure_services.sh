@@ -165,9 +165,18 @@ start_stack() {
     "${PROJECT_DIR}/scripts/remove_compose_conflicts.sh" 2>/dev/null || true
   fi
 
-  "${COMPOSE[@]}" up -d --remove-orphans postgres redis minio autoheal
-  sleep 3
-  "${COMPOSE[@]}" up -d --remove-orphans api gateway driver celery-beat
+  if ! "${COMPOSE[@]}" up -d --remove-orphans postgres redis minio autoheal; then
+    log "Core services up failed — compose down and retry"
+    "${COMPOSE[@]}" down --remove-orphans 2>/dev/null || true
+    sleep 2
+    "${COMPOSE[@]}" up -d --remove-orphans postgres redis minio autoheal
+  fi
+  sleep 5
+  if ! "${COMPOSE[@]}" up -d --remove-orphans api driver celery-beat; then
+    log "API up failed — retry after brief pause"
+    sleep 3
+    "${COMPOSE[@]}" up -d --remove-orphans api driver celery-beat
+  fi
 
   log "Waiting for API on port ${PORT_API:-6001}..."
   if ! wait_for_api 60; then
@@ -183,6 +192,9 @@ start_stack() {
 
   log "Starting workers..."
   "${COMPOSE[@]}" up -d --remove-orphans worker-general worker-training
+
+  log "Starting gateway..."
+  "${COMPOSE[@]}" up -d --remove-orphans gateway
 
   log "Checking gateway on port ${PORT_APP:-8080}..."
   if ! wait_for_gateway 12; then

@@ -47,10 +47,14 @@ echo "[4/6] Rebuild gateway + API + training worker..."
 docker compose -f docker-compose.prod.yml -p aiops build gateway api
 docker tag aiops-backend:latest aiops-backend-training:latest 2>/dev/null || true
 
-echo "[5/6] Start stack..."
-docker compose -f docker-compose.prod.yml -p aiops up -d --remove-orphans
+echo "[5/6] Start stack (staged — avoids ghost container race)..."
+if ! run_script scripts/ensure_services.sh start; then
+  echo "Staged start failed — cleaning stale state and retrying..."
+  run_script scripts/remove_compose_conflicts.sh
+  sleep 3
+  run_script scripts/ensure_services.sh start
+fi
 run_script scripts/cleanup_orphans.sh
-run_script scripts/ensure_services.sh recover
 
 if [ "$(id -u)" -eq 0 ] && command -v systemctl &>/dev/null; then
   echo "[6/6] Install boot + watchdog timer..."
