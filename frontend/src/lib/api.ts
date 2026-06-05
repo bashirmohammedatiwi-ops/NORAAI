@@ -2,7 +2,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? '';
 const TOKEN_KEY = 'token';
 const REFRESH_KEY = 'refresh_token';
 const DEFAULT_TIMEOUT_MS = 30_000;
-const UPLOAD_TIMEOUT_MS = 180_000;
+const UPLOAD_TIMEOUT_MS = 600_000;
 const AUTH_PATHS = ['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/refresh'];
 
 function isAuthPath(path: string): boolean {
@@ -133,7 +133,9 @@ class ApiClient {
         throw new Error('Request timed out — API may be busy or unreachable. Try again.');
       }
       if (err instanceof TypeError) {
-        throw new Error('Network unreachable — is the API running?');
+        throw new Error(
+          'تعذّر الاتصال بالخادم — تحقق أن الموقع يعمل (منفذ 8080) أو أن حجم الملف لا يتجاوز حد الرفع. أعد المحاولة بعد دقيقة.',
+        );
       }
       throw err;
     } finally {

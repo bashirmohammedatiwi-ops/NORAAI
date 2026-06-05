@@ -182,6 +182,9 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
             {file.size < 5 * 1024 * 1024 && (
               <span className="block text-amber-700 mt-1">حجم صغير — غالباً تسميات فقط بدون صور</span>
             )}
+            {file.size > 100 * 1024 * 1024 && (
+              <span className="block text-amber-700 mt-1">ملف كبير — قد يستغرق التحليل عدة دقائق</span>
+            )}
           </p>
         )}
       </div>
