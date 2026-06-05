@@ -47,19 +47,21 @@ async def predict(
         raise HTTPException(status_code=422, detail=error)
 
     if simple:
+        all_candidates = meta.get("all_candidates") or predictions
         return {
             "model_name": artifact.name,
             "classes": list(artifact.classes_used or []),
             "predictions": [
-                {
-                    "class": p["class"],
-                    "confidence": p["confidence"],
-                    "bbox": p["bbox"],
-                }
+                {"class": p["class"], "confidence": p["confidence"], "bbox": p["bbox"]}
                 for p in predictions
+            ],
+            "all_predictions": [
+                {"class": p["class"], "confidence": p["confidence"], "bbox": p["bbox"]}
+                for p in all_candidates
             ],
             "count": len(predictions),
             "raw_count": int(meta.get("raw_detection_count", 0)),
+            "best_confidence": float(meta.get("best_confidence", 0)),
             "latency_ms": round(latency_ms, 1),
         }
 

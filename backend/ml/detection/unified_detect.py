@@ -200,15 +200,14 @@ def detect_simple_with_project_model(
         if cand:
             candidates.append(cand)
 
-    class_count = max(len(class_names), 1)
-    predictions, threshold, _ = filter_detections(
-        candidates,
-        class_count=class_count,
-        min_confidence=min_confidence,
-        settings=settings,
-    )
+    threshold = min_confidence if min_confidence is not None else settings.inference_confidence_threshold
+    threshold = max(0.05, min(0.99, float(threshold)))
+    predictions = [c for c in candidates if float(c.get("confidence") or 0) >= threshold]
+    best_conf = max((float(c.get("confidence") or 0) for c in candidates), default=0.0)
     return predictions, {
         "confidence_threshold": threshold,
         "raw_detection_count": len(candidates),
+        "best_confidence": best_conf,
+        "all_candidates": candidates,
         "pipeline": "simple",
     }

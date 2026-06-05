@@ -19,8 +19,10 @@ interface Detection {
 
 interface PredictResult {
   predictions: Detection[];
+  all_predictions?: Detection[];
   count: number;
   raw_count?: number;
+  best_confidence?: number;
   latency_ms: number;
 }
 
@@ -64,14 +66,20 @@ export function DashboardManualTest({ projects, compact }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<InferenceStatus | null>(null);
-  const [detections, setDetections] = useState<Detection[]>([]);
+  const [allDetections, setAllDetections] = useState<Detection[]>([]);
+  const [bestConfidence, setBestConfidence] = useState<number | null>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [rawCount, setRawCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [minConfidence, setMinConfidence] = useState(0.5);
+  const [minConfidence, setMinConfidence] = useState(0.25);
 
   const modelProjects = useMemo(() => projects.filter((p) => p.has_model), [projects]);
+
+  const detections = useMemo(
+    () => allDetections.filter((d) => d.confidence >= minConfidence),
+    [allDetections, minConfidence],
+  );
 
   const colorMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -110,14 +118,15 @@ export function DashboardManualTest({ projects, compact }: Props) {
     if (!projectId || !status?.ready) return;
     setLoading(true);
     setError('');
-    setDetections([]);
+    setAllDetections([]);
+    setBestConfidence(null);
     setLatencyMs(null);
     setRawCount(null);
     try {
       const prepared = await prepareImage(image);
       const form = new FormData();
       form.append('file', prepared);
-      form.append('min_confidence', String(minConfidence));
+      form.append('min_confidence', '0.05');
       form.append('simple', 'true');
       const data = await api.post<PredictResult>(
         `/api/v1/inference/project/${projectId}/predict`,
@@ -125,7 +134,8 @@ export function DashboardManualTest({ projects, compact }: Props) {
         undefined,
         60_000,
       );
-      setDetections(data.predictions ?? []);
+      setAllDetections(data.all_predictions ?? data.predictions ?? []);
+      setBestConfidence(data.best_confidence ?? null);
       setLatencyMs(data.latency_ms ?? null);
       setRawCount(data.raw_count ?? null);
     } catch (e) {
@@ -133,13 +143,14 @@ export function DashboardManualTest({ projects, compact }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [minConfidence, projectId, status?.ready]);
+  }, [projectId, status?.ready]);
 
   const pickFile = (list: FileList | null) => {
     const picked = list?.[0];
     if (!picked) return;
     setFile(picked);
-    setDetections([]);
+    setAllDetections([]);
+    setBestConfidence(null);
     setLatencyMs(null);
     setRawCount(null);
     setError('');
@@ -147,7 +158,8 @@ export function DashboardManualTest({ projects, compact }: Props) {
 
   const clearAll = () => {
     setFile(null);
-    setDetections([]);
+    setAllDetections([]);
+    setBestConfidence(null);
     setLatencyMs(null);
     setRawCount(null);
     setError('');
@@ -157,7 +169,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
   useEffect(() => {
     if (!file || !status?.ready) return;
     void runTest(file);
-  }, [file, minConfidence, projectId, status?.ready, runTest]);
+  }, [file, projectId, status?.ready, runTest]);
 
   const boxColor = (cls: string) => colorMap.get(cls) ?? '#22c55e';
 
@@ -210,7 +222,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
           <span className="shrink-0">العتبة</span>
           <input
             type="range"
-            min={0.1}
+            min={0.05}
             max={0.95}
             step={0.05}
             value={minConfidence}
@@ -304,8 +316,11 @@ export function DashboardManualTest({ projects, compact }: Props) {
               <ScanSearch className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">
                 {detections.length}
-                {rawCount != null && rawCount > detections.length ? `/${rawCount}` : ''} كشف
+                {rawCount != null && rawCount > 0 ? `/${rawCount}` : ''} كشف
                 {latencyMs != null && ` · ${latencyMs.toFixed(0)} ms`}
+                {detections.length === 0 && bestConfidence != null && bestConfidence > 0 && (
+                  <span className="text-amber-700"> · أعلى ثقة {(bestConfidence * 100).toFixed(0)}% — خفّض العتبة</span>
+                )}
               </span>
             </>
           )}
