@@ -9,17 +9,21 @@ echo "=============================================="
 echo " NORAAI — إصلاح نهائي للسيرفر"
 echo "=============================================="
 
-for f in scripts/*.sh; do
-  [ -f "$f" ] && sed -i 's/\r$//' "$f" && chmod +x "$f"
-done
+run_script() {
+  bash "${PROJECT_DIR}/$1" "${@:2}"
+}
 
 echo "[1/6] Pull latest code..."
-git checkout -- scripts/ systemd/ backend/entrypoint.sh DEPLOY.md .env.production.example 2>/dev/null || true
+git checkout -- systemd/ backend/entrypoint.sh DEPLOY.md .env.production.example 2>/dev/null || true
 if ! git pull origin main; then
   echo "Local changes blocked pull — resetting to origin/main..."
   git fetch origin main
   git reset --hard origin/main
 fi
+
+for f in scripts/*.sh; do
+  [ -f "$f" ] && sed -i 's/\r$//' "$f" && chmod +x "$f"
+done
 
 if [ ! -f .env ]; then
   cp .env.production.example .env
@@ -34,10 +38,10 @@ else
   echo 'COMPOSE_PROJECT_NAME=aiops' >> .env
 fi
 export COMPOSE_PROJECT_NAME=aiops
-./scripts/sync_env.sh .env
+run_script scripts/sync_env.sh .env
 
 echo "[3/6] Remove ghost containers..."
-./scripts/remove_compose_conflicts.sh
+run_script scripts/remove_compose_conflicts.sh
 
 echo "[4/6] Rebuild gateway + API (4GB upload, long timeouts)..."
 docker compose -f docker-compose.prod.yml -p aiops build gateway api
@@ -45,12 +49,12 @@ docker tag aiops-backend:latest aiops-backend-training:latest 2>/dev/null || tru
 
 echo "[5/6] Start stack..."
 docker compose -f docker-compose.prod.yml -p aiops up -d --remove-orphans
-./scripts/cleanup_orphans.sh
-./scripts/ensure_services.sh recover
+run_script scripts/cleanup_orphans.sh
+run_script scripts/ensure_services.sh recover
 
 if [ "$(id -u)" -eq 0 ] && command -v systemctl &>/dev/null; then
   echo "[6/6] Install boot + watchdog timer..."
-  ./scripts/install_boot_service.sh 2>/dev/null || true
+  run_script scripts/install_boot_service.sh 2>/dev/null || true
 else
   echo "[6/6] Watchdog (run once as root): sudo ./scripts/install_boot_service.sh"
 fi
