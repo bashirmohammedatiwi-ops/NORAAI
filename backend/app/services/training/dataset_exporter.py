@@ -1,5 +1,3 @@
-import os
-import random
 import uuid
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -10,8 +8,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.minio_client import download_bytes
-from app.models import Annotation, AnnotationStatus, ClassLabel, DatasetImage, DatasetVersion, Image
+from app.models import Annotation, AnnotationStatus, DatasetImage, DatasetVersion, Image
 from app.services.training.cancellation import TrainingCancelled
+from app.services.training.class_ordering import (
+    build_class_manifest,
+    class_id_to_index,
+    load_project_classes,
+)
+from app.services.training.dataset_validator import stratified_val_ids
 
 
 def export_yolo_dataset_sync(
@@ -22,7 +26,7 @@ def export_yolo_dataset_sync(
     progress_callback: Callable[[dict], None] | None = None,
     cancel_check: Callable[[], bool] | None = None,
     max_workers: int | None = None,
-) -> tuple[str, list[str]]:
+) -> tuple[str, list[str], dict]:
     """Export dataset version to YOLO format with parallel MinIO downloads."""
     version = session.get(DatasetVersion, dataset_version_id)
     if not version:
@@ -35,25 +39,15 @@ def export_yolo_dataset_sync(
         )
         image_ids = [row[0] for row in result.all()]
 
-    dataset = version.dataset
-    classes_result = session.execute(
-        select(ClassLabel)
-        .where(ClassLabel.project_id == dataset.project_id, ClassLabel.is_archived == False)
-        .order_by(ClassLabel.name)
-    )
-    classes = list(classes_result.scalars().all())
+    classes = load_project_classes(session, version.dataset.project_id)
     class_names = [c.name for c in classes]
-    class_map = {str(c.id): idx for idx, c in enumerate(classes)}
+    class_map = class_id_to_index(classes)
+    manifest = build_class_manifest(classes)
 
     base = Path(output_dir)
     for split in ("train", "val"):
         (base / "images" / split).mkdir(parents=True, exist_ok=True)
         (base / "labels" / split).mkdir(parents=True, exist_ok=True)
-
-    shuffled = list(image_ids)
-    random.shuffle(shuffled)
-    val_count = max(1, int(len(shuffled) * val_split)) if shuffled else 0
-    val_ids = set(shuffled[:val_count])
 
     images = {
         img.id: img
@@ -71,6 +65,8 @@ def export_yolo_dataset_sync(
         for ann in ann_rows.scalars().all():
             ann_by_image[ann.image_id].append(ann)
 
+    val_ids = stratified_val_ids(image_ids, ann_by_image, class_map, val_split)
+
     total = len(image_ids)
     if progress_callback:
         progress_callback({
@@ -83,7 +79,10 @@ def export_yolo_dataset_sync(
             "status": "running",
         })
 
+    skipped_labels = 0
+
     def export_one(img_id: uuid.UUID) -> bool:
+        nonlocal skipped_labels
         image = images.get(img_id)
         if not image:
             return False
@@ -98,8 +97,13 @@ def export_yolo_dataset_sync(
 
         labels = []
         for ann in ann_by_image.get(img_id, []):
-            cls_idx = class_map.get(str(ann.class_id), 0)
-            labels.append(f"{cls_idx} {ann.x_center:.6f} {ann.y_center:.6f} {ann.width:.6f} {ann.height:.6f}")
+            cls_idx = class_map.get(str(ann.class_id))
+            if cls_idx is None:
+                skipped_labels += 1
+                continue
+            labels.append(
+                f"{cls_idx} {ann.x_center:.6f} {ann.y_center:.6f} {ann.width:.6f} {ann.height:.6f}"
+            )
         (base / "labels" / split / f"{img_id}.txt").write_text("\n".join(labels))
         return True
 
@@ -140,6 +144,15 @@ def export_yolo_dataset_sync(
     yaml_path = str(base / "data.yaml")
     Path(yaml_path).write_text(yaml_content)
 
+    export_meta = {
+        **manifest,
+        "exported_images": exported,
+        "val_images": len(val_ids),
+        "train_images": max(0, exported - len(val_ids)),
+        "skipped_labels": skipped_labels,
+        "val_split": val_split,
+    }
+
     if progress_callback:
         progress_callback({
             "phase": "train",
@@ -151,7 +164,7 @@ def export_yolo_dataset_sync(
             "status": "running",
         })
 
-    return yaml_path, names
+    return yaml_path, names, export_meta
 
 
 def _write_placeholder_dataset(base: Path) -> None:

@@ -21,8 +21,10 @@ def _item_to_candidate(item: dict, class_names: list[str], allowed_norm: set[str
     from app.services.driver.detection import map_class_to_event
 
     idx = int(item.get("class_id", 0))
-    name = class_names[idx] if idx < len(class_names) else f"class_{idx}"
-    if normalize_class_name(name) not in allowed_norm:
+    if not class_names or idx < 0 or idx >= len(class_names):
+        return None
+    name = class_names[idx]
+    if allowed_norm and normalize_class_name(name) not in allowed_norm:
         return None
 
     cx = float(item.get("x_center", 0.5))
@@ -186,14 +188,16 @@ def detect_simple_with_project_model(
     *,
     settings: Settings,
     min_confidence: float | None = None,
+    imgsz: int | None = None,
 ) -> tuple[list[dict], dict]:
     """Direct YOLO on full image — single pass, optimized for camera / manual test."""
+    predict_imgsz = imgsz or settings.inference_imgsz
     raw = adapter.predict(
         weights_path,
         image_source,
-        conf=0.1,
+        conf=0.05,
         iou=settings.inference_iou_threshold,
-        imgsz=settings.inference_imgsz,
+        imgsz=predict_imgsz,
     )
     candidates: list[dict] = []
     for item in raw:
@@ -201,7 +205,7 @@ def detect_simple_with_project_model(
         if cand:
             candidates.append(cand)
 
-    threshold = min_confidence if min_confidence is not None else settings.inference_confidence_threshold
+    threshold = min_confidence if min_confidence is not None else 0.05
     threshold = max(0.05, min(0.99, float(threshold)))
     predictions = [c for c in candidates if float(c.get("confidence") or 0) >= threshold]
     best_conf = max((float(c.get("confidence") or 0) for c in candidates), default=0.0)
@@ -211,4 +215,5 @@ def detect_simple_with_project_model(
         "best_confidence": best_conf,
         "all_candidates": candidates,
         "pipeline": "simple",
+        "inference_imgsz": predict_imgsz,
     }

@@ -19,7 +19,7 @@ async def get_project_classes(db: AsyncSession, project_id: uuid.UUID) -> list[C
         select(ClassLabel).where(
             ClassLabel.project_id == project_id,
             ClassLabel.is_archived == False,
-        ).order_by(ClassLabel.name)
+        ).order_by(ClassLabel.created_at, ClassLabel.name)
     )
     return list(result.scalars().all())
 

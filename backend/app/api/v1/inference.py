@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.models import Deployment, InferenceLog, User
 from app.services.driver.detection import preload_project_model, run_detection
 from app.services.driver.project_classes import get_project_classes
+from app.services.inference.resolve_settings import resolve_inference_imgsz, resolve_manual_test_confidence
 from app.services.inference.summary import build_detection_summary
 from app.services.models.active_model import get_active_model
 
@@ -48,6 +49,9 @@ async def predict(
 
     if simple:
         all_candidates = meta.get("all_candidates") or predictions
+        from app.core.config import get_settings
+
+        settings = get_settings()
         return {
             "model_name": artifact.name,
             "classes": list(artifact.classes_used or []),
@@ -62,6 +66,10 @@ async def predict(
             "count": len(predictions),
             "raw_count": int(meta.get("raw_detection_count", 0)),
             "best_confidence": float(meta.get("best_confidence", 0)),
+            "confidence_threshold": float(meta.get("confidence_threshold", 0.05)),
+            "inference_imgsz": int(meta.get("inference_imgsz", resolve_inference_imgsz(artifact, settings, manual_test=True))),
+            "training_image_size": int((artifact.metrics or {}).get("image_size", 640)),
+            "recommended_confidence": resolve_manual_test_confidence(artifact, settings),
             "latency_ms": round(latency_ms, 1),
         }
 
@@ -128,12 +136,16 @@ async def inference_warmup(
 
 @router.get("/project/{project_id}/status")
 async def inference_status(project_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    from app.core.config import get_settings
+
+    settings = get_settings()
     artifact = await get_active_model(db, project_id)
     if not artifact:
         return {"ready": False}
     classes = list(artifact.classes_used or [])
     project_classes = await get_project_classes(db, project_id)
     color_by_name = {c.name: c.color or "#64748b" for c in project_classes}
+    metrics = artifact.metrics or {}
     return {
         "ready": True,
         "model_name": artifact.name,
@@ -141,4 +153,9 @@ async def inference_status(project_id: uuid.UUID, db: AsyncSession = Depends(get
             {"name": name, "color": color_by_name.get(name, "#64748b")}
             for name in classes
         ],
+        "training_image_size": int(metrics.get("image_size", 640)),
+        "inference_imgsz": resolve_inference_imgsz(artifact, settings, manual_test=True),
+        "recommended_confidence": resolve_manual_test_confidence(artifact, settings),
+        "map50_95": metrics.get("map50_95"),
+        "class_manifest": metrics.get("class_manifest"),
     }

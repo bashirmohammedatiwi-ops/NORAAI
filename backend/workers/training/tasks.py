@@ -26,6 +26,7 @@ from app.services.training.cancellation import (
     request_training_cancel,
 )
 from app.services.training.dataset_exporter import export_yolo_dataset_sync
+from app.services.training.dataset_validator import validate_dataset_version
 from ml.training.adapters import get_adapter
 from ml.training.hpo import run_hpo
 from workers.celery_app import celery_app
@@ -120,8 +121,21 @@ def run_training_job(job_id: str):
                 "progress": 2,
             })
 
+            export_meta: dict = {}
+            validation: dict | None = None
             if job.dataset_version_id:
-                yaml_path, class_names = export_yolo_dataset_sync(
+                validation = validate_dataset_version(session, job.dataset_version_id)
+                publish_metric(job_id, {
+                    "phase": "validate",
+                    "message": "Dataset validated",
+                    "dataset_validation": validation,
+                    "progress": 4,
+                    "status": "running",
+                })
+                if not validation["valid"]:
+                    raise ValueError("; ".join(validation["errors"]))
+
+                yaml_path, class_names, export_meta = export_yolo_dataset_sync(
                     session,
                     job.dataset_version_id,
                     tmpdir,
@@ -130,6 +144,12 @@ def run_training_job(job_id: str):
                     cancel_check=cancel_check,
                     max_workers=config.get("_export_workers") or settings.training_export_max_workers or None,
                 )
+                for warning in validation.get("warnings", []):
+                    publish_metric(job_id, {
+                        "phase": "validate",
+                        "message": warning,
+                        "status": "running",
+                    })
             else:
                 yaml_path = os.path.join(tmpdir, "data.yaml")
                 Path(yaml_path).write_text(
@@ -209,8 +229,20 @@ def run_training_job(job_id: str):
 
             classes_used = class_names
             if job.dataset_version_id is None:
-                cls_result = session.query(ClassLabel).filter_by(project_id=job.project_id, is_archived=False).all()
+                cls_result = (
+                    session.query(ClassLabel)
+                    .filter_by(project_id=job.project_id, is_archived=False)
+                    .order_by(ClassLabel.created_at, ClassLabel.name)
+                    .all()
+                )
                 classes_used = [c.name for c in cls_result]
+
+            training_metrics = dict(result.get("metrics", {}))
+            training_metrics["image_size"] = config.get("image_size", 640)
+            training_metrics["class_manifest"] = export_meta or {"names": classes_used}
+            training_metrics["dataset_validation"] = (
+                validation.get("stats") if validation else None
+            )
 
             artifact = ModelArtifact(
                 project_id=job.project_id,
@@ -222,7 +254,7 @@ def run_training_job(job_id: str):
                 minio_onnx_key=onnx_key,
                 dataset_version_id=job.dataset_version_id,
                 classes_used=classes_used,
-                metrics=result.get("metrics", {}),
+                metrics=training_metrics,
                 gpu_used=str(config.get("device", "cpu")),
                 training_duration_seconds=result.get("duration_seconds"),
                 model_size_mb=len(weights_bytes) / (1024 * 1024),

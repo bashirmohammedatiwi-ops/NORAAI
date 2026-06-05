@@ -30,6 +30,10 @@ interface InferenceStatus {
   ready: boolean;
   model_name?: string;
   classes?: ModelClass[];
+  training_image_size?: number;
+  inference_imgsz?: number;
+  recommended_confidence?: number;
+  map50_95?: number;
 }
 
 interface Props {
@@ -37,14 +41,14 @@ interface Props {
   compact?: boolean;
 }
 
-const MAX_EDGE = 640;
+const MAX_BYTES = 8 * 1024 * 1024;
 
-async function prepareImage(file: File): Promise<File> {
+async function prepareImage(file: File, maxEdge: number): Promise<File> {
   if (!file.type.startsWith('image/')) throw new Error('صورة غير صالحة');
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
-  if (scale >= 1) return file;
+  if (file.size <= MAX_BYTES) return file;
 
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
   const w = Math.round(bitmap.width * scale);
   const h = Math.round(bitmap.height * scale);
   const canvas = document.createElement('canvas');
@@ -55,7 +59,7 @@ async function prepareImage(file: File): Promise<File> {
   ctx.drawImage(bitmap, 0, 0, w, h);
   bitmap.close();
 
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.88));
   if (!blob) return file;
   return new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
 }
@@ -72,7 +76,8 @@ export function DashboardManualTest({ projects, compact }: Props) {
   const [rawCount, setRawCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [minConfidence, setMinConfidence] = useState(0.25);
+  const [minConfidence, setMinConfidence] = useState(0.05);
+  const [serverThreshold, setServerThreshold] = useState<number | null>(null);
 
   const modelProjects = useMemo(() => projects.filter((p) => p.has_model), [projects]);
 
@@ -98,7 +103,13 @@ export function DashboardManualTest({ projects, compact }: Props) {
     }
     let cancelled = false;
     api.get<InferenceStatus>(`/api/v1/inference/project/${projectId}/status`)
-      .then((data) => { if (!cancelled) setStatus(data); })
+      .then((data) => {
+        if (cancelled) return;
+        setStatus(data);
+        if (data.recommended_confidence != null) {
+          setMinConfidence(Math.max(0.05, data.recommended_confidence));
+        }
+      })
       .catch(() => { if (!cancelled) setStatus({ ready: false }); });
     api.post(`/api/v1/inference/project/${projectId}/warmup`, {}).catch(() => {});
     return () => { cancelled = true; };
@@ -123,27 +134,43 @@ export function DashboardManualTest({ projects, compact }: Props) {
     setLatencyMs(null);
     setRawCount(null);
     try {
-      const prepared = await prepareImage(image);
+      const maxEdge = status?.training_image_size ?? status?.inference_imgsz ?? 1280;
+      const prepared = await prepareImage(image, maxEdge);
       const form = new FormData();
       form.append('file', prepared);
       form.append('min_confidence', '0.05');
       form.append('simple', 'true');
-      const data = await api.post<PredictResult>(
+      const data = await api.post<PredictResult & {
+        confidence_threshold?: number;
+        training_image_size?: number;
+        inference_imgsz?: number;
+        recommended_confidence?: number;
+      }>(
         `/api/v1/inference/project/${projectId}/predict`,
         form,
         undefined,
         60_000,
       );
-      setAllDetections(data.all_predictions ?? data.predictions ?? []);
+      const raw = data.all_predictions ?? data.predictions ?? [];
+      setAllDetections(raw);
       setBestConfidence(data.best_confidence ?? null);
       setLatencyMs(data.latency_ms ?? null);
       setRawCount(data.raw_count ?? null);
+      setServerThreshold(data.confidence_threshold ?? null);
+
+      if (raw.length === 0 && (data.best_confidence ?? 0) > 0.05) {
+        const suggested = Math.max(
+          0.05,
+          Math.round(((data.best_confidence ?? 0) - 0.05) * 20) / 20,
+        );
+        setMinConfidence(Math.min(suggested, 0.95));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'فشل الاختبار');
     } finally {
       setLoading(false);
     }
-  }, [projectId, status?.ready]);
+  }, [projectId, status?.ready, status?.training_image_size, status?.inference_imgsz]);
 
   const pickFile = (list: FileList | null) => {
     const picked = list?.[0];
@@ -218,18 +245,28 @@ export function DashboardManualTest({ projects, compact }: Props) {
           </div>
         )}
 
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="shrink-0">العتبة</span>
-          <input
-            type="range"
-            min={0.05}
-            max={0.95}
-            step={0.05}
-            value={minConfidence}
-            onChange={(e) => setMinConfidence(Number(e.target.value))}
-            className="flex-1 accent-primary"
-          />
-          <span className="font-mono w-10 text-right">{(minConfidence * 100).toFixed(0)}%</span>
+        <div className="space-y-1">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="shrink-0">العتبة</span>
+            <input
+              type="range"
+              min={0.05}
+              max={0.95}
+              step={0.05}
+              value={minConfidence}
+              onChange={(e) => setMinConfidence(Number(e.target.value))}
+              className="flex-1 accent-primary"
+            />
+            <span className="font-mono w-10 text-right">{(minConfidence * 100).toFixed(0)}%</span>
+          </div>
+          {(status?.training_image_size || status?.map50_95 != null) && (
+            <p className="text-[10px] text-muted-foreground">
+              {status.training_image_size ? `تدريب ${status.training_image_size}px` : ''}
+              {status.inference_imgsz ? ` · استدلال ${status.inference_imgsz}px` : ''}
+              {status.map50_95 != null ? ` · mAP ${(status.map50_95 * 100).toFixed(1)}%` : ''}
+              {serverThreshold != null ? ` · خادم ${(serverThreshold * 100).toFixed(0)}%` : ''}
+            </p>
+          )}
         </div>
 
         <div
@@ -319,7 +356,11 @@ export function DashboardManualTest({ projects, compact }: Props) {
                 {rawCount != null && rawCount > 0 ? `/${rawCount}` : ''} كشف
                 {latencyMs != null && ` · ${latencyMs.toFixed(0)} ms`}
                 {detections.length === 0 && bestConfidence != null && bestConfidence > 0 && (
-                  <span className="text-amber-700"> · أعلى ثقة {(bestConfidence * 100).toFixed(0)}% — خفّض العتبة</span>
+                  <span className="text-amber-700">
+                    {' '}
+                    · أعلى ثقة {(bestConfidence * 100).toFixed(0)}%
+                    {bestConfidence < minConfidence ? ' — خفّض العتبة أو أعد التدريب' : ''}
+                  </span>
                 )}
               </span>
             </>

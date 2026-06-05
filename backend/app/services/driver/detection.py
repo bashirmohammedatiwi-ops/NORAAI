@@ -104,6 +104,7 @@ def _run_detection_sync(
     min_confidence: float | None,
     *,
     simple: bool = False,
+    inference_imgsz: int | None = None,
 ) -> tuple[list[dict], str | None, dict]:
     settings = get_settings()
     t0 = time.perf_counter()
@@ -113,17 +114,28 @@ def _run_detection_sync(
 
         adapter = _CachedProjectAdapter(weights_key, weights_data, architecture)
         weights_stub = "cached"
-        detect_fn = detect_simple_with_project_model if simple else detect_with_project_model
 
-        predictions, meta = detect_fn(
-            image_bytes,
-            weights_stub,
-            adapter,
-            class_names,
-            allowed_norm,
-            settings=settings,
-            min_confidence=min_confidence,
-        )
+        if simple:
+            predictions, meta = detect_simple_with_project_model(
+                image_bytes,
+                weights_stub,
+                adapter,
+                class_names,
+                allowed_norm,
+                settings=settings,
+                min_confidence=min_confidence,
+                imgsz=inference_imgsz,
+            )
+        else:
+            predictions, meta = detect_with_project_model(
+                image_bytes,
+                weights_stub,
+                adapter,
+                class_names,
+                allowed_norm,
+                settings=settings,
+                min_confidence=min_confidence,
+            )
         meta["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         meta["model_cached"] = True
         return predictions, None, meta
@@ -154,6 +166,8 @@ async def run_detection(
 
     assert artifact is not None
     settings = get_settings()
+    from app.services.inference.resolve_settings import resolve_inference_imgsz
+
     class_names = list(artifact.classes_used or [])
     fast_path = simple or settings.driver_inference_simple
     if fast_path:
@@ -164,6 +178,7 @@ async def run_detection(
         return [], "Model classes do not match dashboard classes. Retrain after updating classes.", {}
 
     allowed_norm = {normalize_class_name(n) for n in allowed}
+    inference_imgsz = resolve_inference_imgsz(artifact, settings, manual_test=fast_path)
 
     try:
         weights_data = get_weights_bytes(
@@ -183,6 +198,7 @@ async def run_detection(
             artifact.architecture or "yolo11",
             min_confidence,
             simple=fast_path,
+            inference_imgsz=inference_imgsz,
         )
     except Exception as exc:
         return [], f"Inference failed: {exc}", {}
