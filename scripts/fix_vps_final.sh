@@ -14,7 +14,9 @@ for f in scripts/*.sh; do
 done
 
 echo "[1/6] Pull latest code..."
+git checkout -- scripts/ systemd/ backend/entrypoint.sh DEPLOY.md .env.production.example 2>/dev/null || true
 if ! git pull origin main; then
+  echo "Local changes blocked pull — resetting to origin/main..."
   git fetch origin main
   git reset --hard origin/main
 fi

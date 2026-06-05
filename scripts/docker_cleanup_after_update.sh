@@ -14,8 +14,8 @@ docker image prune -f
 echo "Removing unused images (keeps images used by running containers)..."
 docker image prune -a -f
 
-echo "Removing build cache older than 24h..."
-docker builder prune -f --filter until=24h 2>/dev/null || docker builder prune -f
+echo "Removing unused build cache..."
+docker builder prune -af 2>/dev/null || docker buildx prune -af 2>/dev/null || true
 
 echo ""
 echo "After:"

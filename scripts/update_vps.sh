@@ -24,7 +24,7 @@ done
 echo "=== AI Ops VPS Update ==="
 
 echo "Resetting local edits to tracked deploy files..."
-git checkout -- scripts/ systemd/ backend/entrypoint.sh DEPLOY.md .env.production.example 2>/dev/null || true
+git checkout -- scripts/ systemd/ backend/entrypoint.sh DEPLOY.md .env.production.example docker-compose.prod.yml 2>/dev/null || true
 
 echo "Pulling latest code..."
 if ! git pull origin main; then
