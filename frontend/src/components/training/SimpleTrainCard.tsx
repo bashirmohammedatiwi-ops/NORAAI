@@ -69,7 +69,7 @@ export function SimpleTrainCard({
             </CardTitle>
             <CardDescription className="mt-1">
               {imageCount > 0
-                ? `${imageCount} images ready · YOLO auto-labels applied`
+                ? `${imageCount} images ready · default: Best Accuracy preset`
                 : 'Upload images first to enable training'}
             </CardDescription>
             <div className="mt-2 flex flex-wrap gap-2">

@@ -1,34 +1,45 @@
-export type CpuPreset = 'max_cpu' | 'fleet_cpu' | 'turbo_cpu' | 'fast_cpu' | 'balanced';
+export type CpuPreset =
+  | 'best_accuracy'
+  | 'max_cpu'
+  | 'fleet_cpu'
+  | 'turbo_cpu'
+  | 'fast_cpu'
+  | 'balanced';
 
 export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string; epochs: number }> = {
+  best_accuracy: {
+    label: 'Best Accuracy',
+    description: '20 epochs · 640px · medium aug — highest mAP (recommended)',
+    epochs: 20,
+  },
   max_cpu: {
     label: 'Max CPU',
-    description: 'All cores · auto batch — fastest training',
+    description: '12 epochs · 416px — fastest full training run',
     epochs: 12,
   },
   fleet_cpu: {
     label: 'Fleet Camera',
-    description: '12 epochs · 416px — live road detection (recommended)',
+    description: '12 epochs · 416px — tuned for live road detection',
     epochs: 12,
   },
   turbo_cpu: {
     label: 'Turbo CPU',
-    description: '5 epochs · 320px · minimal aug — fastest test run',
+    description: '5 epochs · 320px · minimal aug — quick test only',
     epochs: 5,
   },
   fast_cpu: {
     label: 'Fast CPU',
-    description: '8 epochs · 416px · light aug — recommended on CPU VPS',
+    description: '8 epochs · 416px · light aug — faster iteration',
     epochs: 8,
   },
   balanced: {
     label: 'Balanced CPU',
-    description: '15 epochs · 640px · medium aug — higher quality, slower',
+    description: '15 epochs · 640px · medium aug — good quality, shorter than Best',
     epochs: 15,
   },
 };
 
-export const DEFAULT_CPU_PRESET: CpuPreset = 'max_cpu';
+export const DEFAULT_CPU_PRESET: CpuPreset = 'best_accuracy';
 
 export function buildRetrainQuery(params: {
   epochs?: number;

@@ -4,7 +4,24 @@ import { useProjectDatasets } from '@/hooks/useDatasets';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Play, Sparkles } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Play, Sparkles, Target } from 'lucide-react';
+
+interface CpuPresetOption {
+  value: string;
+  label: string;
+  description: string;
+  epochs?: number;
+  batch_size?: number;
+  learning_rate?: number;
+  optimizer?: string;
+  scheduler?: string;
+  augmentation?: string;
+  image_size?: number;
+  mixed_precision?: boolean;
+  val_split?: number;
+  patience?: number;
+}
 
 interface TrainingOptions {
   architectures: { value: string; label: string; description: string }[];
@@ -13,11 +30,33 @@ interface TrainingOptions {
   schedulers: string[];
   augmentation_presets: { value: string; label: string }[];
   defaults: Record<string, unknown>;
+  cpu_presets: CpuPresetOption[];
+  default_cpu_preset: string;
+  recommendations?: {
+    architecture: string;
+    preset: string;
+    notes: string[];
+  };
 }
 
 interface Props {
   projectId: string;
   onStarted: () => void;
+}
+
+function applyPreset(preset: CpuPresetOption) {
+  return {
+    epochs: preset.epochs ?? 20,
+    batchSize: preset.batch_size ?? 8,
+    learningRate: preset.learning_rate ?? 0.01,
+    optimizer: preset.optimizer ?? 'AdamW',
+    scheduler: preset.scheduler ?? 'cosine',
+    augmentation: preset.augmentation ?? 'medium',
+    imageSize: preset.image_size ?? 640,
+    mixedPrecision: preset.mixed_precision ?? false,
+    valSplit: preset.val_split ?? 0.15,
+    patience: preset.patience ?? 10,
+  };
 }
 
 export function TrainingConfigForm({ projectId, onStarted }: Props) {
@@ -31,29 +70,60 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
   const [name, setName] = useState('');
   const [architecture, setArchitecture] = useState('yolo11');
   const [trainingMode, setTrainingMode] = useState('single_gpu');
+  const [cpuPreset, setCpuPreset] = useState('best_accuracy');
   const [datasetId, setDatasetId] = useState('');
   const [versionId, setVersionId] = useState('');
   const [modelDefId, setModelDefId] = useState('');
-  const [epochs, setEpochs] = useState(50);
-  const [batchSize, setBatchSize] = useState(16);
+  const [epochs, setEpochs] = useState(20);
+  const [batchSize, setBatchSize] = useState(8);
   const [learningRate, setLearningRate] = useState(0.01);
   const [optimizer, setOptimizer] = useState('AdamW');
   const [scheduler, setScheduler] = useState('cosine');
   const [augmentation, setAugmentation] = useState('medium');
   const [imageSize, setImageSize] = useState(640);
-  const [mixedPrecision, setMixedPrecision] = useState(true);
+  const [mixedPrecision, setMixedPrecision] = useState(false);
+  const [valSplit, setValSplit] = useState(0.15);
+  const [patience, setPatience] = useState(10);
   const [hpoEnabled, setHpoEnabled] = useState(false);
   const [hpoTrials, setHpoTrials] = useState(5);
+
+  const applyCpuPreset = (presetKey: string, presets: CpuPresetOption[]) => {
+    const preset = presets.find((p) => p.value === presetKey);
+    if (!preset) return;
+    const values = applyPreset(preset);
+    setEpochs(values.epochs);
+    setBatchSize(values.batchSize);
+    setLearningRate(values.learningRate);
+    setOptimizer(values.optimizer);
+    setScheduler(values.scheduler);
+    setAugmentation(values.augmentation);
+    setImageSize(values.imageSize);
+    setMixedPrecision(values.mixedPrecision);
+    setValSplit(values.valSplit);
+    setPatience(values.patience);
+  };
 
   useEffect(() => {
     api.get<TrainingOptions>('/api/v1/training/options').then((o) => {
       setOptions(o);
-      setEpochs(o.defaults.epochs as number);
-      setBatchSize(o.defaults.batch_size as number);
-      setLearningRate(o.defaults.learning_rate as number);
-      setOptimizer(o.defaults.optimizer as string);
-      setScheduler(o.defaults.scheduler as string);
-      setImageSize(o.defaults.image_size as number);
+      const presetKey = o.default_cpu_preset || 'best_accuracy';
+      setCpuPreset(presetKey);
+      if (o.recommendations?.architecture) {
+        setArchitecture(o.recommendations.architecture);
+      }
+      if (o.cpu_presets?.length) {
+        applyCpuPreset(presetKey, o.cpu_presets);
+      } else {
+        setEpochs(o.defaults.epochs as number);
+        setBatchSize(o.defaults.batch_size as number);
+        setLearningRate(o.defaults.learning_rate as number);
+        setOptimizer(o.defaults.optimizer as string);
+        setScheduler(o.defaults.scheduler as string);
+        setImageSize(o.defaults.image_size as number);
+        setMixedPrecision((o.defaults.mixed_precision as boolean) ?? false);
+        setValSplit((o.defaults.val_split as number) ?? 0.15);
+        setPatience((o.defaults.patience as number) ?? 10);
+      }
       setHpoTrials(o.defaults.hpo_trials as number);
     }).catch(() => {});
     api.get<{ id: string; name: string }[]>(`/api/v1/projects/${projectId}/models`).then(setModels).catch(() => {});
@@ -97,9 +167,23 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
         dataset_version_id: vid || null,
         hpo_enabled: hpoEnabled,
         config: {
-          epochs, batch_size: batchSize, learning_rate: learningRate,
-          optimizer, scheduler, augmentation, image_size: imageSize,
-          mixed_precision: mixedPrecision, hpo_trials: hpoTrials, patience: 10, val_split: 0.2,
+          preset: cpuPreset,
+          epochs,
+          batch_size: batchSize,
+          learning_rate: learningRate,
+          optimizer,
+          scheduler,
+          augmentation,
+          image_size: imageSize,
+          mixed_precision: mixedPrecision,
+          hpo_trials: hpoTrials,
+          patience,
+          val_split: valSplit,
+          close_mosaic: 3,
+          workers: 'auto',
+          cache: true,
+          prefer_disk_cache: true,
+          device: 'cpu',
         },
       });
       onStarted();
@@ -111,7 +195,8 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
     }
   };
 
-  const selectCls = "h-10 w-full rounded-md border border-border bg-background px-3 text-sm";
+  const selectedPreset = options?.cpu_presets.find((p) => p.value === cpuPreset);
+  const selectCls = 'h-10 w-full rounded-md border border-border bg-background px-3 text-sm';
 
   return (
     <Card>
@@ -122,9 +207,26 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/40 p-4 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Target className="h-4 w-4 text-emerald-600" />
+            <span className="text-sm font-medium text-emerald-900">أفضل إعدادات لسيرفرك (4 CPU · 16 GB RAM)</span>
+            <Badge variant="secondary" className="text-[10px]">Recommended</Badge>
+          </div>
+          <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+            {(options?.recommendations?.notes ?? [
+              'Preset: Best Accuracy — 20 epochs · 640px · medium augmentation',
+              'Architecture: YOLO11 — Mixed Precision OFF on CPU',
+              'Review labels and add diverse camera/road images for higher mAP',
+            ]).map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
+
         <div className="flex items-center justify-between border-b border-border pb-3">
           <p className="text-sm text-muted-foreground">
-            {advanced ? 'Advanced settings' : 'Simple mode — dataset & model only'}
+            {advanced ? 'Advanced settings' : 'Simple mode — preset & dataset'}
           </p>
           <button
             type="button"
@@ -136,8 +238,36 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="md:col-span-2 lg:col-span-1">
+            <label className="text-xs text-muted-foreground mb-1 block">CPU Preset</label>
+            <select
+              className={selectCls}
+              value={cpuPreset}
+              onChange={(e) => {
+                setCpuPreset(e.target.value);
+                if (options?.cpu_presets) applyCpuPreset(e.target.value, options.cpu_presets);
+              }}
+            >
+              {options?.cpu_presets.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+            {selectedPreset && (
+              <p className="text-[11px] text-muted-foreground mt-1">{selectedPreset.description}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Architecture</label>
+            <select className={selectCls} value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
+              {options?.architectures.map((a) => (
+                <option key={a.value} value={a.value}>{a.label}</option>
+              ))}
+            </select>
+          </div>
+
           {!advanced && (
-            <div className="md:col-span-3">
+            <div>
               <label className="text-xs text-muted-foreground mb-1 block">Dataset</label>
               <select className={selectCls} value={datasetId} onChange={(e) => { setDatasetId(e.target.value); setVersionId(''); }}>
                 <option value="">— Select dataset —</option>
@@ -159,17 +289,6 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
               {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
-          </>
-          )}
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Architecture</label>
-            <select className={selectCls} value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
-              {options?.architectures.map((a) => (
-                <option key={a.value} value={a.value}>{a.label}</option>
-              ))}
-            </select>
-          </div>
-          {advanced && (
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Training Mode</label>
             <select className={selectCls} value={trainingMode} onChange={(e) => setTrainingMode(e.target.value)}>
@@ -178,9 +297,6 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
               ))}
             </select>
           </div>
-          )}
-          {advanced && (
-          <>
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Dataset</label>
             <select className={selectCls} value={datasetId} onChange={(e) => { setDatasetId(e.target.value); setVersionId(''); }}>
@@ -204,21 +320,31 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             <div>
               <label className="text-xs text-muted-foreground">Epochs</label>
-              <Input type="number" value={epochs} onChange={(e) => setEpochs(+e.target.value)} />
+              <Input type="number" min={5} max={200} value={epochs} onChange={(e) => setEpochs(+e.target.value)} />
             </div>
-            {advanced && (
+            {(advanced || cpuPreset !== 'best_accuracy') && (
             <>
             <div>
               <label className="text-xs text-muted-foreground">Batch Size</label>
-              <Input type="number" value={batchSize} onChange={(e) => setBatchSize(+e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Learning Rate</label>
-              <Input type="number" step="0.001" value={learningRate} onChange={(e) => setLearningRate(+e.target.value)} />
+              <Input type="number" min={1} max={64} value={batchSize} onChange={(e) => setBatchSize(+e.target.value)} />
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Image Size</label>
-              <Input type="number" value={imageSize} onChange={(e) => setImageSize(+e.target.value)} />
+              <Input type="number" step={32} min={320} max={1280} value={imageSize} onChange={(e) => setImageSize(+e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Augmentation</label>
+              <select className={selectCls} value={augmentation} onChange={(e) => setAugmentation(e.target.value)}>
+                {options?.augmentation_presets.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
+            </div>
+            </>
+            )}
+            {advanced && (
+            <>
+            <div>
+              <label className="text-xs text-muted-foreground">Learning Rate</label>
+              <Input type="number" step="0.001" value={learningRate} onChange={(e) => setLearningRate(+e.target.value)} />
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Optimizer</label>
@@ -233,10 +359,12 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
               </select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">Augmentation</label>
-              <select className={selectCls} value={augmentation} onChange={(e) => setAugmentation(e.target.value)}>
-                {options?.augmentation_presets.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-              </select>
+              <label className="text-xs text-muted-foreground">Val Split</label>
+              <Input type="number" step="0.05" min={0.05} max={0.4} value={valSplit} onChange={(e) => setValSplit(+e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Patience</label>
+              <Input type="number" min={3} max={30} value={patience} onChange={(e) => setPatience(+e.target.value)} />
             </div>
             </>
             )}
@@ -248,6 +376,7 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={mixedPrecision} onChange={(e) => setMixedPrecision(e.target.checked)} />
             Mixed Precision (AMP)
+            <span className="text-xs text-muted-foreground">— GPU only; leave OFF on CPU</span>
           </label>
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={hpoEnabled} onChange={(e) => setHpoEnabled(e.target.checked)} />

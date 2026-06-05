@@ -3,6 +3,25 @@
 from app.services.training.cpu_tuning import tune_training_config
 
 CPU_PRESETS: dict[str, dict] = {
+    "best_accuracy": {
+        "label": "Best Accuracy",
+        "description": "20 epochs · 640px · medium aug — highest mAP on CPU VPS (recommended)",
+        "epochs": 20,
+        "batch_size": 8,
+        "learning_rate": 0.01,
+        "optimizer": "AdamW",
+        "scheduler": "cosine",
+        "augmentation": "medium",
+        "image_size": 640,
+        "mixed_precision": False,
+        "val_split": 0.15,
+        "cache": True,
+        "prefer_disk_cache": True,
+        "patience": 10,
+        "close_mosaic": 3,
+        "workers": "auto",
+        "device": "cpu",
+    },
     "max_cpu": {
         "label": "Max CPU",
         "description": "Uses all CPU cores · auto batch · disk cache — fastest full training",
@@ -95,7 +114,7 @@ CPU_PRESETS: dict[str, dict] = {
     },
 }
 
-DEFAULT_CPU_PRESET = "max_cpu"
+DEFAULT_CPU_PRESET = "best_accuracy"
 
 
 def build_retrain_config(epochs: int | None, preset: str = DEFAULT_CPU_PRESET) -> dict:

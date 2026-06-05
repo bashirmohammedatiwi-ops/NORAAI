@@ -6,7 +6,34 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import HyperparameterTrial, ModelArtifact, TrainingJob, TrainingMetric, TrainingStatus
+from app.services.training.cpu_presets import CPU_PRESETS, DEFAULT_CPU_PRESET
 from app.services.training.progress import get_training_progress, merge_live_progress
+
+_BEST = CPU_PRESETS[DEFAULT_CPU_PRESET]
+
+
+def _cpu_preset_options() -> list[dict]:
+    keys = (
+        "epochs",
+        "batch_size",
+        "learning_rate",
+        "optimizer",
+        "scheduler",
+        "augmentation",
+        "image_size",
+        "mixed_precision",
+        "val_split",
+        "patience",
+    )
+    return [
+        {
+            "value": key,
+            "label": preset["label"],
+            "description": preset["description"],
+            **{k: preset[k] for k in keys if k in preset},
+        }
+        for key, preset in CPU_PRESETS.items()
+    ]
 
 
 TRAINING_OPTIONS = {
@@ -18,7 +45,7 @@ TRAINING_OPTIONS = {
         {"value": "efficientdet", "label": "EfficientDet", "description": "Efficient scaling detector"},
     ],
     "training_modes": [
-        {"value": "single_gpu", "label": "Single GPU"},
+        {"value": "single_gpu", "label": "CPU / Single GPU"},
         {"value": "multi_gpu", "label": "Multi GPU (DDP)"},
         {"value": "distributed", "label": "Distributed Training"},
     ],
@@ -31,60 +58,30 @@ TRAINING_OPTIONS = {
         {"value": "heavy", "label": "Heavy (Road/Traffic)"},
     ],
     "defaults": {
-        "epochs": 8,
-        "batch_size": 12,
-        "learning_rate": 0.01,
-        "optimizer": "AdamW",
-        "scheduler": "cosine",
-        "mixed_precision": True,
-        "image_size": 416,
-        "val_split": 0.2,
+        "epochs": _BEST["epochs"],
+        "batch_size": _BEST["batch_size"],
+        "learning_rate": _BEST["learning_rate"],
+        "optimizer": _BEST["optimizer"],
+        "scheduler": _BEST["scheduler"],
+        "augmentation": _BEST["augmentation"],
+        "mixed_precision": _BEST["mixed_precision"],
+        "image_size": _BEST["image_size"],
+        "val_split": _BEST["val_split"],
         "hpo_trials": 5,
-        "patience": 5,
+        "patience": _BEST["patience"],
+        "device": "cpu",
     },
-    "cpu_presets": [
-        {
-            "value": "max_cpu",
-            "label": "Max CPU",
-            "description": "All cores · auto batch — fastest training",
-            "epochs": 12,
-            "image_size": 416,
-            "augmentation": "light",
-        },
-        {
-            "value": "fleet_cpu",
-            "label": "Fleet Camera",
-            "description": "12 epochs · 416px — live road detection (recommended)",
-            "epochs": 12,
-            "image_size": 416,
-            "augmentation": "light",
-        },
-        {
-            "value": "turbo_cpu",
-            "label": "Turbo CPU",
-            "description": "5 epochs · 320px · minimal aug — fastest",
-            "epochs": 5,
-            "image_size": 320,
-            "augmentation": "none",
-        },
-        {
-            "value": "fast_cpu",
-            "label": "Fast CPU",
-            "description": "8 epochs · 416px · light aug — recommended on CPU VPS",
-            "epochs": 8,
-            "image_size": 416,
-            "augmentation": "light",
-        },
-        {
-            "value": "balanced",
-            "label": "Balanced CPU",
-            "description": "15 epochs · 640px · medium aug — higher quality",
-            "epochs": 15,
-            "image_size": 640,
-            "augmentation": "medium",
-        },
-    ],
-    "default_cpu_preset": "max_cpu",
+    "cpu_presets": _cpu_preset_options(),
+    "default_cpu_preset": DEFAULT_CPU_PRESET,
+    "recommendations": {
+        "architecture": "yolo11",
+        "preset": DEFAULT_CPU_PRESET,
+        "notes": [
+            "Use Best Accuracy preset for highest mAP on CPU VPS (4 cores · 16 GB RAM).",
+            "Keep Mixed Precision OFF on CPU — it only helps on GPU.",
+            "Review labels and add diverse road/camera images before retraining.",
+        ],
+    },
 }
 
 
