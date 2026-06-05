@@ -175,3 +175,40 @@ def detect_with_project_model(
         "warnings": list(warnings) + tips,
         "detection_modes": sorted(class_modes),
     }
+
+
+def detect_simple_with_project_model(
+    image_path: str,
+    weights_path: str,
+    adapter,
+    class_names: list[str],
+    allowed_norm: set[str],
+    *,
+    settings: Settings,
+    min_confidence: float | None = None,
+) -> tuple[list[dict], dict]:
+    """Direct YOLO on full image — all model classes, no vehicle pipeline (manual test)."""
+    raw = adapter.predict(
+        weights_path,
+        image_path,
+        conf=min(0.15, settings.inference_confidence_threshold),
+        iou=settings.inference_iou_threshold,
+    )
+    candidates: list[dict] = []
+    for item in raw:
+        cand = _item_to_candidate(item, class_names, allowed_norm)
+        if cand:
+            candidates.append(cand)
+
+    class_count = max(len(class_names), 1)
+    predictions, threshold, _ = filter_detections(
+        candidates,
+        class_count=class_count,
+        min_confidence=min_confidence,
+        settings=settings,
+    )
+    return predictions, {
+        "confidence_threshold": threshold,
+        "raw_detection_count": len(candidates),
+        "pipeline": "simple",
+    }

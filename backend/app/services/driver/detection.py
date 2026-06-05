@@ -101,6 +101,8 @@ def _run_detection_sync(
     allowed_norm: set[str],
     architecture: str,
     min_confidence: float | None,
+    *,
+    simple: bool = False,
 ) -> tuple[list[dict], str | None, dict]:
     settings = get_settings()
     t0 = time.perf_counter()
@@ -110,12 +112,13 @@ def _run_detection_sync(
         image_path = imgf.name
 
     try:
-        from ml.detection.unified_detect import detect_with_project_model
+        from ml.detection.unified_detect import detect_simple_with_project_model, detect_with_project_model
 
         adapter = _CachedProjectAdapter(weights_key, weights_data, architecture)
         weights_stub = "cached"
+        detect_fn = detect_simple_with_project_model if simple else detect_with_project_model
 
-        predictions, meta = detect_with_project_model(
+        predictions, meta = detect_fn(
             image_path,
             weights_stub,
             adapter,
@@ -138,6 +141,8 @@ async def run_detection(
     project_id: uuid.UUID,
     image_bytes: bytes,
     min_confidence: float | None = None,
+    *,
+    simple: bool = False,
 ) -> tuple[list[dict], str | None, dict]:
     """
     Run YOLO using the project's active model and dashboard-defined classes only.
@@ -174,6 +179,7 @@ async def run_detection(
             allowed_norm,
             artifact.architecture or "yolo11",
             min_confidence,
+            simple=simple,
         )
     except Exception as exc:
         return [], f"Inference failed: {exc}", {}

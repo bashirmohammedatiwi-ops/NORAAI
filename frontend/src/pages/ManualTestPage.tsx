@@ -6,10 +6,10 @@ export default function ManualTestPage() {
   const { projects, isInitialLoading } = useProjectsList();
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <PageHeader title="Manual Test · اختبار يدوي" />
+    <div className="space-y-4 max-w-4xl">
+      <PageHeader title="اختبار يدوي" />
       {isInitialLoading ? (
-        <p className="text-sm text-muted-foreground">Loading projects…</p>
+        <p className="text-sm text-muted-foreground">…</p>
       ) : (
         <DashboardManualTest projects={projects} />
       )}

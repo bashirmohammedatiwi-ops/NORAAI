@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models import Deployment, InferenceLog, User
+from app.services.driver.detection import preload_project_model, run_detection
+from app.services.driver.project_classes import get_project_classes
 from app.services.inference.summary import build_detection_summary
-from app.services.driver.detection import run_detection
 from app.services.models.active_model import get_active_model
 
 router = APIRouter(prefix="/inference", tags=["inference"])
@@ -23,28 +24,43 @@ async def predict(
     project_id: uuid.UUID,
     file: UploadFile = File(...),
     min_confidence: float | None = Form(None),
+    simple: bool = Form(True),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    del user
     artifact = await get_active_model(db, project_id)
     if not artifact:
-        raise HTTPException(
-            status_code=404,
-            detail="No trained model yet. Upload data and run training first.",
-        )
+        raise HTTPException(status_code=404, detail="لا يوجد نموذج مدرب")
 
     content = await file.read()
     if not content:
-        raise HTTPException(status_code=400, detail="Empty image")
+        raise HTTPException(status_code=400, detail="صورة فارغة")
 
     start = time.perf_counter()
     predictions, error, meta = await run_detection(
-        db, project_id, content, min_confidence=min_confidence,
+        db, project_id, content, min_confidence=min_confidence, simple=simple,
     )
     latency_ms = (time.perf_counter() - start) * 1000
 
     if error:
         raise HTTPException(status_code=422, detail=error)
+
+    if simple:
+        return {
+            "model_name": artifact.name,
+            "classes": list(artifact.classes_used or []),
+            "predictions": [
+                {
+                    "class": p["class"],
+                    "confidence": p["confidence"],
+                    "bbox": p["bbox"],
+                }
+                for p in predictions
+            ],
+            "count": len(predictions),
+            "latency_ms": round(latency_ms, 1),
+        }
 
     primary = max(predictions, key=lambda p: p["confidence"]) if predictions else None
     summary = build_detection_summary(
@@ -96,26 +112,30 @@ async def predict(
     }
 
 
+@router.post("/project/{project_id}/warmup")
+async def inference_warmup(
+    project_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    del user
+    ok = await preload_project_model(db, project_id)
+    return {"ready": ok}
+
+
 @router.get("/project/{project_id}/status")
 async def inference_status(project_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     artifact = await get_active_model(db, project_id)
     if not artifact:
-        return {"ready": False, "endpoint": f"/api/v1/inference/project/{project_id}/predict"}
-    metrics = artifact.metrics or {}
-    classes = artifact.classes_used or []
+        return {"ready": False}
+    classes = list(artifact.classes_used or [])
+    project_classes = await get_project_classes(db, project_id)
+    color_by_name = {c.name: c.color or "#64748b" for c in project_classes}
     return {
         "ready": True,
-        "model_id": str(artifact.id),
         "model_name": artifact.name,
-        "classes": classes,
-        "class_count": len(classes),
-        "single_class_model": len(classes) <= 1,
-        "is_mock": bool(metrics.get("mock")),
-        "endpoint": f"/api/v1/inference/project/{project_id}/predict",
-        "retrain_tip": (
-            "Label tight boxes: damage on the car body, potholes on the road. "
-            "Use Annotation to draw precise regions, then retrain."
-            if len(classes) <= 1
-            else "Use multiple classes with tight boxes per object (damage region, pothole, crack)."
-        ),
+        "classes": [
+            {"name": name, "color": color_by_name.get(name, "#64748b")}
+            for name in classes
+        ],
     }
