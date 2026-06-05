@@ -76,6 +76,15 @@ def run_training_job(job_id: str):
 
         apply_cpu_env(resolve_thread_count())
         config = tune_training_config(config)
+        publish_metric(job_id, {
+            "phase": "setup",
+            "message": (
+                f"CPU tune: {config.get('cpu_threads')} threads · "
+                f"batch {config.get('batch_size')} · workers {config.get('workers')}"
+            ),
+            "progress": 3,
+            "status": "running",
+        })
         config["device"] = resolve_training_device(config)
         adapter = get_adapter(job.architecture.value)
 

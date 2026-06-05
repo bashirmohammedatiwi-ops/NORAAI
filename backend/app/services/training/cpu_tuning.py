@@ -9,9 +9,20 @@ def cpu_count() -> int:
     return max(1, int(os.cpu_count() or 4))
 
 
+def effective_cpu_count() -> int:
+    """Host core count for tuning — TRAINING_CPU_THREADS overrides cgroup-limited detection."""
+    from app.core.config import get_settings
+
+    detected = cpu_count()
+    override = get_settings().training_cpu_threads
+    if override and override > 0:
+        return max(detected, override)
+    return detected
+
+
 def apply_cpu_env(thread_count: int | None = None) -> int:
     """Set BLAS / PyTorch thread env before training (call once per job)."""
-    n = thread_count or cpu_count()
+    n = thread_count or effective_cpu_count()
     for key in (
         "OMP_NUM_THREADS",
         "MKL_NUM_THREADS",
@@ -33,11 +44,9 @@ def apply_cpu_env(thread_count: int | None = None) -> int:
 
 
 def resolve_thread_count(explicit: int | None = None) -> int:
-    from app.core.config import get_settings
-
-    settings = get_settings()
-    n = cpu_count()
-    return explicit if explicit and explicit > 0 else (settings.training_cpu_threads or n)
+    if explicit and explicit > 0:
+        return explicit
+    return effective_cpu_count()
 
 
 def tune_training_config(config: dict, *, export_workers: int = 0) -> dict:
@@ -45,7 +54,7 @@ def tune_training_config(config: dict, *, export_workers: int = 0) -> dict:
     from app.core.config import get_settings
 
     settings = get_settings()
-    n = cpu_count()
+    n = effective_cpu_count()
     threads = resolve_thread_count()
     apply_cpu_env(threads)
     out = dict(config)

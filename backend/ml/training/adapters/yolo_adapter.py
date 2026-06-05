@@ -64,7 +64,9 @@ class YOLOAdapter:
             apply_cpu_env(threads)
             workers = config.get("workers", "auto")
             if workers in ("auto", 0, None):
-                workers = max(2, (os.cpu_count() or 4) - 1)
+                from app.services.training.cpu_tuning import effective_cpu_count
+
+                workers = max(2, effective_cpu_count() - 1)
             kwargs["workers"] = int(workers)
             if config.get("cache", True):
                 kwargs["cache"] = config.get("cache", True)
