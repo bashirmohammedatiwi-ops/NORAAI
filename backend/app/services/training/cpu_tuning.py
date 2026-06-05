@@ -32,13 +32,22 @@ def apply_cpu_env(thread_count: int | None = None) -> int:
     return n
 
 
+def resolve_thread_count(explicit: int | None = None) -> int:
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    n = cpu_count()
+    return explicit if explicit and explicit > 0 else (settings.training_cpu_threads or n)
+
+
 def tune_training_config(config: dict, *, export_workers: int = 0) -> dict:
     """Scale batch size and dataloader workers from host CPU count."""
     from app.core.config import get_settings
 
     settings = get_settings()
     n = cpu_count()
-    threads = settings.training_cpu_threads or n
+    threads = resolve_thread_count()
+    apply_cpu_env(threads)
     out = dict(config)
 
     workers = out.get("workers")

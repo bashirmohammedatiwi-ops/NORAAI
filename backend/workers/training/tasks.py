@@ -71,9 +71,10 @@ def run_training_job(job_id: str):
         session.commit()
 
         config = dict(job.config or {})
-        from app.services.training.cpu_tuning import tune_training_config
+        from app.services.training.cpu_tuning import apply_cpu_env, resolve_thread_count, tune_training_config
         from ml.training.adapters.yolo_adapter import resolve_training_device
 
+        apply_cpu_env(resolve_thread_count())
         config = tune_training_config(config)
         config["device"] = resolve_training_device(config)
         adapter = get_adapter(job.architecture.value)

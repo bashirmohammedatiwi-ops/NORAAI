@@ -58,9 +58,9 @@ class YOLOAdapter:
         if config.get("close_mosaic") is not None:
             kwargs["close_mosaic"] = config["close_mosaic"]
         if use_cpu:
-            from app.services.training.cpu_tuning import apply_cpu_env
+            from app.services.training.cpu_tuning import apply_cpu_env, resolve_thread_count
 
-            threads = int(config.get("cpu_threads") or 0) or (os.cpu_count() or 4)
+            threads = int(config.get("cpu_threads") or 0) or resolve_thread_count()
             apply_cpu_env(threads)
             workers = config.get("workers", "auto")
             if workers in ("auto", 0, None):
@@ -85,9 +85,9 @@ class YOLOAdapter:
 
         try:
             if device == "cpu":
-                from app.services.training.cpu_tuning import apply_cpu_env
+                from app.services.training.cpu_tuning import apply_cpu_env, resolve_thread_count
 
-                apply_cpu_env(int(config.get("cpu_threads") or 0) or None)
+                apply_cpu_env(int(config.get("cpu_threads") or 0) or resolve_thread_count())
 
             from ultralytics import YOLO
 

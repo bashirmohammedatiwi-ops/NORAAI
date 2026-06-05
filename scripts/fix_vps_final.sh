@@ -43,11 +43,12 @@ run_script scripts/sync_env.sh .env
 echo "[3/6] Remove ghost containers..."
 run_script scripts/remove_compose_conflicts.sh
 
-echo "[4/6] Rebuild gateway + API (4GB upload, long timeouts)..."
+echo "[4/6] Rebuild gateway + API + training worker..."
 docker compose -f docker-compose.prod.yml -p aiops build gateway api
 docker tag aiops-backend:latest aiops-backend-training:latest 2>/dev/null || true
 
 echo "[5/6] Start stack..."
+docker compose -f docker-compose.prod.yml -p aiops up -d --remove-orphans --force-recreate worker-training
 docker compose -f docker-compose.prod.yml -p aiops up -d --remove-orphans
 run_script scripts/cleanup_orphans.sh
 run_script scripts/ensure_services.sh recover
