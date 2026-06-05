@@ -59,6 +59,7 @@ async def predict(
                 for p in predictions
             ],
             "count": len(predictions),
+            "raw_count": int(meta.get("raw_detection_count", 0)),
             "latency_ms": round(latency_ms, 1),
         }
 

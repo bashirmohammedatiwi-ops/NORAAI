@@ -158,12 +158,16 @@ async def run_detection(
         return [], "No trained model deployed. Train and activate a model from the dashboard.", {}
 
     assert artifact is not None
-    allowed = allowed_detection_classes(project_classes, artifact)
+    class_names = list(artifact.classes_used or [])
+    if simple:
+        # Manual test: all YOLO labels from the trained model (Pothole, Crack, حفر, …)
+        allowed = class_names or allowed_detection_classes(project_classes, artifact)
+    else:
+        allowed = allowed_detection_classes(project_classes, artifact)
     if not allowed:
         return [], "Model classes do not match dashboard classes. Retrain after updating classes.", {}
 
     allowed_norm = {normalize_class_name(n) for n in allowed}
-    class_names = list(artifact.classes_used or [])
 
     try:
         weights_data = download_bytes(artifact.minio_weights_key)

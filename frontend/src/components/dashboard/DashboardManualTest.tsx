@@ -20,6 +20,7 @@ interface Detection {
 interface PredictResult {
   predictions: Detection[];
   count: number;
+  raw_count?: number;
   latency_ms: number;
 }
 
@@ -65,6 +66,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
   const [status, setStatus] = useState<InferenceStatus | null>(null);
   const [detections, setDetections] = useState<Detection[]>([]);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [rawCount, setRawCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [minConfidence, setMinConfidence] = useState(0.5);
@@ -110,6 +112,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
     setError('');
     setDetections([]);
     setLatencyMs(null);
+    setRawCount(null);
     try {
       const prepared = await prepareImage(image);
       const form = new FormData();
@@ -124,6 +127,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
       );
       setDetections(data.predictions ?? []);
       setLatencyMs(data.latency_ms ?? null);
+      setRawCount(data.raw_count ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'فشل الاختبار');
     } finally {
@@ -137,6 +141,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
     setFile(picked);
     setDetections([]);
     setLatencyMs(null);
+    setRawCount(null);
     setError('');
   };
 
@@ -144,6 +149,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
     setFile(null);
     setDetections([]);
     setLatencyMs(null);
+    setRawCount(null);
     setError('');
     if (inputRef.current) inputRef.current.value = '';
   };
@@ -241,7 +247,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
                 </Button>
               </div>
               {previewUrl && (
-                <div className="relative inline-block max-w-full mx-auto">
+                <div className="relative w-fit max-w-full mx-auto">
                   <img
                     src={previewUrl}
                     alt=""
@@ -297,7 +303,8 @@ export function DashboardManualTest({ projects, compact }: Props) {
             <>
               <ScanSearch className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">
-                {detections.length} كشف
+                {detections.length}
+                {rawCount != null && rawCount > detections.length ? `/${rawCount}` : ''} كشف
                 {latencyMs != null && ` · ${latencyMs.toFixed(0)} ms`}
               </span>
             </>

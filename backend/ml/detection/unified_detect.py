@@ -191,7 +191,7 @@ def detect_simple_with_project_model(
     raw = adapter.predict(
         weights_path,
         image_path,
-        conf=min(0.15, settings.inference_confidence_threshold),
+        conf=0.1,
         iou=settings.inference_iou_threshold,
     )
     candidates: list[dict] = []
