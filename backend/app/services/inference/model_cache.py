@@ -14,7 +14,7 @@ from typing import Any
 from app.core.config import get_settings
 
 _lock = threading.Lock()
-_entries: OrderedDict[str, "_CacheEntry"] = {}
+_entries: OrderedDict[str, "_CacheEntry"] = OrderedDict()
 
 
 @dataclass
