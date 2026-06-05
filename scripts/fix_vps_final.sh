@@ -48,7 +48,6 @@ docker compose -f docker-compose.prod.yml -p aiops build gateway api
 docker tag aiops-backend:latest aiops-backend-training:latest 2>/dev/null || true
 
 echo "[5/6] Start stack..."
-docker compose -f docker-compose.prod.yml -p aiops up -d --remove-orphans --force-recreate worker-training
 docker compose -f docker-compose.prod.yml -p aiops up -d --remove-orphans
 run_script scripts/cleanup_orphans.sh
 run_script scripts/ensure_services.sh recover
