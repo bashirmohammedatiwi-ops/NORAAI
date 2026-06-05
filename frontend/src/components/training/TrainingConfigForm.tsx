@@ -114,6 +114,9 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
       if (o.recommendations?.architecture) {
         setArchitecture(o.recommendations.architecture);
       }
+      if (o.recommendations?.default_fine_tune != null) {
+        setFineTuneFromActive(o.recommendations.default_fine_tune);
+      }
       if (o.cpu_presets?.length) {
         applyCpuPreset(presetKey, o.cpu_presets);
       } else {
