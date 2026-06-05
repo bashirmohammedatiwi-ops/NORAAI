@@ -105,7 +105,9 @@ def export_yolo_dataset_sync(
 
     exported = 0
     done = 0
-    cpu_n = max(1, os.cpu_count() or 4)
+    from app.services.training.cpu_tuning import effective_cpu_count
+
+    cpu_n = effective_cpu_count()
     pool_size = max_workers if max_workers and max_workers > 0 else min(32, cpu_n * 3)
     workers = max(1, min(pool_size, total or 1))
     with ThreadPoolExecutor(max_workers=workers) as pool:
