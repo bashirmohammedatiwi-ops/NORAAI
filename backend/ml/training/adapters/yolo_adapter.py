@@ -122,8 +122,6 @@ class YOLOAdapter:
                         "message": f"Epoch {epoch}/{epochs} validation · Accuracy {map50_95:.1%}",
                         "progress": min(100, 15 + int((epoch / max(epochs, 1)) * 85)),
                         "epoch_progress": 100,
-                        "batch": nb,
-                        "total_batches": nb,
                         "loss": val_loss,
                         "precision": precision,
                         "recall": recall,

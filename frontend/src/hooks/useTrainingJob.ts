@@ -110,6 +110,7 @@ export function useTrainingJob(
       ? latestLive
       : null;
 
+    const isValidation = latestLive.phase === 'validation';
     return {
       ...base,
       current_epoch: epoch,
@@ -117,9 +118,9 @@ export function useTrainingJob(
       progress: Math.min(100, Math.max(0, progress)),
       phase: (latestLive.phase as string | undefined) ?? base.phase,
       message: (latestLive.message as string | undefined) ?? base.message,
-      batch: num(latestLive.batch, base.batch),
-      total_batches: num(latestLive.total_batches, base.total_batches),
-      epoch_progress: num(latestLive.epoch_progress, base.epoch_progress),
+      batch: isValidation ? base.batch : num(latestLive.batch, base.batch),
+      total_batches: isValidation ? base.total_batches : num(latestLive.total_batches, base.total_batches),
+      epoch_progress: isValidation ? 100 : num(latestLive.epoch_progress, base.epoch_progress),
       export_current: num(latestLive.export_current, base.export_current),
       export_total: num(latestLive.export_total, base.export_total),
       current_step: num(latestLive.current_step, base.current_step),
