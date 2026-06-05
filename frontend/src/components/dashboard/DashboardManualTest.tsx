@@ -77,6 +77,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [minConfidence, setMinConfidence] = useState(0.05);
+  const [highAccuracy, setHighAccuracy] = useState(true);
   const [serverThreshold, setServerThreshold] = useState<number | null>(null);
 
   const modelProjects = useMemo(() => projects.filter((p) => p.has_model), [projects]);
@@ -137,7 +138,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
       form.append('file', prepared);
       form.append('min_confidence', '0.05');
       form.append('simple', 'true');
-      form.append('high_accuracy', 'true');
+      form.append('high_accuracy', String(highAccuracy));
       const data = await api.post<PredictResult & {
         confidence_threshold?: number;
         training_image_size?: number;
@@ -161,7 +162,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [projectId, status?.ready, status?.training_image_size, status?.inference_imgsz]);
+  }, [projectId, status?.ready, status?.training_image_size, status?.inference_imgsz, highAccuracy]);
 
   const pickFile = (list: FileList | null) => {
     const picked = list?.[0];
@@ -187,7 +188,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
   useEffect(() => {
     if (!file || !status?.ready) return;
     void runTest(file);
-  }, [file, projectId, status?.ready, runTest]);
+  }, [file, projectId, status?.ready, runTest, highAccuracy]);
 
   const boxColor = (cls: string) => colorMap.get(cls) ?? '#22c55e';
 
@@ -237,6 +238,15 @@ export function DashboardManualTest({ projects, compact }: Props) {
         )}
 
         <div className="space-y-1">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={highAccuracy}
+              onChange={(e) => setHighAccuracy(e.target.checked)}
+              className="rounded"
+            />
+            <span>وضع دقة عالية (TTA + multi-scale) — أبطأ لكن أدق</span>
+          </label>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="shrink-0">العتبة</span>
             <input
@@ -256,7 +266,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
               {status.inference_imgsz ? ` · استدلال ${status.inference_imgsz}px` : ''}
               {status.map50_95 != null ? ` · mAP ${(status.map50_95 * 100).toFixed(1)}%` : ''}
               {serverThreshold != null ? ` · خادم ${(serverThreshold * 100).toFixed(0)}%` : ''}
-              {' · وضع دقة عالية'}
+              {highAccuracy ? ' · دقة عالية' : ' · سريع'}
             </p>
           )}
         </div>

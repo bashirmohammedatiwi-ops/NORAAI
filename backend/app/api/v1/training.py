@@ -57,6 +57,10 @@ async def create_training_job(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.training.guard import ensure_no_running_training_async
+
+    await ensure_no_running_training_async(db, project_id)
+
     job = TrainingJob(
         project_id=project_id,
         name=data.name,
@@ -245,23 +249,16 @@ async def retrain_project_model(
     architecture: str = Query("yolo11"),
     preset: str = Query(
         DEFAULT_CPU_PRESET,
-        pattern="^(fine_tune|best_accuracy|max_cpu|fleet_cpu|turbo_cpu|fast_cpu|balanced)$",
+        pattern="^(ultimate_accuracy|fine_tune|best_accuracy|max_cpu|fleet_cpu|turbo_cpu|fast_cpu|balanced)$",
     ),
     fine_tune: bool = Query(True, description="Continue training from active Main Model weights"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Retrain the single project model on the latest dataset — no manual model selection."""
-    from app.models import Dataset, TrainingStatus
+    from app.services.training.guard import ensure_no_running_training_async
 
-    running = await db.execute(
-        select(TrainingJob).where(
-            TrainingJob.project_id == project_id,
-            TrainingJob.status.in_([TrainingStatus.PENDING, TrainingStatus.RUNNING]),
-        )
-    )
-    if running.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Training already in progress")
+    await ensure_no_running_training_async(db, project_id)
 
     dataset = await ensure_default_dataset(db, project_id)
     summary = await get_dataset_summary(db, dataset.id)

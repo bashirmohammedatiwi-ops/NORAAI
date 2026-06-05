@@ -3,6 +3,29 @@
 from app.services.training.cpu_tuning import tune_training_config
 
 CPU_PRESETS: dict[str, dict] = {
+    "ultimate_accuracy": {
+        "label": "Ultimate Accuracy",
+        "description": "40 epochs · 640px · fine-tune + frozen backbone — maximum mAP on CPU VPS",
+        "epochs": 40,
+        "batch_size": 6,
+        "learning_rate": 0.0008,
+        "optimizer": "AdamW",
+        "scheduler": "cosine",
+        "augmentation": "light",
+        "image_size": 640,
+        "mixed_precision": False,
+        "val_split": 0.12,
+        "cache": True,
+        "prefer_disk_cache": True,
+        "patience": 20,
+        "close_mosaic": 10,
+        "warmup_epochs": 4,
+        "freeze_layers": 10,
+        "label_smoothing": 0.05,
+        "workers": "auto",
+        "device": "cpu",
+        "fine_tune_from_active": True,
+    },
     "fine_tune": {
         "label": "Fine-tune Main Model",
         "description": "30 epochs · 640px · low LR — continues from active Main Model (best mAP gain)",

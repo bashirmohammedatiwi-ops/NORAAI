@@ -63,6 +63,10 @@ class YOLOAdapter:
             kwargs["lrf"] = float(config["lrf"])
         if config.get("weight_decay") is not None:
             kwargs["weight_decay"] = float(config["weight_decay"])
+        if config.get("freeze_layers"):
+            kwargs["freeze"] = int(config["freeze_layers"])
+        if config.get("label_smoothing") is not None:
+            kwargs["label_smoothing"] = float(config["label_smoothing"])
         if use_cpu:
             from app.services.training.cpu_tuning import apply_cpu_env, resolve_thread_count
 

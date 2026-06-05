@@ -198,7 +198,11 @@ def predict_cached(
         )
         return _boxes_to_predictions(results, model_names)
 
-    sizes = sorted({size, max(320, int(size * 0.85))})
+    sizes = sorted({
+        size,
+        max(320, int(size * 0.85)),
+        min(1280, int(size * 1.12)),
+    })
     merged: list[dict] = []
     for sz in sizes:
         results = model.predict(

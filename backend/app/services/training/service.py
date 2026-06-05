@@ -83,6 +83,7 @@ TRAINING_OPTIONS = {
             "Review labels and add diverse road/camera images before retraining.",
         ],
         "default_fine_tune": True,
+        "ultimate_preset": "ultimate_accuracy",
     },
 }
 

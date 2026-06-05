@@ -208,11 +208,22 @@ def import_yolo_dataset(
             dataset = session.get(Dataset, uuid.UUID(dataset_id))
             version_id = dataset.head_version_id if dataset else None
             if version_id:
+                from app.services.models.active_model import get_active_model_sync
                 from app.services.training.cpu_presets import CPU_PRESETS
+                from app.services.training.fine_tune import recommend_preset
 
+                artifact = get_active_model_sync(session, uuid.UUID(project_id))
+                has_model = bool(artifact and not (artifact.metrics or {}).get("mock"))
+                can_fine = bool(
+                    artifact
+                    and not (artifact.metrics or {}).get("mock")
+                    and artifact.architecture in ("yolo11", "yolov10", "rt_detr")
+                )
+                preset = recommend_preset(has_model, can_fine)
                 config = build_retrain_config(
-                    epochs=CPU_PRESETS[DEFAULT_CPU_PRESET]["epochs"],
-                    preset=DEFAULT_CPU_PRESET,
+                    epochs=CPU_PRESETS[preset]["epochs"],
+                    preset=preset,
+                    fine_tune_from_active=can_fine,
                 )
                 job = TrainingJob(
                     project_id=uuid.UUID(project_id),

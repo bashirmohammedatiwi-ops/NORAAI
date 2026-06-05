@@ -26,6 +26,8 @@ def _item_to_candidate(
 ) -> dict | None:
     from app.services.driver.detection import map_class_to_event
 
+    from app.services.inference.class_display import resolve_display_class_name
+
     name = item.get("class_name")
     if not name and class_names:
         idx = int(item.get("class_id", 0))
@@ -33,6 +35,8 @@ def _item_to_candidate(
             name = class_names[idx]
     if not name:
         return None
+    if class_names:
+        name = resolve_display_class_name(name, class_names)
     if strict_allowlist and allowed_norm and normalize_class_name(name) not in allowed_norm:
         return None
 

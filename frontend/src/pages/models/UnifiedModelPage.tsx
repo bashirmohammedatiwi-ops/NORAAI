@@ -46,6 +46,7 @@ export default function UnifiedModelPage() {
 
   const [epochs, setEpochs] = useState(CPU_PRESETS[DEFAULT_CPU_PRESET].epochs);
   const [preset, setPreset] = useState<CpuPreset>(DEFAULT_CPU_PRESET);
+  const [fineTune, setFineTune] = useState(true);
   const [architecture, setArchitecture] = useState('yolo11');
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState<ModelArtifact[]>([]);
@@ -60,11 +61,22 @@ export default function UnifiedModelPage() {
 
   useEffect(() => { loadModels(); }, [loadModels]);
 
+  useEffect(() => {
+    if (!status) return;
+    const rec = status.recommended_preset as CpuPreset | undefined;
+    if (rec && rec in CPU_PRESETS) {
+      setPreset(rec);
+      setEpochs(CPU_PRESETS[rec].epochs);
+    }
+    if (status.can_fine_tune) setFineTune(true);
+    if (status.model?.architecture) setArchitecture(status.model.architecture);
+  }, [status?.recommended_preset, status?.can_fine_tune, status?.model?.architecture]);
+
   const retrain = async () => {
     if (!projectId) return;
     setLoading(true);
     try {
-      const query = buildRetrainQuery({ epochs, architecture, preset });
+      const query = buildRetrainQuery({ epochs, architecture, preset, fineTune });
       await api.post(`/api/v1/training/project/${projectId}/retrain?${query}`);
       await refetch();
       invalidateProject(projectId);
@@ -278,6 +290,28 @@ export default function UnifiedModelPage() {
               <label className="text-xs font-medium text-muted-foreground block mb-1.5">Epochs</label>
               <Input type="number" min={5} max={200} value={epochs} onChange={(e) => setEpochs(+e.target.value)} />
             </div>
+            <label className="flex items-start gap-2 text-sm cursor-pointer rounded-lg border px-3 py-2 bg-muted/30">
+              <input
+                type="checkbox"
+                checked={fineTune}
+                onChange={(e) => setFineTune(e.target.checked)}
+                className="mt-0.5"
+                disabled={!status?.can_fine_tune}
+              />
+              <span>
+                <strong>استمر من Main Model</strong>
+                <span className="block text-xs text-muted-foreground">
+                  {status?.can_fine_tune
+                    ? 'Fine-tune — يحسّن النموذج الحالي بدل البدء من الصفر'
+                    : 'يتاح بعد أول تدريب ناجح'}
+                </span>
+              </span>
+            </label>
+            {status?.recommended_preset && (
+              <p className="text-xs text-emerald-700">
+                موصى به: {CPU_PRESETS[status.recommended_preset as CpuPreset]?.label ?? status.recommended_preset}
+              </p>
+            )}
             <Button className="w-full" onClick={retrain} disabled={loading || training?.is_running}>
               {preset === 'fast_cpu' ? <Zap className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               {preset === 'fast_cpu' ? 'Fast CPU Retrain' : 'Retrain on latest data'}

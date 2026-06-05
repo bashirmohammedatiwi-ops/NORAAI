@@ -1,4 +1,5 @@
 export type CpuPreset =
+  | 'ultimate_accuracy'
   | 'fine_tune'
   | 'best_accuracy'
   | 'max_cpu'
@@ -8,6 +9,11 @@ export type CpuPreset =
   | 'balanced';
 
 export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string; epochs: number }> = {
+  ultimate_accuracy: {
+    label: 'Ultimate Accuracy',
+    description: '40 epochs · fine-tune · frozen backbone — maximum mAP',
+    epochs: 40,
+  },
   fine_tune: {
     label: 'Fine-tune Main Model',
     description: '30 epochs · 640px · low LR — continues from active model (best mAP gain)',

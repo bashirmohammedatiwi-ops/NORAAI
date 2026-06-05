@@ -170,6 +170,11 @@ def run_training_job(job_id: str):
             if fine_tune_path:
                 config["_fine_tune_weights_path"] = fine_tune_path
                 config["_fine_tune_source"] = fine_tune_source
+                from app.services.training.fine_tune import apply_fine_tune_training_overrides
+
+                apply_fine_tune_training_overrides(config, from_main_model=True)
+                job.config = dict(config)
+                session.commit()
             publish_metric(job_id, {
                 "phase": "setup",
                 "message": (

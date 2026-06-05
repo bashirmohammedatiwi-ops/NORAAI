@@ -36,6 +36,8 @@ interface TrainingOptions {
     architecture: string;
     preset: string;
     notes: string[];
+    default_fine_tune?: boolean;
+    ultimate_preset?: string;
   };
 }
 

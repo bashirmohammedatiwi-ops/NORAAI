@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
+import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,7 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
   const [architecture, setArchitecture] = useState('yolo11');
   const [preset, setPreset] = useState<CpuPreset>(DEFAULT_CPU_PRESET);
   const [epochs, setEpochs] = useState(CPU_PRESETS[DEFAULT_CPU_PRESET].epochs);
+  const [fineTune, setFineTune] = useState(true);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -25,9 +26,8 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
     setLoading(true);
     setDone(false);
     try {
-      await api.post(
-        `/api/v1/training/project/${projectId}/retrain?epochs=${epochs}&architecture=${architecture}&preset=${preset}`
-      );
+      const query = buildRetrainQuery({ epochs, architecture, preset, fineTune });
+      await api.post(`/api/v1/training/project/${projectId}/retrain?${query}`);
       setDone(true);
     } catch (e) {
       window.alert(e instanceof Error ? e.message : 'Failed to start training');
@@ -81,6 +81,10 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
             <label className="text-xs font-medium text-muted-foreground block mb-1.5">Epochs</label>
             <Input type="number" className="w-24" value={epochs} min={5} max={200} onChange={(e) => setEpochs(+e.target.value)} />
           </div>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground w-full">
+            <input type="checkbox" checked={fineTune} onChange={(e) => setFineTune(e.target.checked)} />
+            استمر من Main Model (Fine-tune)
+          </label>
           <Button onClick={startTraining} disabled={loading || imageCount < 1} variant="success">
             <Play className="h-4 w-4" />
             {loading ? 'Starting...' : 'Retrain Model'}

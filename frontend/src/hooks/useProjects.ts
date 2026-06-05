@@ -11,6 +11,9 @@ export interface ProjectListItem {
 }
 
 export interface ActiveModelStatus {
+  recommended_preset?: string;
+  can_fine_tune?: boolean;
+  fine_tune_source?: string | null;
   project_id: string;
   project_name: string;
   has_model: boolean;
