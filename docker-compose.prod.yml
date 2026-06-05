@@ -1,5 +1,6 @@
 # AI Operations Center — Production (VPS)
-#
+name: aiops
+
 # Port map:
 #   8080  Main App (UI + API + WebSocket via gateway nginx) - NOT 6000 (Chrome blocks it)
 #   6001  API direct (Swagger / debugging)
@@ -71,7 +72,7 @@ services:
       dockerfile: Dockerfile
     image: aiops-backend:latest
     restart: always
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_UVICORN_WORKERS:-1} --timeout-keep-alive 30 --limit-concurrency 100
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_UVICORN_WORKERS:-1} --timeout-keep-alive 7200 --limit-concurrency 100
     env_file: .env
     mem_limit: 768m
     ports:

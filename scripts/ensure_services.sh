@@ -161,6 +161,10 @@ start_stack() {
   ensure_docker_responsive
   load_env
 
+  if [ -x "${PROJECT_DIR}/scripts/remove_compose_conflicts.sh" ]; then
+    "${PROJECT_DIR}/scripts/remove_compose_conflicts.sh" 2>/dev/null || true
+  fi
+
   "${COMPOSE[@]}" up -d --remove-orphans postgres redis minio autoheal
   sleep 3
   "${COMPOSE[@]}" up -d --remove-orphans api gateway driver celery-beat
@@ -252,6 +256,10 @@ watchdog() {
 recover_stack() {
   load_env
   ensure_docker_responsive
+
+  if [ -x "${PROJECT_DIR}/scripts/remove_compose_conflicts.sh" ]; then
+    "${PROJECT_DIR}/scripts/remove_compose_conflicts.sh" 2>/dev/null || true
+  fi
 
   restart_exited_containers
   restart_unhealthy_containers

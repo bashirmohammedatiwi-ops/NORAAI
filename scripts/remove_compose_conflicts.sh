@@ -5,7 +5,15 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-COMPOSE=(docker compose -f docker-compose.prod.yml)
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-aiops}"
+if [ -f .env ] && grep -q '^COMPOSE_PROJECT_NAME=' .env 2>/dev/null; then
+  # shellcheck disable=SC1091
+  source "$(dirname "$0")/load_env.sh"
+  load_env_file "${PROJECT_DIR}/.env"
+fi
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-aiops}"
+
+COMPOSE=(docker compose -f docker-compose.prod.yml -p "${COMPOSE_PROJECT_NAME}")
 
 echo "Stopping compose stack..."
 "${COMPOSE[@]}" down --remove-orphans 2>/dev/null || true

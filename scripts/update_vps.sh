@@ -51,8 +51,12 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-chmod +x scripts/sync_env.sh scripts/diagnose.sh scripts/deploy_vps.sh scripts/pull_and_rebuild.sh scripts/docker_cleanup_after_update.sh scripts/ensure_services.sh scripts/install_boot_service.sh scripts/cleanup_orphans.sh scripts/remove_compose_conflicts.sh scripts/load_env.sh scripts/setup_swap.sh scripts/fix_gateway.sh scripts/check_training.sh
+chmod +x scripts/sync_env.sh scripts/diagnose.sh scripts/deploy_vps.sh scripts/pull_and_rebuild.sh scripts/docker_cleanup_after_update.sh scripts/ensure_services.sh scripts/install_boot_service.sh scripts/cleanup_orphans.sh scripts/remove_compose_conflicts.sh scripts/fix_vps_final.sh scripts/load_env.sh scripts/setup_swap.sh scripts/fix_gateway.sh scripts/check_training.sh
 ./scripts/sync_env.sh .env
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-aiops}"
+if grep -q '^COMPOSE_PROJECT_NAME=' .env 2>/dev/null; then
+  export COMPOSE_PROJECT_NAME="$(grep '^COMPOSE_PROJECT_NAME=' .env | cut -d= -f2- | tr -d '\r')"
+fi
 
 echo "Rebuilding gateway + backend (Docker cache: $([ -n "$NO_CACHE" ] && echo off || echo on))..."
 docker compose -f docker-compose.prod.yml build $NO_CACHE gateway api

@@ -178,8 +178,7 @@ class ApiClient {
     }, timeoutMs ?? (isUpload ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
   }
 
-  /** Multipart upload with XMLHttpRequest progress events (large ZIP archives). */
-  postFormWithProgress<T>(
+  private postFormWithProgressOnce<T>(
     path: string,
     form: FormData,
     onProgress?: (loaded: number, total: number) => void,
@@ -202,7 +201,7 @@ class ApiClient {
             const refreshed = await this.refreshSession();
             if (refreshed) {
               try {
-                const data = await this.postFormWithProgress<T>(path, form, onProgress, timeoutMs);
+                const data = await this.postFormWithProgressOnce<T>(path, form, onProgress, timeoutMs);
                 resolve(data);
               } catch (err) {
                 reject(err);
@@ -238,11 +237,11 @@ class ApiClient {
 
       xhr.onerror = () => {
         reject(new Error(
-          'تعذّر الاتصال بالخادم — تحقق أن الموقع يعمل (منفذ 8080) أو أن حجم الملف لا يتجاوز حد الرفع (4GB). أعد المحاولة بعد دقيقة.',
+          'تعذّر الاتصال بالخادم — تحقق أن الموقع يعمل (منفذ 8080) أو أن حجم الملف لا يتجاوز حد الرفع (4GB).',
         ));
       };
       xhr.ontimeout = () => {
-        reject(new Error("انتهت مهلة الرفع — الملف كبير جداً أو الاتصال بطيء. أعد المحاولة."));
+        reject(new Error("انتهت مهلة الرفع — الملف كبير جداً أو الاتصال بطيء."));
       };
 
       xhr.open('POST', url);
@@ -250,6 +249,32 @@ class ApiClient {
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       xhr.send(form);
     });
+  }
+
+  /** Multipart upload with progress + auto-retry on network blips (large ZIP archives). */
+  async postFormWithProgress<T>(
+    path: string,
+    form: FormData,
+    onProgress?: (loaded: number, total: number) => void,
+    timeoutMs = LARGE_UPLOAD_TIMEOUT_MS,
+  ): Promise<T> {
+    const retryable = (msg: string) =>
+      msg.includes('تعذّر الاتصال') || msg.includes('انتهت مهلة') || msg.includes('timed out');
+
+    let lastErr: Error | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.postFormWithProgressOnce<T>(path, form, onProgress, timeoutMs);
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error(String(err));
+        if (attempt < 2 && retryable(lastErr.message)) {
+          await new Promise((r) => window.setTimeout(r, 4000 * (attempt + 1)));
+          continue;
+        }
+        throw lastErr;
+      }
+    }
+    throw lastErr ?? new Error('Upload failed');
   }
 
   /** Login without sending stale tokens or retrying refresh on 401. */

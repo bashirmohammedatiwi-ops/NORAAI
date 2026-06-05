@@ -45,6 +45,9 @@ if re.search(r"^APP_NAME=AI Operations Center\s*$", text, flags=re.M):
         flags=re.M,
     )
 
+if not re.search(r"^COMPOSE_PROJECT_NAME=", text, flags=re.M):
+    text = text.rstrip() + "\nCOMPOSE_PROJECT_NAME=aiops\n"
+
 env_path.write_text(text, encoding="utf-8")
 print(f"Synced DATABASE_URL with POSTGRES_PASSWORD in {env_path}")
 PY
