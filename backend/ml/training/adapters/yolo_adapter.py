@@ -58,9 +58,16 @@ class YOLOAdapter:
         if config.get("close_mosaic") is not None:
             kwargs["close_mosaic"] = config["close_mosaic"]
         if use_cpu:
-            kwargs["workers"] = min(8, config.get("workers", os.cpu_count() or 4))
+            from app.services.training.cpu_tuning import apply_cpu_env
+
+            threads = int(config.get("cpu_threads") or 0) or (os.cpu_count() or 4)
+            apply_cpu_env(threads)
+            workers = config.get("workers", "auto")
+            if workers in ("auto", 0, None):
+                workers = max(2, (os.cpu_count() or 4) - 1)
+            kwargs["workers"] = int(workers)
             if config.get("cache", True):
-                kwargs["cache"] = True
+                kwargs["cache"] = config.get("cache", True)
         return kwargs
 
     def train(
@@ -77,6 +84,11 @@ class YOLOAdapter:
         device = train_kwargs["device"]
 
         try:
+            if device == "cpu":
+                from app.services.training.cpu_tuning import apply_cpu_env
+
+                apply_cpu_env(int(config.get("cpu_threads") or 0) or None)
+
             from ultralytics import YOLO
 
             model = YOLO(self.model_name)

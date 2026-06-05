@@ -71,7 +71,10 @@ def run_training_job(job_id: str):
         session.commit()
 
         config = dict(job.config or {})
+        from app.services.training.cpu_tuning import tune_training_config
         from ml.training.adapters.yolo_adapter import resolve_training_device
+
+        config = tune_training_config(config)
         config["device"] = resolve_training_device(config)
         adapter = get_adapter(job.architecture.value)
 
@@ -115,7 +118,7 @@ def run_training_job(job_id: str):
                     config.get("val_split", 0.2),
                     progress_callback=progress_callback,
                     cancel_check=cancel_check,
-                    max_workers=settings.training_export_max_workers,
+                    max_workers=config.get("_export_workers") or settings.training_export_max_workers or None,
                 )
             else:
                 yaml_path = os.path.join(tmpdir, "data.yaml")
@@ -185,11 +188,14 @@ def run_training_job(job_id: str):
             except Exception:
                 pass
 
-            onnx_path = os.path.join(tmpdir, "model.onnx")
-            adapter.export_onnx(weights_path, onnx_path)
-            onnx_key = f"projects/{job.project_id}/models/{job.id}/model.onnx"
-            if os.path.exists(onnx_path):
-                upload_bytes(onnx_key, Path(onnx_path).read_bytes(), "application/octet-stream")
+            onnx_key: str | None = None
+            skip_onnx = settings.training_skip_onnx_export or str(config.get("device", "cpu")) == "cpu"
+            if not skip_onnx:
+                onnx_path = os.path.join(tmpdir, "model.onnx")
+                adapter.export_onnx(weights_path, onnx_path)
+                if os.path.exists(onnx_path):
+                    onnx_key = f"projects/{job.project_id}/models/{job.id}/model.onnx"
+                    upload_bytes(onnx_key, Path(onnx_path).read_bytes(), "application/octet-stream")
 
             classes_used = class_names
             if job.dataset_version_id is None:
@@ -203,7 +209,7 @@ def run_training_job(job_id: str):
                 architecture=job.architecture.value,
                 lifecycle=ModelLifecycle.REGISTERED,
                 minio_weights_key=minio_key,
-                minio_onnx_key=onnx_key if os.path.exists(onnx_path) else None,
+                minio_onnx_key=onnx_key,
                 dataset_version_id=job.dataset_version_id,
                 classes_used=classes_used,
                 metrics=result.get("metrics", {}),

@@ -208,7 +208,12 @@ def import_yolo_dataset(
             dataset = session.get(Dataset, uuid.UUID(dataset_id))
             version_id = dataset.head_version_id if dataset else None
             if version_id:
-                config = build_retrain_config(epochs=DEFAULT_CPU_PRESET["epochs"], preset=DEFAULT_CPU_PRESET)
+                from app.services.training.cpu_presets import CPU_PRESETS
+
+                config = build_retrain_config(
+                    epochs=CPU_PRESETS[DEFAULT_CPU_PRESET]["epochs"],
+                    preset=DEFAULT_CPU_PRESET,
+                )
                 job = TrainingJob(
                     project_id=uuid.UUID(project_id),
                     name="YOLO Import Train",

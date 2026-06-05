@@ -1,6 +1,27 @@
 """CPU training presets — tuned for VPS without GPU."""
 
+from app.services.training.cpu_tuning import tune_training_config
+
 CPU_PRESETS: dict[str, dict] = {
+    "max_cpu": {
+        "label": "Max CPU",
+        "description": "Uses all CPU cores · auto batch · disk cache — fastest full training",
+        "epochs": 12,
+        "batch_size": "auto",
+        "learning_rate": 0.01,
+        "optimizer": "AdamW",
+        "scheduler": "cosine",
+        "augmentation": "light",
+        "image_size": 416,
+        "mixed_precision": False,
+        "val_split": 0.15,
+        "cache": True,
+        "prefer_disk_cache": True,
+        "patience": 6,
+        "close_mosaic": 2,
+        "workers": "auto",
+        "device": "cpu",
+    },
     "fleet_cpu": {
         "label": "Fleet Camera",
         "description": "12 epochs · 416px · tuned for live road detection on CPU",
@@ -16,7 +37,7 @@ CPU_PRESETS: dict[str, dict] = {
         "cache": True,
         "patience": 6,
         "close_mosaic": 2,
-        "workers": 8,
+        "workers": "auto",
         "device": "cpu",
     },
     "turbo_cpu": {
@@ -34,6 +55,7 @@ CPU_PRESETS: dict[str, dict] = {
         "cache": True,
         "patience": 3,
         "close_mosaic": 2,
+        "workers": "auto",
         "device": "cpu",
     },
     "fast_cpu": {
@@ -51,7 +73,7 @@ CPU_PRESETS: dict[str, dict] = {
         "cache": True,
         "patience": 5,
         "close_mosaic": 3,
-        "workers": 6,
+        "workers": "auto",
         "device": "cpu",
     },
     "balanced": {
@@ -68,11 +90,12 @@ CPU_PRESETS: dict[str, dict] = {
         "val_split": 0.2,
         "cache": True,
         "patience": 8,
+        "workers": "auto",
         "device": "cpu",
     },
 }
 
-DEFAULT_CPU_PRESET = "fleet_cpu"
+DEFAULT_CPU_PRESET = "max_cpu"
 
 
 def build_retrain_config(epochs: int | None, preset: str = DEFAULT_CPU_PRESET) -> dict:
@@ -80,4 +103,4 @@ def build_retrain_config(epochs: int | None, preset: str = DEFAULT_CPU_PRESET) -
     if epochs is not None:
         base["epochs"] = epochs
     base["continuous"] = True
-    return base
+    return tune_training_config(base)

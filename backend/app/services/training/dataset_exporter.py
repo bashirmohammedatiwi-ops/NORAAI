@@ -1,3 +1,4 @@
+import os
 import random
 import uuid
 from collections import defaultdict
@@ -20,7 +21,7 @@ def export_yolo_dataset_sync(
     val_split: float = 0.2,
     progress_callback: Callable[[dict], None] | None = None,
     cancel_check: Callable[[], bool] | None = None,
-    max_workers: int = 8,
+    max_workers: int | None = None,
 ) -> tuple[str, list[str]]:
     """Export dataset version to YOLO format with parallel MinIO downloads."""
     version = session.get(DatasetVersion, dataset_version_id)
@@ -104,7 +105,9 @@ def export_yolo_dataset_sync(
 
     exported = 0
     done = 0
-    workers = max(1, min(max_workers, total or 1))
+    cpu_n = max(1, os.cpu_count() or 4)
+    pool_size = max_workers if max_workers and max_workers > 0 else min(32, cpu_n * 3)
+    workers = max(1, min(pool_size, total or 1))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(export_one, img_id): img_id for img_id in image_ids}
         for future in as_completed(futures):
