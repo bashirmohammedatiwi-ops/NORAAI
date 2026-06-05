@@ -51,7 +51,7 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-chmod +x scripts/sync_env.sh scripts/diagnose.sh scripts/deploy_vps.sh scripts/pull_and_rebuild.sh scripts/docker_cleanup_after_update.sh scripts/ensure_services.sh scripts/install_boot_service.sh scripts/cleanup_orphans.sh scripts/load_env.sh scripts/setup_swap.sh scripts/fix_gateway.sh scripts/check_training.sh
+chmod +x scripts/sync_env.sh scripts/diagnose.sh scripts/deploy_vps.sh scripts/pull_and_rebuild.sh scripts/docker_cleanup_after_update.sh scripts/ensure_services.sh scripts/install_boot_service.sh scripts/cleanup_orphans.sh scripts/remove_compose_conflicts.sh scripts/load_env.sh scripts/setup_swap.sh scripts/fix_gateway.sh scripts/check_training.sh
 ./scripts/sync_env.sh .env
 
 echo "Rebuilding gateway + backend (Docker cache: $([ -n "$NO_CACHE" ] && echo off || echo on))..."
@@ -66,9 +66,10 @@ else
 fi
 
 echo "Restarting stack..."
+./scripts/remove_compose_conflicts.sh
 if ! docker compose -f docker-compose.prod.yml up -d --remove-orphans; then
-  echo "Compose up failed (container conflict) — stopping stack and retrying..."
-  docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
+  echo "Compose up failed — retry after conflict cleanup..."
+  ./scripts/remove_compose_conflicts.sh
   docker compose -f docker-compose.prod.yml up -d --remove-orphans
 fi
 ./scripts/cleanup_orphans.sh

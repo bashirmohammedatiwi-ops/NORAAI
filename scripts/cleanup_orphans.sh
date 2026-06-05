@@ -11,6 +11,14 @@ COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-aiops}"
 
 echo "=== AI Ops stack cleanup (target: 10 containers) ==="
 
+removed=0
+while IFS= read -r name; do
+  [ -z "$name" ] && continue
+  echo "Removing ghost: ${name}"
+  docker rm -f "$name" 2>/dev/null || true
+  removed=$((removed + 1))
+done < <(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E '^[0-9a-f]{8,}_aiops-' || true)
+
 mapfile -t ALLOWED < <("${COMPOSE[@]}" config --services 2>/dev/null | sort -u)
 echo "Allowed services: ${ALLOWED[*]}"
 
@@ -23,7 +31,6 @@ is_allowed() {
   return 1
 }
 
-removed=0
 while IFS= read -r cid; do
   [ -z "$cid" ] && continue
   name=$(docker inspect -f '{{.Name}}' "$cid" 2>/dev/null | sed 's/^\///')
