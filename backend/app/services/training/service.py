@@ -233,6 +233,8 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
         "train_images": live_fields.get("train_images"),
         "val_images": live_fields.get("val_images"),
         "exported_images": live_fields.get("exported_images"),
+        "labeled_train_images": live_fields.get("labeled_train_images"),
+        "yolo_train_images": live_fields.get("yolo_train_images"),
         "duration_seconds": duration,
         "metrics_count": metrics_count.scalar() or 0,
         "trials_count": trials_count.scalar() or 0,

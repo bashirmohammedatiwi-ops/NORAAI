@@ -91,6 +91,8 @@ def merge_live_progress(
         "train_images": None,
         "val_images": None,
         "exported_images": None,
+        "labeled_train_images": None,
+        "yolo_train_images": None,
     }
 
     if not live or job_status not in ("running", "pending"):
@@ -151,4 +153,6 @@ def merge_live_progress(
         "train_images": live.get("train_images"),
         "val_images": live.get("val_images"),
         "exported_images": live.get("exported_images"),
+        "labeled_train_images": live.get("labeled_train_images"),
+        "yolo_train_images": live.get("yolo_train_images"),
     }

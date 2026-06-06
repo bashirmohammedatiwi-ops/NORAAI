@@ -119,9 +119,11 @@ export function TrainingProgressCard({
           {message && <p className="text-sm text-foreground/80 font-medium">{message}</p>}
           {inTrain && totalBatches === 1 && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              تحذير: دفعة واحدة فقط — الصور مُصدّرة
-              {detail?.exportedImages != null ? ` (${detail.exportedImages})` : ''}
-              {' '}لكن التسميات (labels) قليلة جداً. YOLO يتدرب فقط على الصور التي تحتوي صناديق إحداثيات. أضف أو استورد التسميات.
+              تحذير: YOLO يرى دفعة واحدة فقط
+              {detail?.yoloTrainImages != null ? ` (${detail.yoloTrainImages} صورة)` : ''}.
+              {detail?.labeledTrainImages != null && detail.labeledTrainImages > 100
+                ? ' التسميات موجودة على القرص — جرّب تعطيل rect أو تحقق من الفئات المختارة للتدريب.'
+                : ' قليل من ملفات التسميات على القرص — تحقق من الفئات المختارة أو استورد YOLO labels.'}
             </p>
           )}
 
