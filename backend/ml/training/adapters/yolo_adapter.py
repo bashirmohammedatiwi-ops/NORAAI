@@ -16,9 +16,9 @@ AUGMENTATION_PRESETS = {
 
 
 def resolve_training_device(config: dict[str, Any]) -> str | int:
-    if settings.training_cpu_fallback or config.get("device") == "cpu":
-        return "cpu"
-    return config.get("device", 0)
+    from app.services.training.hardware import resolve_training_device_value
+
+    return resolve_training_device_value(config, settings)
 
 
 class YOLOAdapter:
@@ -32,6 +32,9 @@ class YOLOAdapter:
         batch = config.get("batch_size", 16)
         lr = config.get("learning_rate", 0.01)
         device = resolve_training_device(config)
+        from app.services.training.hardware import is_cpu_device, ultralytics_device
+
+        yolo_device = ultralytics_device(device)
         aug_preset = config.get("augmentation", "medium")
         aug = AUGMENTATION_PRESETS.get(aug_preset, AUGMENTATION_PRESETS["medium"])
         aug.update({
@@ -39,12 +42,12 @@ class YOLOAdapter:
         })
 
         optimizer = config.get("optimizer", "AdamW")
-        use_cpu = device == "cpu"
+        use_cpu = is_cpu_device(device)
         kwargs: dict[str, Any] = {
             "epochs": epochs,
             "batch": batch,
             "lr0": lr,
-            "device": device,
+            "device": yolo_device,
             "amp": False if use_cpu else config.get("mixed_precision", True),
             "imgsz": config.get("image_size", 640),
             "patience": config.get("patience", 10),
@@ -72,12 +75,23 @@ class YOLOAdapter:
 
             threads = int(config.get("cpu_threads") or 0) or resolve_thread_count()
             apply_cpu_env(threads)
-            workers = config.get("workers", "auto")
-            if workers in ("auto", 0, None):
-                from app.services.training.cpu_tuning import effective_cpu_count
-
-                workers = max(2, effective_cpu_count() - 1)
-            kwargs["workers"] = int(workers)
+            workers = config.get("workers", 0)
+            kwargs["workers"] = int(workers) if workers not in ("auto", None) else 0
+            kwargs["plots"] = False
+            kwargs["save_json"] = False
+            kwargs["save_hybrid"] = False
+            kwargs["deterministic"] = False
+            kwargs["multi_scale"] = False
+            if config.get("_rect"):
+                kwargs["rect"] = True
+            if config.get("_fast_aug"):
+                kwargs["mosaic"] = min(float(kwargs.get("mosaic", 0.5)), 0.25)
+                kwargs["mixup"] = 0.0
+                kwargs["copy_paste"] = 0.0
+                kwargs["erasing"] = 0.0
+                kwargs["auto_augment"] = None
+                kwargs["degrees"] = min(float(kwargs.get("degrees", 10.0)), 5.0)
+                kwargs["translate"] = min(float(kwargs.get("translate", 0.1)), 0.05)
             if config.get("cache", True):
                 kwargs["cache"] = config.get("cache", True)
         return kwargs
@@ -93,10 +107,11 @@ class YOLOAdapter:
         start = time.time()
         train_kwargs = self._build_train_kwargs(config)
         epochs = train_kwargs["epochs"]
-        device = train_kwargs["device"]
+        device = resolve_training_device(config)
+        from app.services.training.hardware import is_cpu_device
 
         try:
-            if device == "cpu":
+            if is_cpu_device(device):
                 from app.services.training.cpu_tuning import apply_cpu_env, resolve_thread_count
 
                 apply_cpu_env(int(config.get("cpu_threads") or 0) or resolve_thread_count())
@@ -195,7 +210,20 @@ class YOLOAdapter:
                 def on_fit_epoch_end(trainer):
                     emit_validation_metrics(trainer, save_epoch=True)
 
+                val_every = int(config.get("_val_every") or 1)
+
+                def on_train_epoch_start(trainer):
+                    if val_every <= 1:
+                        return
+                    epoch = int(getattr(trainer, "epoch", 0)) + 1
+                    total = int(getattr(trainer, "epochs", epochs) or epochs)
+                    run_val = epoch % val_every == 0 or epoch >= total
+                    if hasattr(trainer, "args"):
+                        trainer.args.val = run_val
+
                 model.add_callback("on_train_batch_end", on_train_batch_end)
+                if val_every > 1:
+                    model.add_callback("on_train_epoch_start", on_train_epoch_start)
                 model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
 
             if cancel_check and cancel_check():

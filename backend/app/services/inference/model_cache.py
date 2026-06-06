@@ -77,8 +77,10 @@ def get_cached_yolo(
 
     from ultralytics import YOLO
 
+    from app.services.training.hardware import resolve_inference_device_value, ultralytics_device
+
     model = YOLO(weights_path)
-    device = settings.inference_device
+    device = ultralytics_device(resolve_inference_device_value(settings))
     if device and device != "cpu":
         try:
             model.to(device)

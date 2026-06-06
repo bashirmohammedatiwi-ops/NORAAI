@@ -1,5 +1,4 @@
 import os
-import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +81,11 @@ def run_training_job(job_id: str):
         )
 
         config = apply_fine_tune_training_overrides(tune_training_config(config))
+        from app.services.training.cpu_tuning import speed_boost_summary
+
+        boost_msg = speed_boost_summary(config)
+        if boost_msg:
+            config["_speed_boost_note"] = boost_msg
         job.config = config
         session.commit()
         config["device"] = resolve_training_device(config)
@@ -90,7 +94,9 @@ def run_training_job(job_id: str):
         def cancel_check() -> bool:
             return _job_was_cancelled(session, job_id)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        from app.services.training.workspace import fast_training_workspace
+
+        with fast_training_workspace(job_id) as tmpdir:
             def progress_callback(m: dict):
                 publish_metric(job_id, m)
 
@@ -184,16 +190,19 @@ def run_training_job(job_id: str):
                 apply_fine_tune_training_overrides(config, from_main_model=True)
                 job.config = dict(config)
                 session.commit()
+            setup_msg = (
+                "Fine-tuning from Main Model"
+                if fine_tune_source == "main_model"
+                else (
+                    fine_tune_warning
+                    or f"CPU tune: {config.get('cpu_threads')} threads · batch {config.get('batch_size')}"
+                )
+            )
+            if config.get("_speed_boost_note"):
+                setup_msg = f"{setup_msg} · {config['_speed_boost_note']}"
             publish_metric(job_id, {
                 "phase": "setup",
-                "message": (
-                    "Fine-tuning from Main Model"
-                    if fine_tune_source == "main_model"
-                    else (
-                        fine_tune_warning
-                        or f"CPU tune: {config.get('cpu_threads')} threads · batch {config.get('batch_size')}"
-                    )
-                ),
+                "message": setup_msg,
                 "fine_tune_source": fine_tune_source,
                 "progress": 5,
                 "status": "running",

@@ -65,10 +65,16 @@ class Settings(BaseSettings):
 
     cuda_visible_devices: str = "0"
     training_cpu_fallback: bool = True
+    training_device: str = "auto"
     training_cpu_threads: int = 0
     training_auto_batch: bool = True
+    training_speed_boost: bool = True
+    training_hostinger_mode: bool = False
+    training_val_every: int = 0
     training_skip_onnx_export: bool = True
     training_export_max_workers: int = 0
+    static_frontend_dir: str = ""
+    desktop_mode: bool = False
 
     prometheus_enabled: bool = True
 

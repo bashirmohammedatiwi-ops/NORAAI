@@ -35,8 +35,15 @@ PERFORMANCE_INDEXES = (
 
 
 async def init_db():
+    async with engine.connect() as conn:
+        try:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+            await conn.commit()
+        except Exception as exc:
+            await conn.rollback()
+            print(f"PostGIS extension skipped (native dev OK): {exc}")
+
     async with engine.begin() as conn:
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(
             text(

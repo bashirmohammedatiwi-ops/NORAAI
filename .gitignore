@@ -14,6 +14,9 @@ build/
 .coverage
 htmlcov/
 
+# Native local binaries (no Docker)
+tools/native/
+
 # Environment
 .env
 .env.local
@@ -24,6 +27,8 @@ htmlcov/
 node_modules/
 driver-app/node_modules/
 driver-app/release/
+desktop-app/release/
+desktop-app/dist/
 driver-app/dist/
 frontend/dist/
 *.log

@@ -212,12 +212,17 @@ async def get_model(model_id: UUID, db: AsyncSession = Depends(get_db)):
 
 @router.get("/training/project/{project_id}/environment")
 async def training_environment(project_id: UUID):
+    from app.services.training.hardware import detect_hardware, resolve_training_device_value
+
     settings = get_settings()
+    hw = detect_hardware()
+    device = resolve_training_device_value({}, settings)
     return {
         "project_id": str(project_id),
-        "device": "cpu" if settings.training_cpu_fallback else "gpu",
+        "device": hw["best_device"],
         "cpu_fallback": settings.training_cpu_fallback,
-        "label": "CPU Training" if settings.training_cpu_fallback else "GPU Training",
+        "label": hw["best_device_label"],
+        "hardware": hw,
     }
 
 

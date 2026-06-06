@@ -14,6 +14,12 @@ MAIN_MODEL_NAME = "Main Model"
 LIVE_DEPLOYMENT_NAME = "Live Model"
 
 
+def _hardware_summary() -> dict:
+    from app.services.training.hardware import detect_hardware
+
+    return detect_hardware()
+
+
 def _recommended_training_preset(artifact: ModelArtifact | None) -> str:
     from app.services.training.fine_tune import recommend_preset
 
@@ -199,8 +205,8 @@ async def get_active_model_status(db: AsyncSession, project_id: uuid.UUID) -> di
         "progress": 0,
         "current_epoch": 0,
         "total_epochs": 0,
-        "device": "cpu" if settings.training_cpu_fallback else "gpu",
-        "device_label": "CPU Training" if settings.training_cpu_fallback else "GPU Training",
+        "device": _hardware_summary()["best_device"],
+        "device_label": _hardware_summary()["best_device_label"],
     }
     if job:
         total_epochs = (job.config or {}).get("epochs", 50)

@@ -40,6 +40,33 @@ docker compose exec api python scripts/init_db.py
 
 **Login:** `admin@aiops.com` / `admin123`
 
+### Standalone local copy (separate from VPS)
+
+Fully isolated stack — own database, images, and models (not shared with VPS).
+
+**Option A — No Docker (Windows native):**
+
+```powershell
+scripts\install_native.ps1   # once (~60 MB download)
+scripts\start_native.ps1
+scripts\stop_native.ps1
+```
+
+**Option B — Docker Desktop:**
+
+```powershell
+scripts\start_standalone.ps1
+```
+
+| Service | URL |
+|---------|-----|
+| Web UI | http://localhost:5173 |
+| API | http://localhost:8000 |
+
+**Login:** `admin@aiops.com` / `admin123`  
+**Stop:** `scripts\stop_standalone.ps1`  
+**Switch UI back to VPS:** `scripts\use_vps_mode.ps1`
+
 ### Local training → VPS storage (no Docker on PC)
 
 Train on your computer (full CPU/GPU); models and data stay on the VPS.

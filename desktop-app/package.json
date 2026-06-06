@@ -1,0 +1,36 @@
+{
+  "name": "norai-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "NORAAI Desktop — local ML training & inference",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "electron:dev": "electron .",
+    "electron:build": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.norai.desktop",
+    "productName": "NORAAI",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/norai-bundle",
+        "to": "norai",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": ["portable"],
+      "artifactName": "NORAAI-Portable-${version}.exe"
+    }
+  }
+}

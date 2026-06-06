@@ -1,10 +1,13 @@
 from contextlib import asynccontextmanager
 import asyncio
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
@@ -40,6 +43,19 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+_static_dir = (settings.static_frontend_dir or "").strip()
+if _static_dir and Path(_static_dir).is_dir():
+    _assets = Path(_static_dir) / "assets"
+    if _assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
+
+    @app.get("/")
+    async def spa_index():
+        index = Path(_static_dir) / "index.html"
+        if index.is_file():
+            return FileResponse(index)
+        return {"status": "ok", "service": settings.app_name}
 
 
 @app.get("/health")

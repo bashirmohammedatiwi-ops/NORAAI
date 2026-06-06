@@ -76,8 +76,11 @@ async def fetch_active_training_jobs(db: AsyncSession, org_id: uuid.UUID) -> lis
             duration = int((datetime.now(timezone.utc) - job.started_at).total_seconds())
 
         live_fields = merge_live_progress(job.status.value, progress, current_epoch, live, duration)
-        device = (job.config or {}).get("device", "cpu")
-        device_label = "CPU Training" if device == "cpu" or settings.training_cpu_fallback else "GPU Training"
+        from app.services.training.hardware import device_label as format_device_label
+        from app.services.training.hardware import resolve_training_device_value
+
+        device = resolve_training_device_value(job.config or {}, settings)
+        device_label = format_device_label(device)
 
         latest_metrics = None
         if job.status in (TrainingStatus.RUNNING, TrainingStatus.PENDING):

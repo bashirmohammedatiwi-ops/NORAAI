@@ -206,7 +206,7 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           workers: 'auto',
           cache: true,
           prefer_disk_cache: true,
-          device: 'cpu',
+          device: 'auto',
           fine_tune_from_active: fineTuneFromActive,
           continuous: fineTuneFromActive,
           class_ids: selectedClassIds,

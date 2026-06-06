@@ -69,7 +69,7 @@ TRAINING_OPTIONS = {
         "val_split": _BEST["val_split"],
         "hpo_trials": 5,
         "patience": _BEST["patience"],
-        "device": "cpu",
+        "device": "auto",
     },
     "cpu_presets": _cpu_preset_options(),
     "default_cpu_preset": DEFAULT_CPU_PRESET,
