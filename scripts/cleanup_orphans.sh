@@ -6,8 +6,8 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-COMPOSE=(docker compose -f docker-compose.prod.yml)
 COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-aiops}"
+COMPOSE=(docker compose -f docker-compose.prod.yml -p "${COMPOSE_PROJECT}")
 
 echo "=== AI Ops stack cleanup (target: 10 containers) ==="
 

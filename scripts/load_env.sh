@@ -19,7 +19,7 @@ load_env_file() {
     key="${key%"${key##*[![:space:]]}"}"
 
     case "$key" in
-      PORT_*|POSTGRES_*|API_*|CELERY_*|APP_*|PUBLIC_URL|TRAINING_DOCKERFILE)
+      PORT_*|POSTGRES_*|API_*|CELERY_*|APP_*|PUBLIC_URL|TRAINING_DOCKERFILE|COMPOSE_PROJECT_NAME)
         if [[ "$val" == \"*\" ]]; then
           val="${val:1:${#val}-2}"
         elif [[ "$val" == \'*\' ]]; then

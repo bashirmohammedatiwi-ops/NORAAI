@@ -6,7 +6,8 @@ MODE="${1:-start}"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-COMPOSE=(docker compose -f docker-compose.prod.yml)
+COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-aiops}"
+COMPOSE=(docker compose -f docker-compose.prod.yml -p "${COMPOSE_PROJECT}")
 LOG_DIR="${PROJECT_DIR}/logs"
 LOG_FILE="${LOG_DIR}/watchdog.log"
 STATE_FILE="${LOG_DIR}/watchdog.state"
@@ -160,6 +161,8 @@ start_stack() {
   log "=== AI Ops: starting stack ==="
   ensure_docker_responsive
   load_env
+  COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-aiops}"
+  COMPOSE=(docker compose -f docker-compose.prod.yml -p "${COMPOSE_PROJECT}")
 
   if [ -x "${PROJECT_DIR}/scripts/remove_compose_conflicts.sh" ]; then
     "${PROJECT_DIR}/scripts/remove_compose_conflicts.sh" 2>/dev/null || true
@@ -173,9 +176,14 @@ start_stack() {
   fi
   sleep 5
   if ! "${COMPOSE[@]}" up -d --remove-orphans api driver celery-beat; then
-    log "API up failed — retry after brief pause"
+    log "API up failed — clearing stale compose state and retrying"
+    if [ -x "${PROJECT_DIR}/scripts/remove_compose_conflicts.sh" ]; then
+      "${PROJECT_DIR}/scripts/remove_compose_conflicts.sh" 2>/dev/null || true
+    else
+      "${COMPOSE[@]}" down --remove-orphans 2>/dev/null || true
+    fi
     sleep 3
-    "${COMPOSE[@]}" up -d --remove-orphans api driver celery-beat
+    "${COMPOSE[@]}" up -d --remove-orphans --force-recreate api driver celery-beat
   fi
 
   log "Waiting for API on port ${PORT_API:-6001}..."
@@ -210,6 +218,8 @@ start_stack() {
 
 watchdog() {
   load_env
+  COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-aiops}"
+  COMPOSE=(docker compose -f docker-compose.prod.yml -p "${COMPOSE_PROJECT}")
   ensure_docker_responsive
   log_memory_pressure
 
@@ -267,6 +277,8 @@ watchdog() {
 
 recover_stack() {
   load_env
+  COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-aiops}"
+  COMPOSE=(docker compose -f docker-compose.prod.yml -p "${COMPOSE_PROJECT}")
   ensure_docker_responsive
 
   if [ -x "${PROJECT_DIR}/scripts/remove_compose_conflicts.sh" ]; then
