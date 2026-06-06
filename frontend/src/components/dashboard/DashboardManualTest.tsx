@@ -396,7 +396,11 @@ export function DashboardManualTest({ projects, compact }: Props) {
           ) : (
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] text-muted-foreground truncate">{file.name}</span>
+                <span className="text-[10px] text-muted-foreground truncate">
+                  {file?.name
+                    ?? datasetImages.find((img) => img.id === selectedDatasetId)?.filename
+                    ?? 'صورة من البيانات'}
+                </span>
                 <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={clearAll}>
                   <X className="h-4 w-4" />
                 </Button>
