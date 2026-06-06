@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.core.minio_client import download_bytes
 from app.models import Deployment, Image, InferenceLog, User
 from app.services.driver.detection import preload_project_model, run_detection
-from app.services.driver.project_classes import get_project_classes
+from app.services.driver.project_classes import get_project_classes, model_class_names
 from app.services.inference.manual_test_eval import (
     build_manual_test_warnings,
     compare_predictions,
@@ -44,7 +44,7 @@ def _simple_predict_payload(
     meta["training_map50"] = metrics.get("map50")
     meta["class_names_mismatch"] = bool(
         meta.get("model_class_names")
-        and list(artifact.classes_used or []) != meta.get("model_class_names")
+        and model_class_names(artifact) != meta.get("model_class_names")
     )
     warnings = build_manual_test_warnings(
         meta,
@@ -53,7 +53,7 @@ def _simple_predict_payload(
     )
     return {
         "model_name": artifact.name,
-        "classes": list(artifact.classes_used or []),
+        "classes": model_class_names(artifact),
         "predictions": [
             {"class": p["class"], "confidence": p["confidence"], "bbox": p["bbox"]}
             for p in predictions
@@ -71,7 +71,7 @@ def _simple_predict_payload(
         ),
         "training_image_size": int(metrics.get("image_size", 640)),
         "recommended_confidence": resolve_manual_test_confidence(artifact, settings),
-        "model_class_names": meta.get("model_class_names") or list(artifact.classes_used or []),
+        "model_class_names": meta.get("model_class_names") or model_class_names(artifact),
         "class_names_mismatch": bool(meta.get("class_names_mismatch")),
         "high_accuracy": bool(meta.get("high_accuracy")),
         "latency_ms": round(latency_ms, 1),
@@ -245,7 +245,7 @@ async def inference_status(project_id: uuid.UUID, db: AsyncSession = Depends(get
     artifact = await get_active_model(db, project_id)
     if not artifact:
         return {"ready": False}
-    classes = list(artifact.classes_used or [])
+    classes = model_class_names(artifact)
     project_classes = await get_project_classes(db, project_id)
     color_by_name = {c.name: c.color or "#64748b" for c in project_classes}
     metrics = artifact.metrics or {}

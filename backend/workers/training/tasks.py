@@ -228,7 +228,7 @@ def run_training_job(job_id: str):
                             else "Fix storage connectivity before training."
                         )
                     )
-                class_names = ", ".join(export_meta.get("names") or []) or "selected classes"
+                class_names_label = ", ".join(export_meta.get("names") or class_names) or "selected classes"
                 if selected_classes:
                     min_labeled = max(30, int(labeled_n * 0.4)) if labeled_n else 30
                 else:
@@ -236,7 +236,7 @@ def run_training_job(job_id: str):
 
                 if labeled_train < min_labeled:
                     hint = (
-                        f"Selected classes [{class_names}] — {labeled_n} images in DB have these labels. "
+                        f"Selected classes [{class_names_label}] — {labeled_n} images in DB have these labels. "
                         "Select all 5 classes in Train step to use the full dataset."
                         if selected_classes
                         else "Import YOLO labels or approve annotations for this dataset."
@@ -250,7 +250,7 @@ def run_training_job(job_id: str):
                     publish_metric(job_id, {
                         "phase": "validate",
                         "message": (
-                            f"Training {class_names} only — exported {exported_n} images "
+                            f"Training {class_names_label} only — exported {exported_n} images "
                             f"(dataset has {export_meta.get('total_images_in_version')} total)"
                         ),
                         "status": "running",

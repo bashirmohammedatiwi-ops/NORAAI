@@ -14,6 +14,22 @@ def normalize_class_name(name: str) -> str:
     return name.strip().lower().replace(" ", "_").replace("-", "_")
 
 
+def normalize_classes_used(raw: object) -> list[str]:
+    """Coerce JSONB classes_used to a list (legacy jobs stored a single class name as str)."""
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [str(x).strip() for x in raw if x is not None and str(x).strip()]
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return []
+        if "," in text:
+            return [part.strip() for part in text.split(",") if part.strip()]
+        return [text]
+    return []
+
+
 async def get_project_classes(db: AsyncSession, project_id: uuid.UUID) -> list[ClassLabel]:
     result = await db.execute(
         select(ClassLabel).where(
@@ -35,7 +51,7 @@ def is_production_model(artifact: ModelArtifact | None) -> bool:
 
 
 def model_class_names(artifact: ModelArtifact) -> list[str]:
-    return list(artifact.classes_used or [])
+    return normalize_classes_used(artifact.classes_used)
 
 
 def allowed_detection_classes(
@@ -44,10 +60,11 @@ def allowed_detection_classes(
 ) -> list[str]:
     """Class names the driver may detect: intersection of dashboard classes and model output labels."""
     project_names = {normalize_class_name(c.name) for c in project_classes}
-    if not artifact or not artifact.classes_used:
+    names = normalize_classes_used(artifact.classes_used) if artifact else []
+    if not artifact or not names:
         return sorted({c.name for c in project_classes})
     allowed: list[str] = []
-    for name in artifact.classes_used:
+    for name in names:
         if normalize_class_name(name) in project_names:
             allowed.append(name)
     return allowed

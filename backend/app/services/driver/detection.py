@@ -181,7 +181,9 @@ async def run_detection(
     settings = get_settings()
     from app.services.inference.resolve_settings import resolve_inference_imgsz
 
-    class_names = list(artifact.classes_used or [])
+    from app.services.driver.project_classes import model_class_names as artifact_class_names
+
+    class_names = artifact_class_names(artifact)
     fast_path = simple or settings.driver_inference_simple
     if fast_path:
         allowed = list({*(class_names or []), *[c.name for c in project_classes]})

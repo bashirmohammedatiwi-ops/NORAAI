@@ -19,6 +19,22 @@ import {
 import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
 import { cancelTrainingJob } from '@/lib/cancelTraining';
 
+function normalizeClassesUsed(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((c): c is string => typeof c === 'string' && c.trim().length > 0);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    return raw.includes(',') ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [raw.trim()];
+  }
+  return [];
+}
+
+function formatMetricPct(value: unknown): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '—';
+  const pct = value <= 1 ? value * 100 : value;
+  return `${pct.toFixed(1)}%`;
+}
+
 const serviceIcons: Record<string, typeof Map> = {
   road_intelligence: Map,
   fleet: Truck,
@@ -129,6 +145,7 @@ export default function UnifiedModelPage() {
   };
 
   const model = status?.model;
+  const modelClasses = normalizeClassesUsed(model?.classes_used);
   const training = status?.training;
   const progress = runningJob?.progress ?? training?.progress ?? 0;
   const currentEpoch = runningJob?.current_epoch ?? training?.current_epoch ?? 0;
@@ -223,17 +240,15 @@ export default function UnifiedModelPage() {
                   ].map(({ label, value }) => (
                     <div key={label} className="rounded-xl bg-secondary/50 p-3 text-center">
                       <p className="text-xs text-muted-foreground">{label}</p>
-                      <p className="text-lg font-bold">
-                        {value != null ? `${(value * 100).toFixed(1)}%` : '—'}
-                      </p>
+                      <p className="text-lg font-bold">{formatMetricPct(value)}</p>
                     </div>
                   ))}
                 </div>
-                {model.classes_used?.length > 0 && (
+                {modelClasses.length > 0 && (
                   <div>
                     <p className="text-xs text-muted-foreground mb-2">Classes</p>
                     <div className="flex flex-wrap gap-1">
-                      {model.classes_used.map((c) => (
+                      {modelClasses.map((c) => (
                         <Badge key={c} variant="secondary">{c}</Badge>
                       ))}
                     </div>

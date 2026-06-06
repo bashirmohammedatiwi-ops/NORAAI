@@ -153,6 +153,7 @@ def ensure_live_deployment_sync(session: Session, project_id: uuid.UUID, artifac
 
 async def get_active_model_status(db: AsyncSession, project_id: uuid.UUID) -> dict:
     from app.models import TrainingJob, TrainingStatus
+    from app.services.driver.project_classes import model_class_names
 
     project = await db.get(Project, project_id)
     if not project:
@@ -240,7 +241,7 @@ async def get_active_model_status(db: AsyncSession, project_id: uuid.UUID) -> di
             "architecture": artifact.architecture,
             "lifecycle": artifact.lifecycle.value,
             "metrics": artifact.metrics or {},
-            "classes_used": artifact.classes_used or [],
+            "classes_used": model_class_names(artifact),
             "model_size_mb": artifact.model_size_mb,
             "gpu_used": artifact.gpu_used,
             "updated_at": artifact.created_at.isoformat(),

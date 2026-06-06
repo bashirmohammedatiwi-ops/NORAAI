@@ -26,7 +26,9 @@ def resolve_manual_test_confidence(
 ) -> float:
     """Low default for manual test so users see raw model output."""
     cfg = settings or get_settings()
-    class_count = len(artifact.classes_used or []) if artifact else 0
+    from app.services.driver.project_classes import model_class_names
+
+    class_count = len(model_class_names(artifact)) if artifact else 0
     if class_count <= 1:
         return min(0.15, cfg.inference_single_class_confidence)
     return min(0.10, cfg.inference_confidence_threshold)
