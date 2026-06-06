@@ -160,11 +160,14 @@ def run_training_job(job_id: str):
                 train_n = int(export_meta.get("train_images") or 0)
                 val_n = int(export_meta.get("val_images") or 0)
                 exported_n = int(export_meta.get("exported_images") or 0)
+                config["_train_images"] = train_n
+                config["_val_images"] = val_n
+                config["_exported_images"] = exported_n
                 if train_n >= 2000:
                     config["cache"] = "disk"
                     config["prefer_disk_cache"] = True
-                    job.config = dict(config)
-                    session.commit()
+                job.config = dict(config)
+                session.commit()
                 expected_n = int((validation.get("stats") or {}).get("image_count") or 0)
                 publish_metric(job_id, {
                     "phase": "export",

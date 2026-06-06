@@ -225,7 +225,11 @@ class YOLOAdapter:
                     batch_state["last_speed_ts"] = now
 
                     epoch_avg_bpm = (batch_i / max(epoch_elapsed, 0.5)) * 60.0
-                    display_bpm = float(ema_bpm) if ema_bpm is not None else epoch_avg_bpm
+                    at_epoch_end = batch_i >= nb or epoch_progress >= 99
+                    if at_epoch_end or nb <= 1:
+                        display_bpm = epoch_avg_bpm
+                    else:
+                        display_bpm = float(ema_bpm) if ema_bpm is not None else epoch_avg_bpm
                     batches_per_min = round(display_bpm, 1)
                     batches_per_min_avg = round(epoch_avg_bpm, 1)
                     sec_per_batch = round(60.0 / display_bpm, 1) if display_bpm > 0 else round(
@@ -250,6 +254,9 @@ class YOLOAdapter:
                         "total_epochs": epochs,
                         "batch": batch_i,
                         "total_batches": nb,
+                        "train_images": config.get("_train_images"),
+                        "val_images": config.get("_val_images"),
+                        "exported_images": config.get("_exported_images"),
                         "epoch_progress": epoch_progress,
                         "epoch_elapsed_seconds": int(epoch_elapsed),
                         "epoch_eta_seconds": epoch_eta,
