@@ -5,13 +5,13 @@ from app.services.training.cpu_tuning import tune_training_config
 CPU_PRESETS: dict[str, dict] = {
     "ultimate_accuracy": {
         "label": "Ultimate Accuracy",
-        "description": "40 epochs · 640px · fine-tune + frozen backbone — maximum mAP on CPU VPS",
+        "description": "40 epochs · 640px · medium aug · frozen backbone — maximum mAP on CPU VPS",
         "epochs": 40,
-        "batch_size": 6,
+        "batch_size": 12,
         "learning_rate": 0.0008,
         "optimizer": "AdamW",
         "scheduler": "cosine",
-        "augmentation": "light",
+        "augmentation": "medium",
         "image_size": 640,
         "mixed_precision": False,
         "val_split": 0.12,
@@ -159,7 +159,7 @@ CPU_PRESETS: dict[str, dict] = {
     },
 }
 
-DEFAULT_CPU_PRESET = "best_accuracy"
+DEFAULT_CPU_PRESET = "ultimate_accuracy"
 
 
 def build_retrain_config(
@@ -168,9 +168,13 @@ def build_retrain_config(
     *,
     fine_tune_from_active: bool | None = None,
 ) -> dict:
+    from app.services.training.cpu_tuning import QUALITY_PRESETS
+
     base = dict(CPU_PRESETS.get(preset, CPU_PRESETS[DEFAULT_CPU_PRESET]))
     if epochs is not None:
         base["epochs"] = epochs
+    base["_preset"] = preset
+    base["_prioritize_accuracy"] = preset in QUALITY_PRESETS
     base["continuous"] = True
     if fine_tune_from_active is not None:
         base["fine_tune_from_active"] = fine_tune_from_active

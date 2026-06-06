@@ -264,8 +264,11 @@ class YOLOAdapter:
                     if display_bpm <= 0 and steady_bpm:
                         display_bpm = steady_bpm
 
+                    epoch_true_bpm = (batch_i / max(epoch_elapsed, 0.5)) * 60.0
+
                     batches_per_min = round(display_bpm, 1)
                     batches_per_min_avg = round(rolling_bpm or steady_bpm or display_bpm, 1)
+                    batches_per_min_epoch = round(epoch_true_bpm, 1)
 
                     if (
                         now - batch_state["last_ts"] < min_interval
@@ -304,6 +307,7 @@ class YOLOAdapter:
                         "epoch_eta_seconds": epoch_eta,
                         "batches_per_min": batches_per_min,
                         "batches_per_min_avg": batches_per_min_avg,
+                        "batches_per_min_epoch": batches_per_min_epoch,
                         "sec_per_batch": sec_per_batch,
                         "images_per_min": images_per_min,
                         "eta_seconds": job_eta,

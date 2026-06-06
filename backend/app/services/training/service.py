@@ -228,6 +228,7 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
         "epoch_eta_seconds": live_fields.get("epoch_eta_seconds"),
         "batches_per_min": live_fields.get("batches_per_min"),
         "batches_per_min_avg": live_fields.get("batches_per_min_avg"),
+        "batches_per_min_epoch": live_fields.get("batches_per_min_epoch"),
         "sec_per_batch": live_fields.get("sec_per_batch"),
         "images_per_min": live_fields.get("images_per_min"),
         "train_images": live_fields.get("train_images"),

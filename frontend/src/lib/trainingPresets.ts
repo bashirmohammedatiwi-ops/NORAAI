@@ -10,8 +10,8 @@ export type CpuPreset =
 
 export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string; epochs: number }> = {
   ultimate_accuracy: {
-    label: 'Ultimate Accuracy',
-    description: '40 epochs · fine-tune · frozen backbone — maximum mAP',
+    label: 'أقصى دقة',
+    description: '40 دورة · 640px · medium aug — أفضل جودة على CPU',
     epochs: 40,
   },
   fine_tune: {
@@ -51,7 +51,7 @@ export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string
   },
 };
 
-export const DEFAULT_CPU_PRESET: CpuPreset = 'fast_cpu';
+export const DEFAULT_CPU_PRESET: CpuPreset = 'ultimate_accuracy';
 
 export function buildRetrainQuery(params: {
   epochs?: number;

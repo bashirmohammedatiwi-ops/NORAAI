@@ -80,6 +80,7 @@ export function TrainingProgressCard({
   const eta = detail?.etaSeconds ?? jobEtaFromEpoch ?? computeEtaSeconds(durationSeconds, pctOverall);
   const batchesPerMin = detail?.batchesPerMin ?? null;
   const batchesPerMinAvg = detail?.batchesPerMinAvg ?? null;
+  const batchesPerMinEpoch = detail?.batchesPerMinEpoch ?? null;
   const secPerBatch = detail?.secPerBatch ?? null;
   const imagesPerMin = detail?.imagesPerMin ?? null;
 
@@ -179,10 +180,15 @@ export function TrainingProgressCard({
                     : (secPerBatch != null ? `~${secPerBatch}s/batch` : undefined),
                   icon: <Zap className="h-3.5 w-3.5" />,
                 },
-                ...(batchesPerMinAvg != null && batchesPerMinAvg !== batchesPerMin ? [{
+                ...(batchesPerMinAvg != null ? [{
                   label: 'متوسط آخر دقيقة',
                   value: `${batchesPerMinAvg} batch/min`,
-                  sub: 'نافذة متحركة 60ث',
+                  sub: 'نافذة 60ث',
+                }] : []),
+                ...(batchesPerMinEpoch != null ? [{
+                  label: 'متوسط الدورة الحقيقي',
+                  value: `${batchesPerMinEpoch} batch/min`,
+                  sub: 'من بداية الدورة',
                 }] : []),
                 {
                   label: 'متبقي كلي',

@@ -32,6 +32,7 @@ export interface TrainingJobDetail {
   epoch_eta_seconds?: number | null;
   batches_per_min?: number | null;
   batches_per_min_avg?: number | null;
+  batches_per_min_epoch?: number | null;
   sec_per_batch?: number | null;
   images_per_min?: number | null;
   train_images?: number | null;
@@ -149,6 +150,7 @@ export function useTrainingJob(
       epoch_eta_seconds: num(speedLive?.epoch_eta_seconds, base.epoch_eta_seconds),
       batches_per_min: num(speedLive?.batches_per_min, base.batches_per_min),
       batches_per_min_avg: num(speedLive?.batches_per_min_avg, base.batches_per_min_avg),
+      batches_per_min_epoch: num(speedLive?.batches_per_min_epoch, base.batches_per_min_epoch),
       sec_per_batch: num(speedLive?.sec_per_batch, base.sec_per_batch),
       images_per_min: num(speedLive?.images_per_min, base.images_per_min),
       train_images: num(latestLive.train_images, base.train_images),
@@ -183,6 +185,7 @@ export function useTrainingJob(
       epochEtaSeconds: liveJob.epoch_eta_seconds,
       batchesPerMin: liveJob.batches_per_min,
       batchesPerMinAvg: liveJob.batches_per_min_avg,
+      batchesPerMinEpoch: liveJob.batches_per_min_epoch,
       secPerBatch: liveJob.sec_per_batch,
       imagesPerMin: liveJob.images_per_min,
       trainImages: liveJob.train_images,

@@ -160,12 +160,38 @@ def _apply_speed_overlays(out: dict, *, settings) -> None:
         out["_hostinger"] = True
 
 
-def apply_large_dataset_overlays(config: dict) -> dict:
-    """After export — 2.5k+ images on CPU VPS: smaller imgsz, larger batch, less val/freeze."""
-    train_n = int(config.get("_train_images") or config.get("_labeled_train_images") or 0)
-    if train_n < 2500:
-        return config
+QUALITY_PRESETS = frozenset({"ultimate_accuracy", "best_accuracy", "fine_tune", "balanced"})
 
+
+def is_quality_preset(config: dict) -> bool:
+    preset = str(config.get("_preset") or "")
+    return bool(config.get("_prioritize_accuracy")) or preset in QUALITY_PRESETS
+
+
+def _apply_large_dataset_quality(config: dict, train_n: int) -> dict:
+    """Large dataset + quality preset: keep 640px, medium aug, full validation cadence."""
+    mem_mb = training_mem_limit_mb()
+    preset = str(config.get("_preset") or "")
+    val_every = 1 if preset == "ultimate_accuracy" else 2
+    mem_cap = 24 if mem_mb >= 12288 else 16
+    batch_floor = int(config.get("batch_size") or 8)
+    if isinstance(batch_floor, str):
+        batch_floor = 12
+    config["image_size"] = max(int(config.get("image_size") or 640), 640)
+    config["batch_size"] = max(batch_floor, min(mem_cap, 20 if train_n >= 5000 else 16))
+    config["cache"] = "disk"
+    config["prefer_disk_cache"] = True
+    config["_rect"] = False
+    config["_val_every"] = val_every
+    config["_large_dataset"] = True
+    config["_prioritize_accuracy"] = True
+    config["_image_size_locked"] = True
+    config["_quality_large_dataset"] = True
+    return config
+
+
+def _apply_large_dataset_speed(config: dict, train_n: int) -> dict:
+    """Large dataset + fast presets: smaller imgsz, larger batch, less validation."""
     mem_mb = training_mem_limit_mb()
     if train_n >= 5000:
         cap_imgsz = 416
@@ -202,6 +228,16 @@ def apply_large_dataset_overlays(config: dict) -> dict:
         config["epochs"] = 30
 
     return config
+
+
+def apply_large_dataset_overlays(config: dict) -> dict:
+    """After export — tune large CPU datasets for quality or speed based on preset."""
+    train_n = int(config.get("_train_images") or config.get("_labeled_train_images") or 0)
+    if train_n < 2500:
+        return config
+    if is_quality_preset(config):
+        return _apply_large_dataset_quality(config, train_n)
+    return _apply_large_dataset_speed(config, train_n)
 
 
 def should_fine_tune_large(config: dict, train_n: int) -> bool:
@@ -267,7 +303,9 @@ def speed_boost_summary(config: dict) -> str:
         parts.append("lite-aug")
     if config.get("_hostinger"):
         parts.append("hostinger")
-    if config.get("_large_dataset"):
+    if config.get("_quality_large_dataset"):
+        parts.append(f"quality-{config.get('_train_images', '?')}")
+    elif config.get("_large_dataset"):
         parts.append(f"large-{config.get('_train_images', '?')}")
     if use_ram_workspace():
         parts.append("shm")
