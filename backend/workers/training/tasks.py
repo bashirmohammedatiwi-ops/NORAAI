@@ -211,13 +211,23 @@ def run_training_job(job_id: str):
                     ),
                     "status": "running",
                 })
-                if expected_n and exported_n < max(10, int(expected_n * 0.9)):
-                    raise ValueError(
-                        f"Dataset export incomplete: only {exported_n}/{expected_n} images "
-                        f"downloaded from MinIO ({export_meta.get('export_failures', 0)} failed). "
-                        "Fix storage connectivity before training."
-                    )
                 selected_classes = bool(selected_class_ids)
+                exported_for_classes = int(export_meta.get("exported_for_classes") or exported_n)
+                if selected_classes:
+                    expected_export = exported_for_classes or labeled_n or exported_n
+                else:
+                    expected_export = expected_n or exported_for_classes
+
+                if expected_export and exported_n < max(10, int(expected_export * 0.9)):
+                    raise ValueError(
+                        f"Dataset export incomplete: only {exported_n}/{expected_export} images "
+                        f"downloaded from MinIO ({export_meta.get('export_failures', 0)} failed). "
+                        + (
+                            f"Selected classes only — full dataset has {expected_n} images."
+                            if selected_classes and expected_n and expected_n > expected_export
+                            else "Fix storage connectivity before training."
+                        )
+                    )
                 class_names = ", ".join(export_meta.get("names") or []) or "selected classes"
                 if selected_classes:
                     min_labeled = max(30, int(labeled_n * 0.4)) if labeled_n else 30
@@ -236,7 +246,6 @@ def run_training_job(job_id: str):
                         f"({labeled_n} labeled in DB, {skipped_labels} boxes from other classes skipped). "
                         f"{hint}"
                     )
-                exported_for_classes = int(export_meta.get("exported_for_classes") or exported_n)
                 if selected_classes and int(export_meta.get("total_images_in_version") or 0) > exported_for_classes * 2:
                     publish_metric(job_id, {
                         "phase": "validate",
