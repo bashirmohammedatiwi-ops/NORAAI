@@ -83,6 +83,10 @@ export interface DashboardActiveTrainingJob {
   total_steps?: number | null;
   duration_seconds?: number | null;
   eta_seconds?: number | null;
+  epoch_elapsed_seconds?: number | null;
+  epoch_eta_seconds?: number | null;
+  batches_per_min?: number | null;
+  sec_per_batch?: number | null;
   device_label?: string;
   latest_metrics?: {
     loss?: number | null;

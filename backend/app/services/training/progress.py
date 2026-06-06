@@ -11,6 +11,27 @@ def compute_eta_seconds(elapsed_seconds: int | float, progress: int) -> int | No
     return max(0, int(total_est - elapsed_seconds))
 
 
+def compute_epoch_eta_seconds(epoch_elapsed_seconds: float, epoch_progress: int) -> int | None:
+    if epoch_progress <= 0 or epoch_progress >= 100 or epoch_elapsed_seconds <= 0:
+        return None
+    total_est = epoch_elapsed_seconds / (epoch_progress / 100)
+    return max(0, int(total_est - epoch_elapsed_seconds))
+
+
+def compute_job_eta_from_epoch_pace(
+    epoch_elapsed_seconds: float,
+    epoch_progress: int,
+    current_epoch: int,
+    total_epochs: int,
+) -> int | None:
+    if epoch_progress <= 0 or epoch_elapsed_seconds <= 0 or total_epochs <= 0:
+        return None
+    epoch_total_est = epoch_elapsed_seconds / (epoch_progress / 100)
+    remaining_this_epoch = max(0.0, epoch_total_est - epoch_elapsed_seconds)
+    epochs_after_current = max(0, int(total_epochs) - int(current_epoch))
+    return max(0, int(remaining_this_epoch + epochs_after_current * epoch_total_est))
+
+
 def _progress_key(job_id: str | uuid.UUID) -> str:
     return f"training:progress:{str(job_id)}"
 
@@ -61,6 +82,10 @@ def merge_live_progress(
         "map50": None,
         "map50_95": None,
         "eta_seconds": None,
+        "epoch_elapsed_seconds": None,
+        "epoch_eta_seconds": None,
+        "batches_per_min": None,
+        "sec_per_batch": None,
     }
 
     if not live or job_status not in ("running", "pending"):
@@ -76,7 +101,20 @@ def merge_live_progress(
     if epoch_progress is None and batch and total_batches:
         epoch_progress = int((int(batch) / max(int(total_batches), 1)) * 100)
 
+    epoch_elapsed = live.get("epoch_elapsed_seconds")
+    epoch_eta = live.get("epoch_eta_seconds")
+    if epoch_eta is None and epoch_elapsed and epoch_progress:
+        epoch_eta = compute_epoch_eta_seconds(float(epoch_elapsed), int(epoch_progress))
+
+    total_epochs = int(live.get("total_epochs") or 0)
     eta = live.get("eta_seconds")
+    if eta is None and epoch_elapsed and epoch_progress and total_epochs > 0:
+        eta = compute_job_eta_from_epoch_pace(
+            float(epoch_elapsed),
+            int(epoch_progress),
+            epoch,
+            total_epochs,
+        )
     if eta is None and elapsed_seconds:
         eta = compute_eta_seconds(elapsed_seconds, progress)
 
@@ -99,4 +137,8 @@ def merge_live_progress(
         "map50": live.get("map50"),
         "map50_95": live.get("map50_95"),
         "eta_seconds": eta,
+        "epoch_elapsed_seconds": epoch_elapsed,
+        "epoch_eta_seconds": epoch_eta,
+        "batches_per_min": live.get("batches_per_min"),
+        "sec_per_batch": live.get("sec_per_batch"),
     }

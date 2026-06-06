@@ -101,6 +101,10 @@ class ActiveTrainingJobResponse(BaseModel):
     total_steps: int | None = None
     duration_seconds: int | None = None
     eta_seconds: int | None = None
+    epoch_elapsed_seconds: int | None = None
+    epoch_eta_seconds: int | None = None
+    batches_per_min: float | None = None
+    sec_per_batch: float | None = None
     device_label: str = "CPU Training"
     latest_metrics: dict | None = None
 

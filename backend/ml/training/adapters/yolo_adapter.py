@@ -123,7 +123,16 @@ class YOLOAdapter:
             fine_tuned = bool(config.get("_fine_tune_source") == "main_model")
 
             if metrics_callback:
-                batch_state = {"last_ts": 0.0}
+                from app.services.training.progress import (
+                    compute_epoch_eta_seconds,
+                    compute_job_eta_from_epoch_pace,
+                )
+
+                batch_state = {
+                    "last_ts": 0.0,
+                    "epoch_start_ts": time.time(),
+                    "last_epoch_idx": -1,
+                }
 
                 def training_progress(epoch_idx: int, batch_i: int, nb: int) -> int:
                     train_frac = (epoch_idx + batch_i / max(nb, 1)) / max(epochs, 1)
@@ -189,16 +198,34 @@ class YOLOAdapter:
                     epoch_progress = int((batch_i / nb) * 100)
                     total_steps = max(epochs * nb, 1)
                     current_step = epoch_idx * nb + batch_i
+                    epoch_elapsed = max(0.0, now - float(batch_state["epoch_start_ts"] or now))
+                    epoch_eta = compute_epoch_eta_seconds(epoch_elapsed, epoch_progress)
+                    batches_per_min = round((batch_i / max(epoch_elapsed, 0.5)) * 60, 1)
+                    sec_per_batch = round(epoch_elapsed / max(batch_i, 1), 1)
+                    job_eta = compute_job_eta_from_epoch_pace(
+                        epoch_elapsed,
+                        epoch_progress,
+                        epoch_idx + 1,
+                        epochs,
+                    )
                     metrics_callback({
                         "epoch": epoch_idx + 1,
                         "total_epochs": epochs,
                         "batch": batch_i,
                         "total_batches": nb,
                         "epoch_progress": epoch_progress,
+                        "epoch_elapsed_seconds": int(epoch_elapsed),
+                        "epoch_eta_seconds": epoch_eta,
+                        "batches_per_min": batches_per_min,
+                        "sec_per_batch": sec_per_batch,
+                        "eta_seconds": job_eta,
                         "current_step": current_step,
                         "total_steps": total_steps,
                         "phase": "train",
-                        "message": f"Epoch {epoch_idx + 1}/{epochs} · batch {batch_i}/{nb} ({epoch_progress}%)",
+                        "message": (
+                            f"Epoch {epoch_idx + 1}/{epochs} · {epoch_progress}% · "
+                            f"{batches_per_min} batch/min · ~{sec_per_batch}s/batch"
+                        ),
                         "progress": training_progress(epoch_idx, batch_i, nb),
                         "loss": loss_val,
                         "loss_box": loss_box,
@@ -213,17 +240,20 @@ class YOLOAdapter:
                 val_every = int(config.get("_val_every") or 1)
 
                 def on_train_epoch_start(trainer):
+                    epoch_idx = int(getattr(trainer, "epoch", 0))
+                    if batch_state["last_epoch_idx"] != epoch_idx:
+                        batch_state["epoch_start_ts"] = time.time()
+                        batch_state["last_epoch_idx"] = epoch_idx
                     if val_every <= 1:
                         return
-                    epoch = int(getattr(trainer, "epoch", 0)) + 1
+                    epoch = epoch_idx + 1
                     total = int(getattr(trainer, "epochs", epochs) or epochs)
                     run_val = epoch % val_every == 0 or epoch >= total
                     if hasattr(trainer, "args"):
                         trainer.args.val = run_val
 
                 model.add_callback("on_train_batch_end", on_train_batch_end)
-                if val_every > 1:
-                    model.add_callback("on_train_epoch_start", on_train_epoch_start)
+                model.add_callback("on_train_epoch_start", on_train_epoch_start)
                 model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
 
             if cancel_check and cancel_check():

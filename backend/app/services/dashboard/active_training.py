@@ -114,6 +114,10 @@ async def fetch_active_training_jobs(db: AsyncSession, org_id: uuid.UUID) -> lis
             "total_steps": live_fields.get("total_steps"),
             "duration_seconds": duration,
             "eta_seconds": live_fields.get("eta_seconds"),
+            "epoch_elapsed_seconds": live_fields.get("epoch_elapsed_seconds"),
+            "epoch_eta_seconds": live_fields.get("epoch_eta_seconds"),
+            "batches_per_min": live_fields.get("batches_per_min"),
+            "sec_per_batch": live_fields.get("sec_per_batch"),
             "device_label": device_label,
             "latest_metrics": latest_metrics,
         })

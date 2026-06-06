@@ -21,12 +21,27 @@ export interface TrainingProgressDetail {
   currentStep?: number | null;
   totalSteps?: number | null;
   etaSeconds?: number | null;
+  epochElapsedSeconds?: number | null;
+  epochEtaSeconds?: number | null;
+  batchesPerMin?: number | null;
+  secPerBatch?: number | null;
   loss?: number | null;
   lossBox?: number | null;
   lossCls?: number | null;
   map50?: number | null;
   map50_95?: number | null;
   precision?: number | null;
+}
+
+export function computeEpochEtaSeconds(
+  epochElapsedSeconds: number | null | undefined,
+  epochProgress: number | null | undefined,
+): number | null {
+  if (!epochElapsedSeconds || epochElapsedSeconds <= 0 || !epochProgress || epochProgress <= 0 || epochProgress >= 100) {
+    return null;
+  }
+  const total = epochElapsedSeconds / (epochProgress / 100);
+  return Math.max(0, Math.round(total - epochElapsedSeconds));
 }
 
 export const TRAINING_PHASES = [

@@ -71,6 +71,10 @@ function DashboardTrainingJobCard({
       current_step: job.current_step,
       total_steps: job.total_steps,
       eta_seconds: job.eta_seconds,
+      epoch_elapsed_seconds: job.epoch_elapsed_seconds,
+      epoch_eta_seconds: job.epoch_eta_seconds,
+      batches_per_min: job.batches_per_min,
+      sec_per_batch: job.sec_per_batch,
       latest_metrics: job.latest_metrics
         ? {
             loss: job.latest_metrics.loss ?? null,
@@ -162,6 +166,10 @@ function DashboardTrainingJobCard({
           currentStep: job.current_step,
           totalSteps: job.total_steps,
           etaSeconds: job.eta_seconds,
+          epochElapsedSeconds: job.epoch_elapsed_seconds,
+          epochEtaSeconds: job.epoch_eta_seconds,
+          batchesPerMin: job.batches_per_min,
+          secPerBatch: job.sec_per_batch,
           loss: job.latest_metrics?.loss,
           map50: job.latest_metrics?.map50,
           precision: job.latest_metrics?.precision,

@@ -28,6 +28,10 @@ export interface TrainingJobDetail {
   current_step?: number | null;
   total_steps?: number | null;
   eta_seconds?: number | null;
+  epoch_elapsed_seconds?: number | null;
+  epoch_eta_seconds?: number | null;
+  batches_per_min?: number | null;
+  sec_per_batch?: number | null;
   latest_metrics: {
     loss: number | null;
     precision: number | null;
@@ -126,6 +130,10 @@ export function useTrainingJob(
       current_step: num(latestLive.current_step, base.current_step),
       total_steps: num(latestLive.total_steps, base.total_steps),
       eta_seconds: num(latestLive.eta_seconds, base.eta_seconds) ?? computeEtaSeconds(duration, progress),
+      epoch_elapsed_seconds: num(latestLive.epoch_elapsed_seconds, base.epoch_elapsed_seconds),
+      epoch_eta_seconds: num(latestLive.epoch_eta_seconds, base.epoch_eta_seconds),
+      batches_per_min: num(latestLive.batches_per_min, base.batches_per_min),
+      sec_per_batch: num(latestLive.sec_per_batch, base.sec_per_batch),
       latest_metrics: validationLive
         ? {
             loss: num(validationLive.loss, base.latest_metrics?.loss),
@@ -149,6 +157,10 @@ export function useTrainingJob(
       currentStep: liveJob.current_step,
       totalSteps: liveJob.total_steps,
       etaSeconds: liveJob.eta_seconds,
+      epochElapsedSeconds: liveJob.epoch_elapsed_seconds,
+      epochEtaSeconds: liveJob.epoch_eta_seconds,
+      batchesPerMin: liveJob.batches_per_min,
+      secPerBatch: liveJob.sec_per_batch,
       loss: liveJob.latest_metrics?.loss,
       lossBox: num(latestLive?.loss_box, null),
       lossCls: num(latestLive?.loss_cls, null),

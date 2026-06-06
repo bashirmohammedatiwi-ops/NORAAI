@@ -2,13 +2,14 @@ import { METRIC_DISPLAY } from '@/lib/trainingMetrics';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
+  computeEpochEtaSeconds,
   computeEtaSeconds,
   formatDuration,
   phaseIndex,
   TRAINING_PHASES,
   type TrainingProgressDetail,
 } from '@/lib/trainingProgress';
-import { Cpu, Loader2, StopCircle, Timer, Hourglass } from 'lucide-react';
+import { Cpu, Gauge, Loader2, StopCircle, Timer, Hourglass, Zap } from 'lucide-react';
 
 interface Props {
   progress: number;
@@ -29,10 +30,11 @@ interface Props {
 }
 
 function phaseLabel(phase?: string | null): string {
-  if (phase === 'export') return 'Preparing dataset';
-  if (phase === 'train') return 'Training model';
-  if (phase === 'finalize') return 'Saving model';
-  return 'Training in progress';
+  if (phase === 'export') return 'تجهيز البيانات';
+  if (phase === 'train') return 'تدريب النموذج';
+  if (phase === 'validation') return 'تحقق الدورة';
+  if (phase === 'finalize') return 'حفظ النموذج';
+  return 'جاري التدريب';
 }
 
 function pct(value: number | null | undefined): string {
@@ -68,6 +70,12 @@ export function TrainingProgressCard({
   const epochPct = detail?.epochProgress ?? (
     batch != null && totalBatches ? Math.round((batch / totalBatches) * 100) : null
   );
+  const epochElapsed = detail?.epochElapsedSeconds ?? null;
+  const epochEta = detail?.epochEtaSeconds
+    ?? computeEpochEtaSeconds(epochElapsed, epochPct);
+  const batchesPerMin = detail?.batchesPerMin ?? null;
+  const secPerBatch = detail?.secPerBatch ?? null;
+  const inTrain = phase === 'train' || phase === 'validation';
 
   return (
     <div className={cn(
@@ -76,30 +84,31 @@ export function TrainingProgressCard({
     )}>
       <div className={cn('flex flex-wrap items-center gap-4', compact ? 'p-4' : 'p-5')}>
         <div className="relative shrink-0">
-          <svg width={compact ? 72 : 88} height={compact ? 72 : 88} className="-rotate-90">
-            <circle cx={compact ? 36 : 44} cy={compact ? 36 : 44} r={compact ? 30 : 38} fill="none" stroke="currentColor" strokeWidth={6} className="text-secondary" />
+          <svg width={compact ? 72 : 96} height={compact ? 72 : 96} className="-rotate-90">
+            <circle cx={compact ? 36 : 48} cy={compact ? 36 : 48} r={compact ? 30 : 40} fill="none" stroke="currentColor" strokeWidth={6} className="text-secondary" />
             <circle
-              cx={compact ? 36 : 44}
-              cy={compact ? 36 : 44}
-              r={compact ? 30 : 38}
+              cx={compact ? 36 : 48}
+              cy={compact ? 36 : 48}
+              r={compact ? 30 : 40}
               fill="none"
               stroke="currentColor"
               strokeWidth={6}
               strokeLinecap="round"
               className="text-primary transition-all duration-700"
-              strokeDasharray={2 * Math.PI * (compact ? 30 : 38)}
-              strokeDashoffset={2 * Math.PI * (compact ? 30 : 38) * (1 - pctOverall / 100)}
+              strokeDasharray={2 * Math.PI * (compact ? 30 : 40)}
+              strokeDashoffset={2 * Math.PI * (compact ? 30 : 40) * (1 - pctOverall / 100)}
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             {isActive ? <Loader2 className="h-4 w-4 animate-spin text-primary mb-0.5" /> : null}
-            <span className={cn('font-bold', compact ? 'text-lg' : 'text-xl')}>{pctOverall}%</span>
+            <span className={cn('font-bold', compact ? 'text-lg' : 'text-2xl')}>{pctOverall}%</span>
+            <span className="text-[9px] text-muted-foreground uppercase tracking-wide">إجمالي</span>
           </div>
         </div>
 
-        <div className="flex-1 min-w-[180px] space-y-2">
+        <div className="flex-1 min-w-[200px] space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold">{isActive ? phaseLabel(phase) : 'Training status'}</span>
+            <span className="font-semibold">{isActive ? phaseLabel(phase) : 'حالة التدريب'}</span>
             <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
               <Cpu className="h-3 w-3" /> {deviceLabel}
             </span>
@@ -107,49 +116,87 @@ export function TrainingProgressCard({
           {jobName && <p className="text-xs text-muted-foreground">{jobName}</p>}
           {message && <p className="text-sm text-foreground/80 font-medium">{message}</p>}
 
-          <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-            {phase === 'export' && detail?.exportTotal != null && (
-              <Stat label="Images" value={`${detail.exportCurrent ?? 0} / ${detail.exportTotal}`} sub={exportPct != null ? `${exportPct}%` : undefined} />
-            )}
-            {phase !== 'export' && totalEpochs > 0 && (
-              <Stat label="Epoch" value={`${currentEpoch} / ${totalEpochs}`} sub={epochPct != null ? `${epochPct}% in epoch` : undefined} />
-            )}
-            {batch != null && totalBatches != null && totalBatches > 0 && phase === 'train' && (
-              <Stat label="Batch" value={`${batch} / ${totalBatches}`} />
-            )}
-            {detail?.currentStep != null && detail?.totalSteps != null && phase === 'train' && (
-              <Stat label="Global step" value={`${detail.currentStep} / ${detail.totalSteps}`} />
-            )}
-            {durationSeconds != null && durationSeconds > 0 && (
-              <Stat label="Elapsed" value={formatDuration(durationSeconds)} icon={<Timer className="h-3 w-3" />} />
-            )}
-            {eta != null && isActive && (
-              <Stat label="ETA" value={formatDuration(eta)} icon={<Hourglass className="h-3 w-3" />} />
-            )}
-            {detail?.loss != null && (
-              <Stat label="Loss" value={detail.loss.toFixed(4)} mono />
-            )}
-            {detail?.map50_95 != null && (
-              <Stat label={METRIC_DISPLAY.accuracy.label} value={pct(detail.map50_95)} />
+          {phase === 'export' && detail?.exportTotal != null && (
+            <SimpleCounters
+              items={[
+                { label: 'الصور', value: `${detail.exportCurrent ?? 0} / ${detail.exportTotal}`, sub: exportPct != null ? `${exportPct}%` : undefined },
+                { label: 'الوقت', value: durationSeconds ? formatDuration(durationSeconds) : '—', icon: <Timer className="h-3.5 w-3.5" /> },
+              ]}
+            />
+          )}
+
+          {inTrain && totalEpochs > 0 && (
+            <SimpleCounters
+              items={[
+                {
+                  label: 'الدورة',
+                  value: `${currentEpoch} / ${totalEpochs}`,
+                  sub: epochPct != null ? `${epochPct}%` : undefined,
+                },
+                {
+                  label: 'داخل الدورة',
+                  value: batch != null && totalBatches ? `${batch} / ${totalBatches}` : '—',
+                  sub: 'batch',
+                },
+                {
+                  label: 'زمن الدورة',
+                  value: epochElapsed != null ? formatDuration(epochElapsed) : '—',
+                  icon: <Timer className="h-3.5 w-3.5" />,
+                },
+                {
+                  label: 'متبقي للدورة',
+                  value: epochEta != null ? `~${formatDuration(epochEta)}` : '—',
+                  icon: <Hourglass className="h-3.5 w-3.5" />,
+                },
+                {
+                  label: 'السرعة',
+                  value: batchesPerMin != null ? `${batchesPerMin}` : '—',
+                  sub: secPerBatch != null ? `${secPerBatch}s / batch` : 'batch/min',
+                  icon: <Zap className="h-3.5 w-3.5" />,
+                },
+                {
+                  label: 'متبقي كلي',
+                  value: eta != null ? `~${formatDuration(eta)}` : '—',
+                  icon: <Gauge className="h-3.5 w-3.5" />,
+                },
+              ]}
+            />
+          )}
+
+          {!inTrain && phase !== 'export' && (
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+              {durationSeconds != null && durationSeconds > 0 && (
+                <Stat label="الوقت المنقضي" value={formatDuration(durationSeconds)} icon={<Timer className="h-3 w-3" />} />
+              )}
+              {eta != null && isActive && (
+                <Stat label="المتبقي" value={formatDuration(eta)} icon={<Hourglass className="h-3 w-3" />} />
+              )}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <ProgressRow label="التقدم الكلي" value={pctOverall} />
+            {inTrain && epochPct != null && (
+              <ProgressRow label={`الدورة ${currentEpoch}`} value={epochPct} subtle />
             )}
           </div>
 
-          <div className="space-y-1.5">
-            <div className="h-2 rounded-full bg-secondary overflow-hidden">
-              <div className="h-full bg-primary transition-all duration-700 rounded-full" style={{ width: `${pctOverall}%` }} />
+          {(detail?.loss != null || detail?.map50_95 != null) && (
+            <div className="flex flex-wrap gap-4 text-xs text-muted-foreground pt-1">
+              {detail.loss != null && (
+                <span>Loss: <strong className="font-mono text-foreground">{detail.loss.toFixed(4)}</strong></span>
+              )}
+              {detail.map50_95 != null && (
+                <span>{METRIC_DISPLAY.accuracy.label}: <strong className="text-foreground">{pct(detail.map50_95)}</strong></span>
+              )}
             </div>
-            {phase === 'train' && epochPct != null && (
-              <div className="h-1 rounded-full bg-secondary/80 overflow-hidden">
-                <div className="h-full bg-primary/60 transition-all duration-500 rounded-full" style={{ width: `${epochPct}%` }} />
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
         {isActive && onStop && (
           <Button type="button" variant="destructive" size={compact ? 'sm' : 'default'} className="shrink-0" disabled={stopping} onClick={onStop}>
             {stopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />}
-            {stopping ? 'Stopping…' : 'Stop Training'}
+            {stopping ? 'إيقاف…' : 'إيقاف'}
           </Button>
         )}
       </div>
@@ -176,15 +223,54 @@ export function TrainingProgressCard({
               );
             })}
           </div>
-          {(detail?.lossBox != null || detail?.lossCls != null) && (
-            <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-border/40 text-xs text-muted-foreground">
-              {detail.lossBox != null && <span>Box loss: <strong className="font-mono text-foreground">{detail.lossBox.toFixed(4)}</strong></span>}
-              {detail.lossCls != null && <span>Cls loss: <strong className="font-mono text-foreground">{detail.lossCls.toFixed(4)}</strong></span>}
-              {detail.precision != null && <span>Precision: <strong className="text-foreground">{pct(detail.precision)}</strong></span>}
-            </div>
-          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function SimpleCounters({
+  items,
+}: {
+  items: Array<{ label: string; value: string; sub?: string; icon?: React.ReactNode }>;
+}) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {items.map((item) => (
+        <div key={item.label} className="rounded-xl border border-border/70 bg-card/80 px-3 py-2.5">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+            {item.icon}
+            {item.label}
+          </p>
+          <p className="text-base font-bold leading-tight mt-1">{item.value}</p>
+          {item.sub && <p className="text-[10px] text-muted-foreground mt-0.5">{item.sub}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProgressRow({
+  label,
+  value,
+  subtle,
+}: {
+  label: string;
+  value: number;
+  subtle?: boolean;
+}) {
+  return (
+    <div>
+      <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+        <span>{label}</span>
+        <span className="font-medium text-foreground">{value}%</span>
+      </div>
+      <div className={cn('h-2 rounded-full overflow-hidden', subtle ? 'bg-secondary/80' : 'bg-secondary')}>
+        <div
+          className={cn('h-full transition-all duration-500 rounded-full', subtle ? 'bg-primary/60' : 'bg-primary')}
+          style={{ width: `${value}%` }}
+        />
+      </div>
     </div>
   );
 }
