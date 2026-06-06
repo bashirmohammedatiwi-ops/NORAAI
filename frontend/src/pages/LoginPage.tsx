@@ -38,7 +38,9 @@ export default function LoginPage() {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
-        const res = await fetch('/health/ready', { signal: controller.signal });
+        const healthBase = import.meta.env.VITE_API_URL?.replace(/\/$/, '') ?? '';
+        const healthUrl = healthBase ? `${healthBase}/health/ready` : '/health/ready';
+        const res = await fetch(healthUrl, { signal: controller.signal });
         clearTimeout(timer);
         if (cancelled) return;
         if (res.ok) {
@@ -101,7 +103,9 @@ export default function LoginPage() {
 
         {apiReady === false && (
           <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
-            Server unreachable on port 8080. On the VPS run: <code className="text-xs">sudo ./scripts/ensure_services.sh recover</code>
+            Server unreachable
+            {import.meta.env.VITE_API_URL ? ` (${import.meta.env.VITE_API_URL})` : ' on port 8080'}
+            . On the VPS run: <code className="text-xs">sudo ./scripts/ensure_services.sh recover</code>
           </p>
         )}
 

@@ -37,7 +37,7 @@ if (-not $env:TRAINING_CPU_THREADS -or $env:TRAINING_CPU_THREADS -eq '0') {
     $env:TRAINING_CPU_THREADS = "$cores"
 }
 
-Write-Host "Local training worker starting ($cores CPU cores)..." -ForegroundColor Green
+Write-Host "Local training worker starting ($($cores) CPU cores)..." -ForegroundColor Green
 Write-Host "MinIO: $env:MINIO_ENDPOINT | Queue: training"
 Write-Host "Start training from VPS UI — progress appears there; model saves to VPS."
 Write-Host ""
