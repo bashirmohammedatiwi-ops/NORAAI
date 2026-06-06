@@ -128,6 +128,11 @@ export function TrainingProgressCard({
           {inTrain && totalEpochs > 0 && (
             <SimpleCounters
               items={[
+                ...(detail?.trainImages != null ? [{
+                  label: 'صور التدريب',
+                  value: `${detail.trainImages}${detail.valImages != null ? ` + ${detail.valImages} val` : ''}`,
+                  sub: detail.exportedImages != null ? `${detail.exportedImages} مُصدَّرة` : undefined,
+                }] : []),
                 {
                   label: 'الدورة',
                   value: `${currentEpoch} / ${totalEpochs}`,

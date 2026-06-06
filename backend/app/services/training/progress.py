@@ -86,6 +86,9 @@ def merge_live_progress(
         "epoch_eta_seconds": None,
         "batches_per_min": None,
         "sec_per_batch": None,
+        "train_images": None,
+        "val_images": None,
+        "exported_images": None,
     }
 
     if not live or job_status not in ("running", "pending"):
@@ -141,4 +144,7 @@ def merge_live_progress(
         "epoch_eta_seconds": epoch_eta,
         "batches_per_min": live.get("batches_per_min"),
         "sec_per_batch": live.get("sec_per_batch"),
+        "train_images": live.get("train_images"),
+        "val_images": live.get("val_images"),
+        "exported_images": live.get("exported_images"),
     }

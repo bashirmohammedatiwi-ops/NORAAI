@@ -157,6 +157,30 @@ def run_training_job(job_id: str):
                     max_workers=config.get("_export_workers") or settings.training_export_max_workers or None,
                     selected_class_ids=selected_class_ids,
                 )
+                train_n = int(export_meta.get("train_images") or 0)
+                val_n = int(export_meta.get("val_images") or 0)
+                exported_n = int(export_meta.get("exported_images") or 0)
+                expected_n = int((validation.get("stats") or {}).get("image_count") or 0)
+                publish_metric(job_id, {
+                    "phase": "export",
+                    "message": f"Exported {exported_n} images · train {train_n} · val {val_n}",
+                    "export_current": exported_n,
+                    "export_total": expected_n or exported_n,
+                    "train_images": train_n,
+                    "val_images": val_n,
+                    "exported_images": exported_n,
+                    "progress": 14,
+                    "status": "running",
+                })
+                if expected_n and exported_n < max(10, int(expected_n * 0.9)):
+                    publish_metric(job_id, {
+                        "phase": "validate",
+                        "message": (
+                            f"Warning: only {exported_n}/{expected_n} images exported — "
+                            "training may be much faster than expected and less accurate."
+                        ),
+                        "status": "running",
+                    })
                 for warning in validation.get("warnings", []):
                     publish_metric(job_id, {
                         "phase": "validate",
@@ -190,6 +214,11 @@ def run_training_job(job_id: str):
                 apply_fine_tune_training_overrides(config, from_main_model=True)
                 job.config = dict(config)
                 session.commit()
+            export_note = ""
+            if export_meta:
+                train_n = int(export_meta.get("train_images") or 0)
+                val_n = int(export_meta.get("val_images") or 0)
+                export_note = f"Dataset: {train_n} train · {val_n} val"
             setup_msg = (
                 "Fine-tuning from Main Model"
                 if fine_tune_source == "main_model"
@@ -198,6 +227,8 @@ def run_training_job(job_id: str):
                     or f"CPU tune: {config.get('cpu_threads')} threads · batch {config.get('batch_size')}"
                 )
             )
+            if export_note:
+                setup_msg = f"{export_note} · {setup_msg}"
             if config.get("_speed_boost_note"):
                 setup_msg = f"{setup_msg} · {config['_speed_boost_note']}"
             publish_metric(job_id, {

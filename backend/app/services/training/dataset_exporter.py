@@ -146,7 +146,10 @@ def export_yolo_dataset_sync(
                 })
 
     if exported == 0:
-        _write_placeholder_dataset(base)
+        raise ValueError(
+            f"Dataset export failed: 0/{total} images downloaded from storage. "
+            "Check MinIO connectivity and image keys before training."
+        )
 
     nc = max(len(class_names), 1)
     names = class_names if class_names else ["object"]
