@@ -23,9 +23,6 @@ export function AnnotationReviewQueue({
     return (
       <div className="rounded-xl border border-dashed border-border bg-secondary/20 p-12 text-center">
         <p className="text-sm font-medium">لا توجد تسميات بانتظار المراجعة</p>
-        <p className="text-xs text-muted-foreground mt-2">
-          التسميات التلقائية عند الرفع تظهر هنا للموافقة أو التعديل.
-        </p>
       </div>
     );
   }

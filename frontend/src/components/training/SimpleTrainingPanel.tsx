@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Play, RefreshCw } from 'lucide-react';
@@ -46,9 +46,6 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
               <RefreshCw className="h-5 w-5 text-emerald-600" />
               Retrain project model
             </CardTitle>
-            <CardDescription>
-              Updates the <strong>single project model</strong> with {imageCount} images — Road Intel, Fleet & Monitoring use it automatically
-            </CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -56,7 +53,7 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
         <div className="flex flex-wrap gap-4 items-end">
           <div className="min-w-[160px]">
             <Select label="Model" value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
-              <option value="yolo11">YOLO11 (recommended)</option>
+              <option value="yolo11">YOLO11</option>
               <option value="yolov10">YOLOv10</option>
               <option value="rt_detr">RT-DETR</option>
             </Select>
@@ -75,15 +72,14 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
                 <option key={key} value={key}>{CPU_PRESETS[key].label}</option>
               ))}
             </Select>
-            <p className="text-[10px] text-muted-foreground mt-1">{CPU_PRESETS[preset].description}</p>
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground block mb-1.5">Epochs</label>
             <Input type="number" className="w-24" value={epochs} min={5} max={200} onChange={(e) => setEpochs(+e.target.value)} />
           </div>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground w-full">
+          <label className="flex items-center gap-2 text-xs w-full">
             <input type="checkbox" checked={fineTune} onChange={(e) => setFineTune(e.target.checked)} />
-            استمر من Main Model (Fine-tune)
+            Fine-tune from Main Model
           </label>
           <Button onClick={startTraining} disabled={loading || imageCount < 1} variant="success">
             <Play className="h-4 w-4" />

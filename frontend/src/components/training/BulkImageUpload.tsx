@@ -138,11 +138,6 @@ export function BulkImageUpload({
                     ? 'Select a dataset first'
                     : 'Select a class first'}
             </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {backgroundMode
-                ? 'رفع صور سليمة — بدون صناديق (اختر صنفاً من الأعلى لربطها كسليمة)'
-                : `رفع لصنف ${className ?? ''} — بدون صندوق = سليمة ضمن نفس الصنف`}
-            </p>
             {className && ready && (
               <span
                 className="inline-flex items-center gap-1.5 mt-2 text-xs font-medium px-2.5 py-1 rounded-full"
@@ -202,11 +197,6 @@ export function BulkImageUpload({
               <p className="font-medium text-foreground">
                 {result.uploaded} image{result.uploaded !== 1 ? 's' : ''} uploaded
                 {result.failed > 0 && ` · ${result.failed} failed`}
-              </p>
-              <p className="text-muted-foreground mt-0.5">
-                {result.uploaded > 0
-                  ? 'Processing in background — image count updates within 1–2 minutes'
-                  : 'Upload failed — try again with a stable connection or fewer images at once'}
               </p>
               {result.errors.slice(0, 3).map((err) => (
                 <p key={err} className="text-xs text-destructive mt-1">{err}</p>

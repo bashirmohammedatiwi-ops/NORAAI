@@ -222,19 +222,9 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
         />
         <Archive className="h-8 w-8 mx-auto text-violet-600 mb-2" />
         <p className="font-medium">رفع أرشيف YOLO (ZIP)</p>
-        <p className="text-sm text-muted-foreground mt-1">
-          يجب أن يحتوي على مجلدين: <code className="text-xs">images/</code> + <code className="text-xs">labels-YOLO/</code>
-        </p>
-        <p className="text-xs text-muted-foreground mt-1">الحد الأقصى: 4 GB</p>
         {file && (
           <p className="text-xs mt-2 text-violet-700">
             {file.name} ({formatMb(file.size)} MB)
-            {file.size < 5 * 1024 * 1024 && (
-              <span className="block text-amber-700 mt-1">حجم صغير — غالباً تسميات فقط بدون صور</span>
-            )}
-            {file.size > 500 * 1024 * 1024 && (
-              <span className="block text-amber-700 mt-1">ملف كبير — سيستغرق الرفع عدة دقائق</span>
-            )}
           </p>
         )}
       </div>
@@ -264,13 +254,7 @@ export function YoloLabelsUpload({ datasetId, classes, disabled, onComplete }: P
           {preview.warning && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-100 text-xs flex gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-              <div>
-                <p>{preview.warning}</p>
-                <p className="mt-2 font-medium">الصحيح في PowerShell:</p>
-                <code className="block mt-1 text-[10px] break-all bg-black/5 dark:bg-white/5 p-2 rounded">
-                  Compress-Archive -Path &quot;...\data\*&quot; -DestinationPath road-dataset.zip
-                </code>
-              </div>
+              <p>{preview.warning}</p>
             </div>
           )}
 

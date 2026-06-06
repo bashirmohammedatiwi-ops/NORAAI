@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
-import { AnnotationGuide } from '@/components/annotation/AnnotationGuide';
 import { AnnotationImageList, type ImageFilter } from '@/components/annotation/AnnotationImageList';
 import { AnnotationReviewQueue } from '@/components/annotation/AnnotationReviewQueue';
 import { AnnotationStatsBar } from '@/components/annotation/AnnotationStatsBar';
@@ -12,10 +11,10 @@ import { useAnnotationWorkspace } from '@/hooks/useAnnotationWorkspace';
 import { colorForClass } from '@/lib/classColors';
 import { cn } from '@/lib/utils';
 import {
-  BookOpen, ChevronLeft, ChevronRight, ClipboardCheck, Database, PenTool,
+  ChevronLeft, ChevronRight, ClipboardCheck, Database, PenTool,
 } from 'lucide-react';
 
-type Section = 'label' | 'review' | 'guide';
+type Section = 'label' | 'review';
 
 export default function AnnotationPage() {
   const { id: projectId } = useParams();
@@ -98,16 +97,12 @@ export default function AnnotationPage() {
   const sections: { id: Section; label: string; labelAr: string; icon: typeof PenTool; badge?: number }[] = [
     { id: 'label', label: 'Label', labelAr: 'تسمية', icon: PenTool },
     { id: 'review', label: 'Review', labelAr: 'مراجعة', icon: ClipboardCheck, badge: pending.length },
-    { id: 'guide', label: 'Guide', labelAr: 'دليل', icon: BookOpen },
   ];
 
   return (
     <div className="space-y-5 -mx-1 sm:mx-0">
       <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/8 via-card to-card p-5 sm:p-6">
-        <PageHeader
-          title="التسمية · Annotation"
-          description="قسم مستقل لتعديل الصناديق ومراجعة التسميات التلقائية قبل التدريب."
-        >
+        <PageHeader title="التسمية · Annotation">
           <Link to={`/projects/${projectId}/data`}>
             <Button type="button" variant="outline" size="sm" className="gap-1.5">
               <Database className="h-4 w-4" />
@@ -162,9 +157,6 @@ export default function AnnotationPage() {
               <div className="flex-1 flex flex-col items-center justify-center text-center py-16 px-4">
                 <PenTool className="h-12 w-12 text-muted-foreground/40 mb-4" />
                 <p className="font-medium">لا توجد صور بعد</p>
-                <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-                  ارفع صور الحوادث والحفر من مركز البيانات، ثم ارجع هنا لرسم الصناديق.
-                </p>
                 <Link to={`/projects/${projectId}/data`} className="mt-4">
                   <Button>فتح مركز البيانات</Button>
                 </Link>
@@ -238,10 +230,7 @@ export default function AnnotationPage() {
 
       {section === 'review' && (
         <div className="rounded-2xl border border-border bg-card p-4 sm:p-6">
-          <h3 className="text-lg font-semibold mb-1">مراجعة التسميات التلقائية</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            وافق على الصندوق إن كان صحيحاً، أو عدّل يدوياً من تبويب التسمية.
-          </p>
+          <h3 className="text-lg font-semibold mb-4">مراجعة التسميات التلقائية</h3>
           <AnnotationReviewQueue
             pending={pending}
             classMap={classMap}
@@ -252,9 +241,6 @@ export default function AnnotationPage() {
         </div>
       )}
 
-      {section === 'guide' && projectId && (
-        <AnnotationGuide projectId={projectId} />
-      )}
     </div>
   );
 }

@@ -43,10 +43,7 @@ export default function DatasetBuilderLandingPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <PageHeader
-        title="Quick Start — Dataset Builder"
-        description="Choose a project to upload images, assign classes, and start training."
-      />
+      <PageHeader title="Quick Start — Dataset Builder" />
 
       {projects.length === 0 ? (
         <Card className="border-dashed">

@@ -45,12 +45,12 @@ export default function ClassesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Classes" description="Detection labels for your project. Deleting a class removes all its annotations." />
+      <PageHeader title="Classes" />
 
       <Card>
         <CardHeader><CardTitle>Add Class</CardTitle></CardHeader>
         <CardContent className="flex gap-2">
-          <Input placeholder="اسم الصنف (مثال: حفر)" value={newName} onChange={(e) => setNewName(e.target.value)} />
+          <Input placeholder="اسم الصنف" value={newName} onChange={(e) => setNewName(e.target.value)} />
           <Button onClick={addClass}>Add</Button>
         </CardContent>
       </Card>

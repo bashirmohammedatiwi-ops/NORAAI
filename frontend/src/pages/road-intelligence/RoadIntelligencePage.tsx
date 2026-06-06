@@ -53,7 +53,7 @@ export default function RoadIntelligencePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Road Intelligence" description="Live events from driver app and fleet devices.">
+      <PageHeader title="Road Intelligence">
         <select className="h-10 rounded-md border border-border bg-card px-2 text-sm" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>

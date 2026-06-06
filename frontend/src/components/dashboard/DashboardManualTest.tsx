@@ -245,7 +245,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
               onChange={(e) => setHighAccuracy(e.target.checked)}
               className="rounded"
             />
-            <span>وضع دقة عالية (TTA + multi-scale) — أبطأ لكن أدق</span>
+            <span>High accuracy</span>
           </label>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="shrink-0">العتبة</span>
@@ -260,15 +260,6 @@ export function DashboardManualTest({ projects, compact }: Props) {
             />
             <span className="font-mono w-10 text-right">{(minConfidence * 100).toFixed(0)}%</span>
           </div>
-          {(status?.training_image_size || status?.map50_95 != null) && (
-            <p className="text-[10px] text-muted-foreground">
-              {status.training_image_size ? `تدريب ${status.training_image_size}px` : ''}
-              {status.inference_imgsz ? ` · استدلال ${status.inference_imgsz}px` : ''}
-              {status.map50_95 != null ? ` · mAP ${(status.map50_95 * 100).toFixed(1)}%` : ''}
-              {serverThreshold != null ? ` · خادم ${(serverThreshold * 100).toFixed(0)}%` : ''}
-              {highAccuracy ? ' · دقة عالية' : ' · سريع'}
-            </p>
-          )}
         </div>
 
         <div
@@ -357,15 +348,6 @@ export function DashboardManualTest({ projects, compact }: Props) {
                 {detections.length}
                 {rawCount != null && rawCount > 0 ? `/${rawCount}` : ''} كشف
                 {latencyMs != null && ` · ${latencyMs.toFixed(0)} ms`}
-                {detections.length === 0 && rawCount != null && rawCount > 0 && (
-                  <span className="text-amber-700"> · خفّض العتبة لعرض {rawCount} كشف</span>
-                )}
-                {detections.length === 0 && (rawCount ?? 0) === 0 && bestConfidence != null && bestConfidence > 0 && (
-                  <span className="text-amber-700">
-                    {' '}
-                    · أعلى ثقة {(bestConfidence * 100).toFixed(0)}% — أعد التدريب بعد التحديث
-                  </span>
-                )}
               </span>
             </>
           )}

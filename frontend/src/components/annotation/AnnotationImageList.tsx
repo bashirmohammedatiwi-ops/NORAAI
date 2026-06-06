@@ -121,7 +121,7 @@ export function AnnotationImageList({
         ))}
         {filtered.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-8 px-2">
-            لا توجد صور في هذا الفلتر. ارفع صوراً من قسم البيانات.
+            لا توجد صور في هذا الفلتر.
           </p>
         )}
       </div>

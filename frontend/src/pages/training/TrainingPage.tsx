@@ -158,9 +158,6 @@ export default function TrainingPage() {
             <Brain className="h-7 w-7 text-primary" />
             Training Studio
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Upload images · Train on CPU · Track epoch progress &amp; quality metrics
-          </p>
         </div>
         <div className="flex items-center gap-2">
           {connected && (

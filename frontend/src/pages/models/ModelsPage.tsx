@@ -60,7 +60,6 @@ export default function ModelsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Model Registry</h1>
-          <p className="text-muted-foreground">سجل النماذج — إدارة ومقارنة ونشر</p>
         </div>
         <Button onClick={compare} disabled={selected.length < 2}>
           Compare ({selected.length})

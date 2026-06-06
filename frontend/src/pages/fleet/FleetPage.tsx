@@ -61,7 +61,7 @@ export default function FleetPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Fleet & Driver App" description="Register vehicle devices and configure the NURAI Driver desktop app." />
+      <PageHeader title="Fleet & Driver App" />
 
       <Card className="border-primary/20">
         <CardHeader>
@@ -72,7 +72,6 @@ export default function FleetPage() {
         <CardContent className="text-sm text-muted-foreground space-y-2">
           <p>Install and run from project folder:</p>
           <code className="block bg-secondary/50 rounded-lg px-3 py-2 text-xs">cd driver-app && npm install && npm run dev</code>
-          <p className="text-xs text-muted-foreground mt-1">Web driver app: http://localhost:5000</p>
           <p>Detects: pothole, accident, road closed, speed violation (GPS).</p>
         </CardContent>
       </Card>

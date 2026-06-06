@@ -45,12 +45,6 @@ export function DetectionSummaryCard({ summary, className }: Props) {
               </span>
             )}
           </p>
-          {!vehicles.found && (
-            <p className="text-xs text-muted-foreground">لا توجد مركبة في الصورة.</p>
-          )}
-          {vehicles.found && !vehicles.accident.detected && (
-            <p className="text-xs text-muted-foreground">مركبة موجودة — لم يُؤكَّد حادث بالعتبة الحالية.</p>
-          )}
         </div>
       </div>
 
@@ -78,9 +72,7 @@ export function DetectionSummaryCard({ summary, className }: Props) {
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="text-xs text-muted-foreground">لا حفر ولا عيوب واضحة على الطريق.</p>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

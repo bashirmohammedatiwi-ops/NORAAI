@@ -9,7 +9,7 @@ import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { TrainingProgressCard } from '@/components/training/TrainingProgressCard';
 import { TrainingActivityLog } from '@/components/training/TrainingActivityLog';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -140,10 +140,7 @@ export default function UnifiedModelPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Project Model"
-        description="One model per project — train on CPU, retrain continuously, all services use it automatically."
-      >
+      <PageHeader title="Project Model">
         <Link to={`/projects/${projectId}/data`}>
           <Button variant="outline"><Database className="h-4 w-4" /> Add data</Button>
         </Link>
@@ -188,11 +185,11 @@ export default function UnifiedModelPage() {
                   <Brain className="h-5 w-5 text-primary" />
                   {model ? model.name : 'No model yet'}
                 </CardTitle>
-                <CardDescription>
-                  {model
-                    ? `Last updated ${new Date(model.updated_at).toLocaleString()}`
-                    : 'Upload images in Dataset Builder, then click Retrain Model'}
-                </CardDescription>
+                {model && (
+                  <p className="text-sm text-muted-foreground">
+                    {new Date(model.updated_at).toLocaleString()}
+                  </p>
+                )}
               </div>
               {model && (
                 <div className="flex gap-2">
@@ -246,7 +243,6 @@ export default function UnifiedModelPage() {
             ) : (
               <div className="rounded-xl border border-dashed border-border py-10 text-center text-muted-foreground">
                 <Brain className="h-10 w-10 mx-auto mb-2 opacity-40" />
-                <p>Train once to activate the project model.</p>
                 <Link to={`/projects/${projectId}/data`}>
                   <Button className="mt-3" size="sm">Go to Dataset Builder</Button>
                 </Link>
@@ -267,7 +263,6 @@ export default function UnifiedModelPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Retrain settings</CardTitle>
-            <CardDescription>CPU training · same model slot after each run</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Badge variant="secondary" className="gap-1 w-fit"><Cpu className="h-3 w-3" /> CPU Training</Badge>
@@ -280,7 +275,6 @@ export default function UnifiedModelPage() {
                 <option key={key} value={key}>{p.label}</option>
               ))}
             </Select>
-            <p className="text-xs text-muted-foreground -mt-2">{CPU_PRESETS[preset].description}</p>
             <Select label="Architecture" value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
               <option value="yolo11">YOLO11</option>
               <option value="yolov10">YOLOv10</option>
@@ -290,28 +284,15 @@ export default function UnifiedModelPage() {
               <label className="text-xs font-medium text-muted-foreground block mb-1.5">Epochs</label>
               <Input type="number" min={5} max={200} value={epochs} onChange={(e) => setEpochs(+e.target.value)} />
             </div>
-            <label className="flex items-start gap-2 text-sm cursor-pointer rounded-lg border px-3 py-2 bg-muted/30">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
                 checked={fineTune}
                 onChange={(e) => setFineTune(e.target.checked)}
-                className="mt-0.5"
                 disabled={!status?.can_fine_tune}
               />
-              <span>
-                <strong>استمر من Main Model</strong>
-                <span className="block text-xs text-muted-foreground">
-                  {status?.can_fine_tune
-                    ? 'Fine-tune — يحسّن النموذج الحالي بدل البدء من الصفر'
-                    : 'يتاح بعد أول تدريب ناجح'}
-                </span>
-              </span>
+              Fine-tune from Main Model
             </label>
-            {status?.recommended_preset && (
-              <p className="text-xs text-emerald-700">
-                موصى به: {CPU_PRESETS[status.recommended_preset as CpuPreset]?.label ?? status.recommended_preset}
-              </p>
-            )}
             <Button className="w-full" onClick={retrain} disabled={loading || training?.is_running}>
               {preset === 'fast_cpu' ? <Zap className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               {preset === 'fast_cpu' ? 'Fast CPU Retrain' : 'Retrain on latest data'}
@@ -339,7 +320,6 @@ export default function UnifiedModelPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Model history</CardTitle>
-            <CardDescription>Previous training runs (archived after retrain)</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {models.map((m) => (
@@ -358,7 +338,6 @@ export default function UnifiedModelPage() {
       <Card>
         <CardHeader>
           <CardTitle>Connected services</CardTitle>
-          <CardDescription>These modules automatically use the active project model</CardDescription>
         </CardHeader>
         <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {(status?.connected_services ?? []).map((svc) => {
@@ -370,7 +349,6 @@ export default function UnifiedModelPage() {
                 </div>
                 <div>
                   <p className="font-medium text-sm">{svc.name}</p>
-                  <p className="text-xs text-muted-foreground">{svc.uses}</p>
                 </div>
               </div>
             );

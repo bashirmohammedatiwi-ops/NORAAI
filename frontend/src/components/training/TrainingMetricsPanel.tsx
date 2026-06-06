@@ -108,7 +108,7 @@ export function TrainingMetricsPanel({
 
       {!hasMetrics ? (
         <div className="px-5 py-10 text-center text-muted-foreground text-sm">
-          Start training to see Accuracy, Precision, Recall and other metrics here
+          —
         </div>
       ) : (
         <div className={cn('p-5', compact ? 'grid grid-cols-2 sm:grid-cols-3 gap-3' : 'grid grid-cols-2 lg:grid-cols-5 gap-4')}>

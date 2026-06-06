@@ -49,10 +49,7 @@ export default function DatasetsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Dataset Gallery"
-        description="Browse all datasets — view images, class labels, and annotation status."
-      >
+      <PageHeader title="Dataset Gallery">
         {projectId && (
           <>
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>

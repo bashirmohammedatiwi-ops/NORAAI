@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -68,11 +68,6 @@ export function SimpleTrainCard({
               <Play className="h-5 w-5 text-emerald-600" />
               Train Model
             </CardTitle>
-            <CardDescription className="mt-1">
-              {imageCount > 0
-                ? `${imageCount} images ready · default: Best Accuracy preset`
-                : 'Upload images first to enable training'}
-            </CardDescription>
             <div className="mt-2 flex flex-wrap gap-2">
               <Badge variant="secondary" className="gap-1 text-[10px]">
                 <Cpu className="h-3 w-3" /> CPU Training
@@ -101,7 +96,7 @@ export function SimpleTrainCard({
           </div>
           <div className="min-w-[140px] flex-1">
             <Select label="Model" value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
-              <option value="yolo11">YOLO11 (recommended)</option>
+              <option value="yolo11">YOLO11</option>
               <option value="yolov10">YOLOv10</option>
               <option value="rt_detr">RT-DETR</option>
             </Select>
@@ -130,16 +125,15 @@ export function SimpleTrainCard({
             )}
           </Button>
         </div>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+        <label className="flex items-center gap-2 text-xs cursor-pointer">
           <input
             type="checkbox"
             checked={fineTune}
             onChange={(e) => setFineTune(e.target.checked)}
             className="rounded border-border"
           />
-          استمر من Main Model (Fine-tune) — يحافظ على ما تعلّمه النموذج ويحسّنه
+          Fine-tune from Main Model
         </label>
-        <p className="text-xs text-muted-foreground">{CPU_PRESETS[preset].description}</p>
         {error && (
           <p className="text-sm text-destructive rounded-lg bg-destructive/10 px-3 py-2">{error}</p>
         )}

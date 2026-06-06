@@ -8,7 +8,7 @@ import {
   useProjectClasses,
 } from '@/hooks/useDatasets';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -93,7 +93,7 @@ export default function DataHubPage() {
 
   const uploadComplete = (uploaded: number) => {
     if (!projectId || !selectedId || uploaded <= 0) return;
-    setMessage('Upload complete — processing images in background (may take 1–2 min)');
+    setMessage('Upload complete');
     invalidateDataset(selectedId, projectId);
     [5000, 15000, 30000, 60000].forEach((ms) => {
       window.setTimeout(() => {
@@ -108,11 +108,7 @@ export default function DataHubPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-        <p className="text-sm text-foreground">
-          <strong>Workflow:</strong> Pick dataset → choose class → upload images → train
-        </p>
-        <div className="flex gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
           {selectedId && projectId && stats && stats.image_count > 0 && (
             <Link to={`/projects/${projectId}/datasets/${selectedId}`}>
               <Button variant="outline" size="sm"><Eye className="h-4 w-4" /> Gallery</Button>
@@ -121,7 +117,6 @@ export default function DataHubPage() {
           <Button variant="outline" size="sm" onClick={refreshAll} disabled={hubFetching}>
             <RefreshCw className={`h-4 w-4 ${hubFetching ? 'animate-spin' : ''}`} /> Refresh
           </Button>
-        </div>
       </div>
 
       {hubError && (
@@ -144,7 +139,6 @@ export default function DataHubPage() {
                 <span className="step-badge">1</span>
                 <div>
                   <CardTitle>Choose dataset</CardTitle>
-                  <CardDescription>Select existing or create a new dataset</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -169,15 +163,11 @@ export default function DataHubPage() {
                 <span className="step-badge">2</span>
                 <div>
                   <CardTitle>Pick class label</CardTitle>
-                  <CardDescription>Every uploaded image gets this class automatically</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">
-                {classes.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No classes yet — add one below.</p>
-                )}
                 {classes.map((c) => (
                   <button
                     key={c.id}
@@ -193,7 +183,7 @@ export default function DataHubPage() {
                 ))}
               </div>
               <div className="flex gap-2 max-w-md">
-                <Input placeholder="اسم صنف جديد (مثال: حفر)" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} />
+                <Input placeholder="اسم صنف جديد" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} />
                 <Button variant="secondary" onClick={addClass}><Plus className="h-4 w-4 mr-1" /> Add</Button>
               </div>
             </CardContent>
@@ -212,9 +202,6 @@ export default function DataHubPage() {
                       </Badge>
                     )}
                   </CardTitle>
-                  <CardDescription>
-                    ارفع بصنف <strong>{selectedClass?.name ?? '…'}</strong> — إن لم يُرسم صندوق (يدوياً أو تلقائياً) تُسجَّل الصورة <strong>سليمة</strong> ضمن نفس الصنف
-                  </CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -237,9 +224,6 @@ export default function DataHubPage() {
                 <span className="step-badge">4</span>
                 <div>
                   <CardTitle className="text-base">استيراد YOLO (صور + labels)</CardTitle>
-                  <CardDescription>
-                    ارفع ZIP يحتوي <strong>images/</strong> و <strong>labels-YOLO/</strong> — تدريب مباشر بدون تسمية يدوية
-                  </CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -250,41 +234,6 @@ export default function DataHubPage() {
                 disabled={!selectedId}
                 onComplete={() => uploadComplete(1)}
               />
-            </CardContent>
-          </Card>
-
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Project goal · هدف المشروع</CardTitle>
-              <CardDescription>صنفان فقط: <strong>حوادث</strong> و <strong>حفر</strong></CardDescription>
-            </CardHeader>
-            <CardContent className="text-sm space-y-3 text-muted-foreground">
-              <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3 space-y-1">
-                <p className="font-medium text-blue-800 dark:text-blue-200">حوادث</p>
-                <p>صورة فيها حادث → ارسم صندوقاً في <strong>التسمية</strong>. صورة بدون حادث → ارفعها هنا فقط (تُسجَّل سليمة).</p>
-              </div>
-              <div className="rounded-md border border-orange-500/20 bg-orange-500/5 p-3 space-y-1">
-                <p className="font-medium text-orange-800 dark:text-orange-200">حفر</p>
-                <p>صورة فيها حفرة → صندوق على العيب. طريق سليم → ارفع بصنف <strong>حفر</strong> بدون صندوق (تُسجَّل سليمة).</p>
-              </div>
-              <p className="text-xs">
-                ارفع صور الحوادث بصنف <strong>حوادث</strong>، وصور الحفر بصنف <strong>حفر</strong>، ثم{' '}
-                <Link to={`/projects/${projectId}/annotation`} className="text-primary underline font-medium">التسمية</Link>{' '}
-                و Retrain.
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-sky-500/20 bg-sky-500/5">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">صور سليمة ضمن الصنف</CardTitle>
-              <CardDescription>
-                اختر الصنف أعلاه ثم ارفع صوراً <strong>بدون</strong> حادث أو حفرة — لا حاجة لصندوق. يُفضَّل 30–50٪ من عدد الصور ذات الصناديق ثم Retrain.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground space-y-2">
-              <p>مثال: صور سيارات سليمة بصنف <strong>حوادث</strong>، أو طرق سليمة بصنف <strong>حفر</strong>.</p>
-              <p className="text-xs">لا تُنشأ صناديق تلقائية عند الرفع — التسمية اليدوية من قسم Annotation عند الحاجة فقط.</p>
             </CardContent>
           </Card>
 
@@ -314,7 +263,7 @@ export default function DataHubPage() {
                     ) : (
                       <>
                         <AlertCircle className="h-6 w-6 text-amber-500" />
-                        <span className="text-amber-700">Upload images with a class to enable training</span>
+                        <span className="text-amber-700">Not ready</span>
                       </>
                     )}
                   </div>
@@ -354,9 +303,6 @@ export default function DataHubPage() {
             </Card>
           )}
 
-          <p className="text-xs text-muted-foreground text-center">
-            للصناديق الدقيقة استخدم قسم <Link to={`/projects/${projectId}/annotation`} className="underline text-primary font-medium">التسمية</Link>.
-          </p>
         </>
       )}
     </div>

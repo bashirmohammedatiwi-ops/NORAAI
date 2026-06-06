@@ -4,8 +4,7 @@ import { useProjectDatasets } from '@/hooks/useDatasets';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Play, Sparkles, Target } from 'lucide-react';
+import { Play, Sparkles } from 'lucide-react';
 
 interface CpuPresetOption {
   value: string;
@@ -203,7 +202,6 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
     }
   };
 
-  const selectedPreset = options?.cpu_presets.find((p) => p.value === cpuPreset);
   const selectCls = 'h-10 w-full rounded-md border border-border bg-background px-3 text-sm';
 
   return (
@@ -215,26 +213,9 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/40 p-4 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Target className="h-4 w-4 text-emerald-600" />
-            <span className="text-sm font-medium text-emerald-900">أفضل إعدادات لسيرفرك (4 CPU · 16 GB RAM)</span>
-            <Badge variant="secondary" className="text-[10px]">Recommended</Badge>
-          </div>
-          <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-            {(options?.recommendations?.notes ?? [
-              'Preset: Best Accuracy — 20 epochs · 640px · medium augmentation',
-              'Architecture: YOLO11 — Mixed Precision OFF on CPU',
-              'Review labels and add diverse camera/road images for higher mAP',
-            ]).map((note) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
-        </div>
-
         <div className="flex items-center justify-between border-b border-border pb-3">
           <p className="text-sm text-muted-foreground">
-            {advanced ? 'Advanced settings' : 'Simple mode — preset & dataset'}
+            {advanced ? 'Advanced' : 'Simple'}
           </p>
           <button
             type="button"
@@ -260,9 +241,6 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
-            {selectedPreset && (
-              <p className="text-[11px] text-muted-foreground mt-1">{selectedPreset.description}</p>
-            )}
           </div>
 
           <div>
@@ -323,19 +301,14 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           )}
         </div>
 
-        <label className="flex items-center gap-2 text-sm cursor-pointer rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input
             type="checkbox"
             checked={fineTuneFromActive}
             onChange={(e) => setFineTuneFromActive(e.target.checked)}
             className="rounded border-border"
           />
-          <span>
-            <strong>استمر من Main Model</strong>
-            <span className="text-muted-foreground text-xs block">
-              Fine-tune — يكمل على أوزان النموذج النشط بدل البدء من yolo11n.pt
-            </span>
-          </span>
+          Fine-tune from Main Model
         </label>
 
         <div className="border-t border-border pt-4">
@@ -399,7 +372,6 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={mixedPrecision} onChange={(e) => setMixedPrecision(e.target.checked)} />
             Mixed Precision (AMP)
-            <span className="text-xs text-muted-foreground">— GPU only; leave OFF on CPU</span>
           </label>
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={hpoEnabled} onChange={(e) => setHpoEnabled(e.target.checked)} />
