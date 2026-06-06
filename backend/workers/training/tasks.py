@@ -412,16 +412,14 @@ def run_training_job(job_id: str):
             )
             training_metrics["partial_training"] = partial_training
             if partial_training:
-                training_metrics["partial_class_note"] = (
-                    "Trained on a subset of classes; Main Model was not replaced."
-                )
+                training_metrics["partial_class_note"] = f"Main Model updated for: {partial_label}"
 
             artifact = ModelArtifact(
                 project_id=job.project_id,
                 training_job_id=job.id,
-                name=f"Partial · {partial_label}" if partial_training else "Main Model",
+                name="Main Model",
                 architecture=job.architecture.value,
-                lifecycle=ModelLifecycle.STAGING if partial_training else ModelLifecycle.REGISTERED,
+                lifecycle=ModelLifecycle.REGISTERED,
                 minio_weights_key=minio_key,
                 minio_onnx_key=onnx_key,
                 dataset_version_id=job.dataset_version_id,
@@ -436,20 +434,15 @@ def run_training_job(job_id: str):
 
             from app.services.models.active_model import ensure_live_deployment_sync, promote_as_active_model_sync
 
+            promote_as_active_model_sync(session, job.project_id, artifact.id)
+            ensure_live_deployment_sync(session, job.project_id, artifact.id)
             if partial_training:
                 publish_metric(job_id, {
                     "phase": "finalize",
-                    "message": (
-                        f"Partial model saved ({partial_label}) — Main Model unchanged. "
-                        "Select all classes to replace the production model."
-                    ),
+                    "message": f"Main Model updated — trained on: {partial_label}",
                     "status": "running",
                     "partial_training": True,
                 })
-            else:
-                promote_as_active_model_sync(session, job.project_id, artifact.id)
-                ensure_live_deployment_sync(session, job.project_id, artifact.id)
-                training_metrics["promoted_to_active"] = True
 
         job.status = TrainingStatus.COMPLETED
         job.completed_at = datetime.now(timezone.utc)

@@ -264,7 +264,7 @@ export default function UnifiedModelPage() {
                 </div>
                 {Boolean(model.metrics?.partial_training) && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                    هذا نموذج تجريبي لفئة محدودة. استعد النموذج متعدد الفئات من «سجل النماذج» إن لزم.
+                    النموذج الرئيسي مدرَّب على فئات محددة فقط. لإضافة فئات أخرى، درّبها ثم حدّد كل الفئات أو أعد تدريب الفئات الناقصة.
                   </div>
                 )}
                 {modelClasses.length > 0 && (
@@ -370,7 +370,7 @@ export default function UnifiedModelPage() {
                       <span className="font-medium">{m.name}</span>
                       <span className="text-muted-foreground ml-2">{m.architecture} · {m.lifecycle}</span>
                       {Boolean(m.metrics?.partial_training) && (
-                        <Badge variant="warning" className="ml-2 text-[10px]">تجريبي</Badge>
+                        <Badge variant="warning" className="ml-2 text-[10px]">فئات محددة</Badge>
                       )}
                     </div>
                     {historyClasses.length > 0 && (

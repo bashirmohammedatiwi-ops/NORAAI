@@ -94,7 +94,7 @@ export function TrainingClassPicker({
       </p>
       {selectedIds.length > 0 && selectedIds.length < classes.length && (
         <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-          تدريب فئة واحدة أو جزء من الفئات يحفظ نموذجاً تجريبياً ولا يستبدل النموذج الرئيسي. لتحديث الإنتاج، حدّد كل الفئات.
+          سيتم تحديث النموذج الرئيسي للفئات المحددة فقط. الفئات غير المختارة لن تُكتشف حتى تدريبها لاحقاً.
         </p>
       )}
     </div>
