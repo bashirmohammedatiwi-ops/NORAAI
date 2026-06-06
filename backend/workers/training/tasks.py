@@ -121,8 +121,16 @@ def run_training_job(job_id: str):
 
             export_meta: dict = {}
             validation: dict | None = None
+            selected_class_ids = config.get("class_ids") or None
+            if selected_class_ids:
+                selected_class_ids = [str(cid) for cid in selected_class_ids]
+
             if job.dataset_version_id:
-                validation = validate_dataset_version(session, job.dataset_version_id)
+                validation = validate_dataset_version(
+                    session,
+                    job.dataset_version_id,
+                    selected_class_ids=selected_class_ids,
+                )
                 publish_metric(job_id, {
                     "phase": "validate",
                     "message": "Dataset validated",
@@ -141,6 +149,7 @@ def run_training_job(job_id: str):
                     progress_callback=progress_callback,
                     cancel_check=cancel_check,
                     max_workers=config.get("_export_workers") or settings.training_export_max_workers or None,
+                    selected_class_ids=selected_class_ids,
                 )
                 for warning in validation.get("warnings", []):
                     publish_metric(job_id, {

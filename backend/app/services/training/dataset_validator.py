@@ -23,6 +23,7 @@ MIN_ANNOTATIONS_PER_CLASS = 10
 def validate_dataset_version(
     session: Session,
     dataset_version_id: uuid.UUID,
+    selected_class_ids: list[str] | None = None,
 ) -> dict:
     version = session.get(DatasetVersion, dataset_version_id)
     if not version:
@@ -37,7 +38,11 @@ def validate_dataset_version(
 
     project_id = version.dataset.project_id
     classes = load_classes_for_export(
-        session, project_id, image_ids, version.class_manifest or {},
+        session,
+        project_id,
+        image_ids,
+        version.class_manifest or {},
+        selected_class_ids=selected_class_ids,
     )
     manifest = build_class_manifest(classes, version.class_manifest or {})
     class_index = class_id_to_index(classes)
@@ -49,15 +54,22 @@ def validate_dataset_version(
         )
     ) if image_ids else None
 
+    selected_set = {str(cid) for cid in selected_class_ids} if selected_class_ids else None
     ann_by_image: dict[uuid.UUID, list] = defaultdict(list)
     unknown_class_ids: set[str] = set()
     if ann_rows:
         for ann in ann_rows.scalars().all():
             ann_by_image[ann.image_id].append(ann)
-            if str(ann.class_id) not in class_index:
-                unknown_class_ids.add(str(ann.class_id))
+            ann_key = str(ann.class_id)
+            if ann_key not in class_index:
+                if selected_set is None or ann_key in selected_set:
+                    unknown_class_ids.add(ann_key)
 
-    labeled_images = sum(1 for img_id in image_ids if ann_by_image.get(img_id))
+    labeled_images = sum(
+        1
+        for img_id in image_ids
+        if any(str(a.class_id) in class_index for a in ann_by_image.get(img_id, []))
+    )
     empty_label_images = len(image_ids) - labeled_images
     class_counts = annotation_class_counts(session, image_ids, class_index)
 
@@ -66,8 +78,14 @@ def validate_dataset_version(
 
     if not image_ids:
         errors.append("Dataset has no images.")
+    if not classes:
+        errors.append("No training classes selected — choose at least one class with labels.")
     if labeled_images == 0:
         errors.append("No approved annotations — train after labeling or importing YOLO labels.")
+    if selected_class_ids:
+        for idx, name in enumerate(manifest["names"]):
+            if class_counts.get(idx, 0) == 0:
+                errors.append(f"Selected class '{name}' has no annotations in this dataset.")
     if unknown_class_ids:
         errors.append(
             f"{len(unknown_class_ids)} annotation(s) reference deleted or archived classes."

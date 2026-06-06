@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
+import { TrainingClassPicker, type TrainClassOption } from '@/components/training/TrainingClassPicker';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +14,9 @@ interface Props {
   datasetId: string;
   imageCount: number;
   ready: boolean;
+  classes: TrainClassOption[];
+  selectedClassIds: string[];
+  onSelectedClassIdsChange: (ids: string[]) => void;
   onStarted: (jobId?: string) => void;
   showAdvanced?: boolean;
   onToggleAdvanced?: () => void;
@@ -23,6 +27,9 @@ export function SimpleTrainCard({
   datasetId,
   imageCount,
   ready,
+  classes,
+  selectedClassIds,
+  onSelectedClassIdsChange,
   onStarted,
   showAdvanced,
   onToggleAdvanced,
@@ -40,11 +47,17 @@ export function SimpleTrainCard({
   };
 
   const start = async () => {
-    if (!ready || !datasetId) return;
+    if (!ready || !datasetId || selectedClassIds.length < 1) return;
     setLoading(true);
     setError('');
     try {
-      const query = buildRetrainQuery({ epochs, architecture, preset, fineTune });
+      const query = buildRetrainQuery({
+        epochs,
+        architecture,
+        preset,
+        fineTune,
+        classIds: selectedClassIds,
+      });
       const job = await api.post<{ id: string }>(
         `/api/v1/training/project/${projectId}/retrain?${query}`,
         undefined,
@@ -114,7 +127,7 @@ export function SimpleTrainCard({
           </div>
           <Button
             onClick={start}
-            disabled={loading || !ready}
+            disabled={loading || !ready || selectedClassIds.length < 1}
             variant="success"
             className="min-w-[140px]"
           >
@@ -125,6 +138,14 @@ export function SimpleTrainCard({
             )}
           </Button>
         </div>
+        <TrainingClassPicker
+          classes={classes}
+          selectedIds={selectedClassIds}
+          onChange={onSelectedClassIdsChange}
+          disabled={loading}
+          compact
+        />
+
         <label className="flex items-center gap-2 text-xs cursor-pointer">
           <input
             type="checkbox"

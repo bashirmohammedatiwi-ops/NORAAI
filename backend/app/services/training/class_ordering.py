@@ -20,11 +20,40 @@ def load_project_classes(session: Session, project_id: uuid.UUID) -> list[ClassL
     return list(result.scalars().all())
 
 
+def normalize_class_id_list(class_ids: list[str] | list[uuid.UUID] | None) -> list[str] | None:
+    if not class_ids:
+        return None
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in class_ids:
+        key = str(raw).strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out or None
+
+
+def apply_selected_classes(
+    classes: list[ClassLabel],
+    selected_class_ids: list[str] | None,
+    *,
+    project_classes: list[ClassLabel] | None = None,
+) -> list[ClassLabel]:
+    """Keep only user-selected classes in the requested order."""
+    if not selected_class_ids:
+        return classes
+    selected = normalize_class_id_list(selected_class_ids) or []
+    lookup = {str(c.id): c for c in (project_classes or classes)}
+    return [lookup[cid] for cid in selected if cid in lookup]
+
+
 def load_classes_for_export(
     session: Session,
     project_id: uuid.UUID,
     image_ids: list[uuid.UUID],
     version_manifest: dict | None = None,
+    selected_class_ids: list[str] | None = None,
 ) -> list[ClassLabel]:
     """
     Export only classes present in annotations, ordered by original YOLO index when known.
@@ -33,7 +62,7 @@ def load_classes_for_export(
     all_classes = load_project_classes(session, project_id)
     by_id = {str(c.id): c for c in all_classes}
     if not image_ids:
-        return all_classes
+        return apply_selected_classes(all_classes, selected_class_ids, project_classes=all_classes)
 
     used_ids: set[str] = set()
     rows = session.execute(
@@ -47,13 +76,13 @@ def load_classes_for_export(
 
     used = [by_id[cid] for cid in used_ids if cid in by_id]
     if not used:
-        return all_classes
+        return apply_selected_classes(all_classes, selected_class_ids, project_classes=all_classes)
 
     manifest = version_manifest or {}
     yolo_indices: dict[str, int] = manifest.get("yolo_indices") or {}
     if yolo_indices:
         used.sort(key=lambda c: (int(yolo_indices.get(str(c.id), 9999)), c.name))
-        return used
+        return apply_selected_classes(used, selected_class_ids, project_classes=all_classes)
 
     counts = annotation_class_counts(session, image_ids, class_id_to_index(all_classes))
     full_index = class_id_to_index(all_classes)
@@ -64,7 +93,7 @@ def load_classes_for_export(
             c.name,
         )
     )
-    return used
+    return apply_selected_classes(used, selected_class_ids, project_classes=all_classes)
 
 
 def build_class_manifest(classes: list[ClassLabel], version_manifest: dict | None = None) -> dict:

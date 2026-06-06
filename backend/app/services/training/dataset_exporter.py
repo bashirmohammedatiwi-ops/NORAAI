@@ -26,6 +26,7 @@ def export_yolo_dataset_sync(
     progress_callback: Callable[[dict], None] | None = None,
     cancel_check: Callable[[], bool] | None = None,
     max_workers: int | None = None,
+    selected_class_ids: list[str] | None = None,
 ) -> tuple[str, list[str], dict]:
     """Export dataset version to YOLO format with parallel MinIO downloads."""
     version = session.get(DatasetVersion, dataset_version_id)
@@ -45,7 +46,10 @@ def export_yolo_dataset_sync(
         version.dataset.project_id,
         image_ids,
         version_manifest,
+        selected_class_ids=selected_class_ids,
     )
+    if not classes:
+        raise ValueError("No classes selected for training export.")
     class_names = [c.name for c in classes]
     class_map = class_id_to_index(classes)
     manifest = build_class_manifest(classes, version_manifest)

@@ -63,6 +63,7 @@ export default function TrainingPage() {
   const { data: classes = [], refetch: refetchClasses } = useProjectClasses(projectId);
   const [selectedDatasetId, setSelectedDatasetId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedTrainClassIds, setSelectedTrainClassIds] = useState<string[]>([]);
   const [newClassName, setNewClassName] = useState('');
   const { data: stats, refetch: refetchStats } = useDatasetBuilderStats(selectedDatasetId || undefined);
 
@@ -92,6 +93,17 @@ export default function TrainingPage() {
       setSelectedClassId(classes[0].id);
     }
   }, [classes, selectedClassId]);
+
+  useEffect(() => {
+    if (!classes.length) {
+      setSelectedTrainClassIds([]);
+      return;
+    }
+    setSelectedTrainClassIds((prev) => {
+      const valid = prev.filter((id) => classes.some((c) => c.id === id));
+      return valid.length ? valid : classes.map((c) => c.id);
+    });
+  }, [classes]);
 
   const loadJobs = useCallback(() => {
     if (!projectId) return;
@@ -348,6 +360,9 @@ export default function TrainingPage() {
                 datasetId={selectedDatasetId}
                 imageCount={stats?.image_count ?? 0}
                 ready={Boolean(stats?.ready_for_training && stats.head_version_id)}
+                classes={classes}
+                selectedClassIds={selectedTrainClassIds}
+                onSelectedClassIdsChange={setSelectedTrainClassIds}
                 onStarted={(jobId) => {
                   loadJobs();
                   if (jobId) setSelectedJobId(jobId);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { useProjectDatasets } from '@/hooks/useDatasets';
+import { useProjectClasses, useProjectDatasets } from '@/hooks/useDatasets';
+import { TrainingClassPicker } from '@/components/training/TrainingClassPicker';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -63,6 +64,8 @@ function applyPreset(preset: CpuPresetOption) {
 export function TrainingConfigForm({ projectId, onStarted }: Props) {
   const [options, setOptions] = useState<TrainingOptions | null>(null);
   const { data: datasets = [] } = useProjectDatasets(projectId);
+  const { data: projectClasses = [] } = useProjectClasses(projectId);
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
   const [versions, setVersions] = useState<{ id: string; version_tag: string }[]>([]);
   const [models, setModels] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -135,6 +138,17 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
   }, [projectId]);
 
   useEffect(() => {
+    if (!projectClasses.length) {
+      setSelectedClassIds([]);
+      return;
+    }
+    setSelectedClassIds((prev) => {
+      const valid = prev.filter((id) => projectClasses.some((c) => c.id === id));
+      return valid.length ? valid : projectClasses.map((c) => c.id);
+    });
+  }, [projectClasses]);
+
+  useEffect(() => {
     if (!datasets.length) return;
     setDatasetId((prev) => prev || datasets[0].id);
     if (datasets[0].head_version_id) {
@@ -153,6 +167,10 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
   }, [datasetId, datasets]);
 
   const startTraining = async () => {
+    if (selectedClassIds.length < 1) {
+      window.alert('اختر فئة واحدة على الأقل للتدريب');
+      return;
+    }
     setLoading(true);
     try {
       let vid = versionId;
@@ -191,6 +209,7 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           device: 'cpu',
           fine_tune_from_active: fineTuneFromActive,
           continuous: fineTuneFromActive,
+          class_ids: selectedClassIds,
         },
       });
       onStarted();
@@ -301,6 +320,13 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           )}
         </div>
 
+        <TrainingClassPicker
+          classes={projectClasses}
+          selectedIds={selectedClassIds}
+          onChange={setSelectedClassIds}
+          disabled={loading}
+        />
+
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input
             type="checkbox"
@@ -387,7 +413,7 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
         )}
 
         <div className="flex justify-end border-t border-border pt-4">
-          <Button onClick={startTraining} disabled={loading || !datasetId}>
+          <Button onClick={startTraining} disabled={loading || !datasetId || selectedClassIds.length < 1}>
             <Play className="h-4 w-4 mr-2" />
             {loading ? 'Starting...' : 'Start Training'}
           </Button>

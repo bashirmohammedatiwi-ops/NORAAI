@@ -24,6 +24,38 @@ from workers.training.tasks import cancel_training_job, run_training_job
 router = APIRouter(tags=["training", "models"])
 
 
+async def _normalize_training_class_ids(
+    db: AsyncSession,
+    project_id: UUID,
+    class_ids: list[UUID] | None,
+) -> list[str] | None:
+    if class_ids is None:
+        return None
+    if not class_ids:
+        raise HTTPException(status_code=400, detail="اختر فئة واحدة على الأقل للتدريب")
+
+    result = await db.execute(
+        select(ClassLabel.id).where(
+            ClassLabel.project_id == project_id,
+            ClassLabel.is_archived == False,
+            ClassLabel.id.in_(class_ids),
+        )
+    )
+    found = {str(row[0]) for row in result.all()}
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for cid in class_ids:
+        key = str(cid)
+        if key not in found or key in seen:
+            continue
+        seen.add(key)
+        ordered.append(key)
+
+    if len(ordered) != len({str(cid) for cid in class_ids}):
+        raise HTTPException(status_code=400, detail="بعض الفئات المختارة غير موجودة أو مؤرشفة")
+    return ordered
+
+
 @router.get("/training/options")
 async def get_training_options():
     return TRAINING_OPTIONS
@@ -61,6 +93,12 @@ async def create_training_job(
 
     await ensure_no_running_training_async(db, project_id)
 
+    config = dict(data.config or {})
+    raw_class_ids = config.pop("class_ids", None)
+    if raw_class_ids is not None:
+        parsed = [UUID(str(cid)) for cid in raw_class_ids]
+        config["class_ids"] = await _normalize_training_class_ids(db, project_id, parsed)
+
     job = TrainingJob(
         project_id=project_id,
         name=data.name,
@@ -69,7 +107,7 @@ async def create_training_job(
         model_definition_id=data.model_definition_id,
         dataset_version_id=data.dataset_version_id,
         hpo_enabled=data.hpo_enabled,
-        config=data.config,
+        config=config,
         created_by=user.id,
     )
     db.add(job)
@@ -252,6 +290,7 @@ async def retrain_project_model(
         pattern="^(ultimate_accuracy|fine_tune|best_accuracy|max_cpu|fleet_cpu|turbo_cpu|fast_cpu|balanced)$",
     ),
     fine_tune: bool = Query(True, description="Continue training from active Main Model weights"),
+    class_ids: list[UUID] | None = Query(None, description="Train only on these class IDs"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -270,6 +309,9 @@ async def retrain_project_model(
         raise HTTPException(status_code=400, detail="Dataset has no version")
 
     config = build_retrain_config(epochs, preset, fine_tune_from_active=fine_tune)
+    normalized_class_ids = await _normalize_training_class_ids(db, project_id, class_ids)
+    if normalized_class_ids:
+        config["class_ids"] = normalized_class_ids
 
     job = TrainingJob(
         project_id=project_id,

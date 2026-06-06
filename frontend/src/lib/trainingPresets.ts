@@ -58,11 +58,15 @@ export function buildRetrainQuery(params: {
   architecture?: string;
   preset?: CpuPreset;
   fineTune?: boolean;
+  classIds?: string[];
 }): string {
   const q = new URLSearchParams();
   if (params.epochs != null) q.set('epochs', String(params.epochs));
   if (params.architecture) q.set('architecture', params.architecture);
   q.set('preset', params.preset ?? DEFAULT_CPU_PRESET);
   q.set('fine_tune', String(params.fineTune ?? true));
+  for (const id of params.classIds ?? []) {
+    q.append('class_ids', id);
+  }
   return q.toString();
 }
