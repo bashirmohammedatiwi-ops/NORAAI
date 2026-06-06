@@ -130,13 +130,16 @@ class YOLOAdapter:
 
                 train_batch_size = int(train_kwargs.get("batch") or config.get("batch_size") or 16)
 
-                batch_state = {
+                batch_state: dict[str, Any] = {
                     "last_ts": 0.0,
                     "epoch_start_ts": time.time(),
                     "last_epoch_idx": -1,
                     "last_batch_i": 0,
                     "last_speed_ts": None,
                     "ema_batches_per_min": None,
+                    "speed_window": [],
+                    "avg_anchor_batch": 0,
+                    "avg_anchor_ts": None,
                 }
 
                 def training_progress(epoch_idx: int, batch_i: int, nb: int) -> int:
@@ -201,11 +204,9 @@ class YOLOAdapter:
                         1,
                     )
                     epoch_idx = int(getattr(trainer, "epoch", 0))
-                    min_interval = 1.0 if nb <= 30 else 2.0
-                    batch_stride = 1 if nb <= 50 else 5
-                    if now - batch_state["last_ts"] < min_interval and batch_i % batch_stride != 0:
-                        return
-                    batch_state["last_ts"] = now
+                    min_interval = 0.8
+                    batch_stride = 1 if nb <= 200 else 2
+
                     loss_items = getattr(trainer, "loss_items", None)
                     loss_val = float(sum(loss_items)) if loss_items is not None else None
                     loss_box = float(loss_items[0]) if loss_items is not None and len(loss_items) > 0 else None
@@ -221,25 +222,58 @@ class YOLOAdapter:
                     if prev_speed_ts is not None and batch_i > prev_batch:
                         delta_t = now - float(prev_speed_ts)
                         delta_b = batch_i - prev_batch
-                        if delta_t > 0.15 and delta_b > 0:
+                        if delta_t > 0.1 and delta_b > 0:
                             instant_bpm = (delta_b / delta_t) * 60.0
 
                     ema_bpm = batch_state.get("ema_batches_per_min")
                     if instant_bpm is not None:
-                        ema_bpm = instant_bpm if ema_bpm is None else (0.6 * instant_bpm + 0.4 * float(ema_bpm))
+                        ema_bpm = instant_bpm if ema_bpm is None else (0.72 * instant_bpm + 0.28 * float(ema_bpm))
                         batch_state["ema_batches_per_min"] = ema_bpm
 
                     batch_state["last_batch_i"] = batch_i
                     batch_state["last_speed_ts"] = now
 
-                    epoch_avg_bpm = (batch_i / max(epoch_elapsed, 0.5)) * 60.0
+                    speed_window: list[tuple[float, int]] = batch_state.setdefault("speed_window", [])
+                    speed_window.append((now, batch_i))
+                    while speed_window and now - speed_window[0][0] > 60.0:
+                        speed_window.pop(0)
+
+                    rolling_bpm: float | None = None
+                    if len(speed_window) >= 2:
+                        t0, b0 = speed_window[0]
+                        t1, b1 = speed_window[-1]
+                        dt = t1 - t0
+                        if dt > 0.4 and b1 > b0:
+                            rolling_bpm = ((b1 - b0) / dt) * 60.0
+
+                    if batch_i >= 2 and batch_state.get("avg_anchor_ts") is None:
+                        batch_state["avg_anchor_ts"] = now
+                        batch_state["avg_anchor_batch"] = batch_i
+                    steady_bpm: float | None = None
+                    anchor_ts = batch_state.get("avg_anchor_ts")
+                    anchor_batch = int(batch_state.get("avg_anchor_batch") or 0)
+                    if anchor_ts is not None and batch_i > anchor_batch:
+                        steady_elapsed = now - float(anchor_ts)
+                        steady_bpm = ((batch_i - anchor_batch) / max(steady_elapsed, 0.5)) * 60.0
+
                     at_epoch_end = batch_i >= nb or epoch_progress >= 99
-                    if at_epoch_end or nb <= 1:
-                        display_bpm = epoch_avg_bpm
+                    if at_epoch_end:
+                        display_bpm = steady_bpm or rolling_bpm or float(ema_bpm or 0)
                     else:
-                        display_bpm = float(ema_bpm) if ema_bpm is not None else epoch_avg_bpm
+                        display_bpm = float(ema_bpm) if ema_bpm is not None else (steady_bpm or rolling_bpm or 0.0)
+                    if display_bpm <= 0 and steady_bpm:
+                        display_bpm = steady_bpm
+
                     batches_per_min = round(display_bpm, 1)
-                    batches_per_min_avg = round(epoch_avg_bpm, 1)
+                    batches_per_min_avg = round(rolling_bpm or steady_bpm or display_bpm, 1)
+
+                    if (
+                        now - batch_state["last_ts"] < min_interval
+                        and batch_i % batch_stride != 0
+                        and batch_i < nb
+                    ):
+                        return
+                    batch_state["last_ts"] = now
                     sec_per_batch = round(60.0 / display_bpm, 1) if display_bpm > 0 else round(
                         epoch_elapsed / max(batch_i, 1), 1
                     )
@@ -323,6 +357,9 @@ class YOLOAdapter:
                         batch_state["last_batch_i"] = 0
                         batch_state["last_speed_ts"] = time.time()
                         batch_state["ema_batches_per_min"] = None
+                        batch_state["speed_window"] = []
+                        batch_state["avg_anchor_ts"] = None
+                        batch_state["avg_anchor_batch"] = 0
                     if val_every <= 1:
                         return
                     epoch = epoch_idx + 1

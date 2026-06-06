@@ -41,15 +41,20 @@ export function useTrainingMetrics(jobId: string | null) {
               return next;
             }
           }
-          if (data.phase === 'export' || data.phase === 'train' || data.phase === 'finalize') {
+          if (data.phase === 'train') {
+            const stamped = { ...data, _ts: Date.now() };
+            const next = [...prev, stamped];
+            return next.length > 120 ? next.slice(-120) : next;
+          }
+          if (data.phase === 'export' || data.phase === 'finalize') {
             const idx = prev.findIndex((m) => m.phase === data.phase && !m.save_epoch_metric);
             if (idx >= 0) {
               const next = [...prev];
-              next[idx] = { ...next[idx], ...data };
+              next[idx] = { ...next[idx], ...data, _ts: Date.now() };
               return next;
             }
           }
-          return [...prev, data];
+          return [...prev, { ...data, _ts: Date.now() }];
         });
       } catch { /* ignore */ }
     };

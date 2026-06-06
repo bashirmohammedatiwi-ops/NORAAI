@@ -100,10 +100,18 @@ export function useTrainingJob(
 
   const chartMetrics = mergeMetrics(historicalMetrics, liveMetrics as unknown as TrainingMetricPoint[]);
 
+  const latestTrainLive = useMemo(() => {
+    for (let i = liveMetrics.length - 1; i >= 0; i -= 1) {
+      if (liveMetrics[i].phase === 'train') return liveMetrics[i];
+    }
+    return null;
+  }, [liveMetrics]);
+
   const liveJob = useMemo(() => {
     const base = job ?? (baseline && jobId ? ({ ...baseline, id: jobId } as TrainingJobDetail) : null);
     if (!base) return null;
     const latestLive = liveMetrics.length ? liveMetrics[liveMetrics.length - 1] : null;
+    const speedLive = latestTrainLive ?? latestLive;
     const terminal = ['completed', 'failed', 'cancelled'].includes(base.status);
     const hasLive = !terminal && latestLive && (
       latestLive.progress != null
@@ -129,20 +137,20 @@ export function useTrainingJob(
       progress: Math.min(100, Math.max(0, progress)),
       phase: (latestLive.phase as string | undefined) ?? base.phase,
       message: (latestLive.message as string | undefined) ?? base.message,
-      batch: isValidation ? base.batch : num(latestLive.batch, base.batch),
-      total_batches: isValidation ? base.total_batches : num(latestLive.total_batches, base.total_batches),
-      epoch_progress: isValidation ? 100 : num(latestLive.epoch_progress, base.epoch_progress),
+      batch: isValidation ? num(speedLive?.batch, base.batch) : num(speedLive?.batch, base.batch),
+      total_batches: isValidation ? num(speedLive?.total_batches, base.total_batches) : num(speedLive?.total_batches, base.total_batches),
+      epoch_progress: isValidation ? num(speedLive?.epoch_progress, base.epoch_progress) : num(speedLive?.epoch_progress, base.epoch_progress),
       export_current: num(latestLive.export_current, base.export_current),
       export_total: num(latestLive.export_total, base.export_total),
-      current_step: num(latestLive.current_step, base.current_step),
-      total_steps: num(latestLive.total_steps, base.total_steps),
-      eta_seconds: num(latestLive.eta_seconds, base.eta_seconds) ?? computeEtaSeconds(duration, progress),
-      epoch_elapsed_seconds: num(latestLive.epoch_elapsed_seconds, base.epoch_elapsed_seconds),
-      epoch_eta_seconds: num(latestLive.epoch_eta_seconds, base.epoch_eta_seconds),
-      batches_per_min: num(latestLive.batches_per_min, base.batches_per_min),
-      batches_per_min_avg: num(latestLive.batches_per_min_avg, base.batches_per_min_avg),
-      sec_per_batch: num(latestLive.sec_per_batch, base.sec_per_batch),
-      images_per_min: num(latestLive.images_per_min, base.images_per_min),
+      current_step: num(speedLive?.current_step, base.current_step),
+      total_steps: num(speedLive?.total_steps, base.total_steps),
+      eta_seconds: num(speedLive?.eta_seconds, base.eta_seconds) ?? computeEtaSeconds(duration, progress),
+      epoch_elapsed_seconds: num(speedLive?.epoch_elapsed_seconds, base.epoch_elapsed_seconds),
+      epoch_eta_seconds: num(speedLive?.epoch_eta_seconds, base.epoch_eta_seconds),
+      batches_per_min: num(speedLive?.batches_per_min, base.batches_per_min),
+      batches_per_min_avg: num(speedLive?.batches_per_min_avg, base.batches_per_min_avg),
+      sec_per_batch: num(speedLive?.sec_per_batch, base.sec_per_batch),
+      images_per_min: num(speedLive?.images_per_min, base.images_per_min),
       train_images: num(latestLive.train_images, base.train_images),
       val_images: num(latestLive.val_images, base.val_images),
       exported_images: num(latestLive.exported_images, base.exported_images),
@@ -159,11 +167,11 @@ export function useTrainingJob(
           }
         : base.latest_metrics,
     };
-  }, [job, baseline, jobId, liveMetrics]);
+  }, [job, baseline, jobId, liveMetrics, latestTrainLive]);
 
   const progressDetail: TrainingProgressDetail | undefined = useMemo(() => {
     if (!liveJob) return undefined;
-    const latestLive = liveMetrics.length ? liveMetrics[liveMetrics.length - 1] : null;
+    const latestLive = latestTrainLive ?? (liveMetrics.length ? liveMetrics[liveMetrics.length - 1] : null);
     return {
       epochProgress: liveJob.epoch_progress,
       exportCurrent: liveJob.export_current,
@@ -189,7 +197,7 @@ export function useTrainingJob(
       map50_95: liveJob.latest_metrics?.map50_95,
       precision: liveJob.latest_metrics?.precision,
     };
-  }, [liveJob, liveMetrics]);
+  }, [liveJob, liveMetrics, latestTrainLive]);
 
   const activityLog = useMemo(
     () => liveMetrics
