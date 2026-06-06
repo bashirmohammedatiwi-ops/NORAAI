@@ -197,10 +197,10 @@ def run_training_job(job_id: str):
                         f"downloaded from MinIO ({export_meta.get('export_failures', 0)} failed). "
                         "Fix storage connectivity before training."
                     )
-                if expected_n >= 100 and labeled_n < max(50, int(expected_n * 0.05)):
+                if labeled_export < max(50, int(exported_n * 0.05)) and exported_n >= 100:
                     raise ValueError(
-                        f"Only {labeled_n}/{expected_n} images have labels — "
-                        "add annotations or import YOLO labels before training on this dataset."
+                        f"Only {labeled_export}/{exported_n} exported images have label boxes — "
+                        f"({labeled_n} labeled in DB). Import YOLO labels or approve annotations."
                     )
                 for warning in validation.get("warnings", []):
                     publish_metric(job_id, {

@@ -119,7 +119,9 @@ export function TrainingProgressCard({
           {message && <p className="text-sm text-foreground/80 font-medium">{message}</p>}
           {inTrain && totalBatches === 1 && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              تحذير: دفعة واحدة فقط في الدورة — غالباً عدد صور التدريب قليل جداً (ليس 10,000). تحقق من Dataset قبل الاعتماد على النتائج.
+              تحذير: دفعة واحدة فقط — الصور مُصدّرة
+              {detail?.exportedImages != null ? ` (${detail.exportedImages})` : ''}
+              {' '}لكن التسميات (labels) قليلة جداً. YOLO يتدرب فقط على الصور التي تحتوي صناديق إحداثيات. أضف أو استورد التسميات.
             </p>
           )}
 
