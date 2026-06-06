@@ -207,9 +207,9 @@ def detect_simple_with_project_model(
     """Direct YOLO on full image — single pass, optimized for camera / manual test."""
     predict_imgsz = imgsz or settings.inference_imgsz
     yolo_conf = (
-        min(0.03, settings.inference_manual_test_conf)
+        min(0.01, settings.inference_manual_test_conf)
         if high_accuracy
-        else 0.05
+        else min(0.02, settings.inference_manual_test_conf * 2)
     )
     raw = adapter.predict(
         weights_path,
@@ -225,8 +225,8 @@ def detect_simple_with_project_model(
         if cand:
             candidates.append(cand)
 
-    threshold = min_confidence if min_confidence is not None else 0.05
-    threshold = max(0.05, min(0.99, float(threshold)))
+    threshold = min_confidence if min_confidence is not None else 0.01
+    threshold = max(0.01, min(0.99, float(threshold)))
     predictions = [c for c in candidates if float(c.get("confidence") or 0) >= threshold]
     best_conf = max((float(c.get("confidence") or 0) for c in candidates), default=0.0)
     return predictions, {

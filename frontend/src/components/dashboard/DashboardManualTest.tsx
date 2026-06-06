@@ -17,6 +17,12 @@ interface Detection {
   bbox: number[];
 }
 
+interface GroundTruthEval {
+  label_count?: number;
+  matched_labels?: number;
+  diagnostics?: string[];
+}
+
 interface PredictResult {
   predictions: Detection[];
   all_predictions?: Detection[];
@@ -24,6 +30,17 @@ interface PredictResult {
   raw_count?: number;
   best_confidence?: number;
   latency_ms: number;
+  warnings?: string[];
+  ground_truth_eval?: GroundTruthEval | null;
+  from_dataset?: boolean;
+  training_map50?: number | null;
+  class_names_mismatch?: boolean;
+}
+
+interface DatasetImage {
+  id: string;
+  filename: string;
+  has_labels?: boolean;
 }
 
 interface InferenceStatus {
@@ -66,6 +83,7 @@ async function prepareImage(file: File, maxEdge: number): Promise<File> {
 
 export function DashboardManualTest({ projects, compact }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const datasetPreviewRef = useRef<string | null>(null);
   const [projectId, setProjectId] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -76,9 +94,14 @@ export function DashboardManualTest({ projects, compact }: Props) {
   const [rawCount, setRawCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [minConfidence, setMinConfidence] = useState(0.05);
+  const [minConfidence, setMinConfidence] = useState(0.01);
   const [highAccuracy, setHighAccuracy] = useState(true);
   const [serverThreshold, setServerThreshold] = useState<number | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [gtMatch, setGtMatch] = useState<{ matched: number; total: number } | null>(null);
+  const [datasetImages, setDatasetImages] = useState<DatasetImage[]>([]);
+  const [selectedDatasetId, setSelectedDatasetId] = useState('');
+  const [testSource, setTestSource] = useState<'upload' | 'dataset'>('upload');
 
   const modelProjects = useMemo(() => projects.filter((p) => p.has_model), [projects]);
 
@@ -107,22 +130,42 @@ export function DashboardManualTest({ projects, compact }: Props) {
       .then((data) => {
         if (cancelled) return;
         setStatus(data);
-        setMinConfidence(0.05);
+        setMinConfidence(0.01);
       })
       .catch(() => { if (!cancelled) setStatus({ ready: false }); });
+    api.get<{ images?: DatasetImage[] }>(`/api/v1/annotation/project/${projectId}/workspace`)
+      .then((ws) => {
+        if (cancelled) return;
+        const labeled = (ws.images ?? []).filter((img) => img.has_labels);
+        setDatasetImages(labeled);
+      })
+      .catch(() => { if (!cancelled) setDatasetImages([]); });
     api.post(`/api/v1/inference/project/${projectId}/warmup`, {}).catch(() => {});
     return () => { cancelled = true; };
   }, [projectId]);
 
   useEffect(() => {
-    if (!file) {
-      setPreviewUrl(null);
-      return;
-    }
+    if (testSource !== 'upload' || !file) return;
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [file]);
+  }, [file, testSource]);
+
+  const applyPredictResult = useCallback((data: PredictResult & { confidence_threshold?: number }) => {
+    const raw = data.all_predictions ?? data.predictions ?? [];
+    setAllDetections(raw);
+    setBestConfidence(data.best_confidence ?? null);
+    setLatencyMs(data.latency_ms ?? null);
+    setRawCount(data.raw_count ?? null);
+    setServerThreshold(data.confidence_threshold ?? null);
+    setWarnings(data.warnings ?? []);
+    const gt = data.ground_truth_eval;
+    if (gt?.label_count != null && gt.label_count > 0) {
+      setGtMatch({ matched: gt.matched_labels ?? 0, total: gt.label_count });
+    } else {
+      setGtMatch(null);
+    }
+  }, []);
 
   const runTest = useCallback(async (image: File) => {
     if (!projectId || !status?.ready) return;
@@ -132,63 +175,107 @@ export function DashboardManualTest({ projects, compact }: Props) {
     setBestConfidence(null);
     setLatencyMs(null);
     setRawCount(null);
+    setWarnings([]);
+    setGtMatch(null);
     try {
-      const prepared = await prepareImage(image, 1920);
+      const prepared = await prepareImage(image, status?.training_image_size ?? 1920);
       const form = new FormData();
       form.append('file', prepared);
-      form.append('min_confidence', '0.05');
+      form.append('min_confidence', '0.01');
       form.append('simple', 'true');
       form.append('high_accuracy', String(highAccuracy));
-      const data = await api.post<PredictResult & {
-        confidence_threshold?: number;
-        training_image_size?: number;
-        inference_imgsz?: number;
-        recommended_confidence?: number;
-      }>(
+      const data = await api.post<PredictResult & { confidence_threshold?: number }>(
         `/api/v1/inference/project/${projectId}/predict`,
         form,
         undefined,
         60_000,
       );
-      const raw = data.all_predictions ?? data.predictions ?? [];
-      setAllDetections(raw);
-      setBestConfidence(data.best_confidence ?? null);
-      setLatencyMs(data.latency_ms ?? null);
-      setRawCount(data.raw_count ?? null);
-      setServerThreshold(data.confidence_threshold ?? null);
-
+      applyPredictResult(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'فشل الاختبار');
     } finally {
       setLoading(false);
     }
-  }, [projectId, status?.ready, status?.training_image_size, status?.inference_imgsz, highAccuracy]);
+  }, [projectId, status?.ready, status?.training_image_size, highAccuracy, applyPredictResult]);
+
+  const runDatasetTest = useCallback(async (imageId: string) => {
+    if (!projectId || !status?.ready || !imageId) return;
+    setLoading(true);
+    setError('');
+    setAllDetections([]);
+    setBestConfidence(null);
+    setLatencyMs(null);
+    setRawCount(null);
+    setWarnings([]);
+    setGtMatch(null);
+    setTestSource('dataset');
+    setFile(null);
+    try {
+      const blob = await api.fetchBlob(api.imageContentPath(imageId));
+      if (datasetPreviewRef.current) URL.revokeObjectURL(datasetPreviewRef.current);
+      const objectUrl = URL.createObjectURL(blob);
+      datasetPreviewRef.current = objectUrl;
+      setPreviewUrl(objectUrl);
+      const form = new FormData();
+      form.append('min_confidence', '0.01');
+      form.append('high_accuracy', String(highAccuracy));
+      const data = await api.post<PredictResult & { confidence_threshold?: number }>(
+        `/api/v1/inference/project/${projectId}/predict-image/${imageId}`,
+        form,
+        undefined,
+        60_000,
+      );
+      applyPredictResult(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'فشل الاختبار');
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId, status?.ready, highAccuracy, applyPredictResult]);
 
   const pickFile = (list: FileList | null) => {
     const picked = list?.[0];
     if (!picked) return;
+    setTestSource('upload');
+    setSelectedDatasetId('');
     setFile(picked);
     setAllDetections([]);
     setBestConfidence(null);
     setLatencyMs(null);
     setRawCount(null);
+    setWarnings([]);
+    setGtMatch(null);
     setError('');
   };
 
   const clearAll = () => {
     setFile(null);
+    if (datasetPreviewRef.current) {
+      URL.revokeObjectURL(datasetPreviewRef.current);
+      datasetPreviewRef.current = null;
+    }
+    setPreviewUrl(null);
+    setSelectedDatasetId('');
+    setTestSource('upload');
     setAllDetections([]);
     setBestConfidence(null);
     setLatencyMs(null);
     setRawCount(null);
+    setWarnings([]);
+    setGtMatch(null);
     setError('');
     if (inputRef.current) inputRef.current.value = '';
   };
 
   useEffect(() => {
-    if (!file || !status?.ready) return;
+    if (!file || !status?.ready || testSource !== 'upload') return;
     void runTest(file);
-  }, [file, projectId, status?.ready, runTest, highAccuracy]);
+  }, [file, projectId, status?.ready, runTest, highAccuracy, testSource]);
+
+  useEffect(() => {
+    if (!selectedDatasetId || !status?.ready || testSource !== 'dataset') return;
+    void runDatasetTest(selectedDatasetId);
+  }, [selectedDatasetId, status?.ready, runDatasetTest, highAccuracy, testSource]);
 
   const boxColor = (cls: string) => colorMap.get(cls) ?? '#22c55e';
 
@@ -237,6 +324,32 @@ export function DashboardManualTest({ projects, compact }: Props) {
           </div>
         )}
 
+        {datasetImages.length > 0 && (
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">من بيانات التدريب (الملف الأصلي)</label>
+            <select
+              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+              value={selectedDatasetId}
+              onChange={(e) => {
+                const id = e.target.value;
+                if (!id) {
+                  clearAll();
+                  return;
+                }
+                setSelectedDatasetId(id);
+                setTestSource('dataset');
+                setFile(null);
+                if (inputRef.current) inputRef.current.value = '';
+              }}
+            >
+              <option value="">— اختر صورة مُسمّاة —</option>
+              {datasetImages.map((img) => (
+                <option key={img.id} value={img.id}>{img.filename}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="space-y-1">
           <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
             <input
@@ -251,9 +364,9 @@ export function DashboardManualTest({ projects, compact }: Props) {
             <span className="shrink-0">العتبة</span>
             <input
               type="range"
-              min={0.05}
+              min={0.01}
               max={0.95}
-              step={0.05}
+              step={0.01}
               value={minConfidence}
               onChange={(e) => setMinConfidence(Number(e.target.value))}
               className="flex-1 accent-primary"
@@ -273,7 +386,7 @@ export function DashboardManualTest({ projects, compact }: Props) {
             pickFile(e.dataTransfer.files);
           }}
         >
-          {!file ? (
+          {!file && !previewUrl ? (
             <div className="text-center space-y-2">
               <ImagePlus className="h-8 w-8 mx-auto text-muted-foreground/50" />
               <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
@@ -334,24 +447,43 @@ export function DashboardManualTest({ projects, compact }: Props) {
           />
         </div>
 
-        <div className="flex items-center gap-2 min-h-8">
+        <div className="flex items-center gap-2 min-h-8 flex-wrap">
           {loading && (
             <>
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
               <span className="text-xs text-muted-foreground">جاري الاختبار…</span>
             </>
           )}
-          {!loading && file && (
+          {!loading && (file || previewUrl) && (
             <>
               <ScanSearch className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">
                 {detections.length}
-                {rawCount != null && rawCount > 0 ? `/${rawCount}` : ''} كشف
+                {rawCount != null ? `/${rawCount}` : ''} كشف
+                {bestConfidence != null && ` · أعلى ثقة ${(bestConfidence * 100).toFixed(0)}%`}
                 {latencyMs != null && ` · ${latencyMs.toFixed(0)} ms`}
               </span>
+              {gtMatch && (
+                <span className="text-xs text-amber-700 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                  تطابق تسميات: {gtMatch.matched}/{gtMatch.total}
+                </span>
+              )}
+              {serverThreshold != null && (
+                <span className="text-[10px] text-muted-foreground">
+                  عتبة الخادم {(serverThreshold * 100).toFixed(0)}%
+                </span>
+              )}
             </>
           )}
         </div>
+
+        {warnings.length > 0 && (
+          <ul className="text-xs text-amber-800 bg-amber-500/10 rounded-lg px-3 py-2 space-y-1 list-disc list-inside">
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        )}
 
         {error && <p className="text-xs text-destructive">{error}</p>}
       </CardContent>

@@ -10,14 +10,77 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
-from app.models import Deployment, InferenceLog, User
+from app.core.minio_client import download_bytes
+from app.models import Deployment, Image, InferenceLog, User
 from app.services.driver.detection import preload_project_model, run_detection
 from app.services.driver.project_classes import get_project_classes
+from app.services.inference.manual_test_eval import (
+    build_manual_test_warnings,
+    compare_predictions,
+    load_ground_truth,
+)
 from app.services.inference.resolve_settings import resolve_inference_imgsz, resolve_manual_test_confidence
 from app.services.inference.summary import build_detection_summary
 from app.services.models.active_model import get_active_model
 
 router = APIRouter(prefix="/inference", tags=["inference"])
+
+
+def _simple_predict_payload(
+    artifact,
+    predictions: list[dict],
+    meta: dict,
+    latency_ms: float,
+    *,
+    ground_truth: list[dict] | None = None,
+    ground_truth_eval: dict | None = None,
+    from_dataset: bool = False,
+) -> dict:
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    all_candidates = meta.get("all_candidates") or predictions
+    metrics = artifact.metrics or {}
+    meta["training_map50"] = metrics.get("map50")
+    meta["class_names_mismatch"] = bool(
+        meta.get("model_class_names")
+        and list(artifact.classes_used or []) != meta.get("model_class_names")
+    )
+    warnings = build_manual_test_warnings(
+        meta,
+        ground_truth_eval=ground_truth_eval,
+        from_dataset=from_dataset,
+    )
+    return {
+        "model_name": artifact.name,
+        "classes": list(artifact.classes_used or []),
+        "predictions": [
+            {"class": p["class"], "confidence": p["confidence"], "bbox": p["bbox"]}
+            for p in predictions
+        ],
+        "all_predictions": [
+            {"class": p["class"], "confidence": p["confidence"], "bbox": p["bbox"]}
+            for p in all_candidates
+        ],
+        "count": len(predictions),
+        "raw_count": int(meta.get("raw_detection_count", 0)),
+        "best_confidence": float(meta.get("best_confidence", 0)),
+        "confidence_threshold": float(meta.get("confidence_threshold", 0.01)),
+        "inference_imgsz": int(
+            meta.get("inference_imgsz", resolve_inference_imgsz(artifact, settings, manual_test=True))
+        ),
+        "training_image_size": int(metrics.get("image_size", 640)),
+        "recommended_confidence": resolve_manual_test_confidence(artifact, settings),
+        "model_class_names": meta.get("model_class_names") or list(artifact.classes_used or []),
+        "class_names_mismatch": bool(meta.get("class_names_mismatch")),
+        "high_accuracy": bool(meta.get("high_accuracy")),
+        "latency_ms": round(latency_ms, 1),
+        "from_dataset": from_dataset,
+        "ground_truth": ground_truth or [],
+        "ground_truth_eval": ground_truth_eval,
+        "warnings": warnings,
+        "training_map50": metrics.get("map50"),
+    }
 
 
 @router.post("/project/{project_id}/predict")
@@ -54,36 +117,7 @@ async def predict(
         raise HTTPException(status_code=422, detail=error)
 
     if simple:
-        all_candidates = meta.get("all_candidates") or predictions
-        from app.core.config import get_settings
-
-        settings = get_settings()
-        return {
-            "model_name": artifact.name,
-            "classes": list(artifact.classes_used or []),
-            "predictions": [
-                {"class": p["class"], "confidence": p["confidence"], "bbox": p["bbox"]}
-                for p in predictions
-            ],
-            "all_predictions": [
-                {"class": p["class"], "confidence": p["confidence"], "bbox": p["bbox"]}
-                for p in all_candidates
-            ],
-            "count": len(predictions),
-            "raw_count": int(meta.get("raw_detection_count", 0)),
-            "best_confidence": float(meta.get("best_confidence", 0)),
-            "confidence_threshold": float(meta.get("confidence_threshold", 0.05)),
-            "inference_imgsz": int(meta.get("inference_imgsz", resolve_inference_imgsz(artifact, settings, manual_test=True))),
-            "training_image_size": int((artifact.metrics or {}).get("image_size", 640)),
-            "recommended_confidence": resolve_manual_test_confidence(artifact, settings),
-            "model_class_names": meta.get("model_class_names") or list(artifact.classes_used or []),
-            "class_names_mismatch": bool(
-                meta.get("model_class_names")
-                and list(artifact.classes_used or []) != meta.get("model_class_names")
-            ),
-            "high_accuracy": bool(meta.get("high_accuracy")),
-            "latency_ms": round(latency_ms, 1),
-        }
+        return _simple_predict_payload(artifact, predictions, meta, latency_ms)
 
     primary = max(predictions, key=lambda p: p["confidence"]) if predictions else None
     summary = build_detection_summary(
@@ -133,6 +167,63 @@ async def predict(
             )
         ),
     }
+
+
+@router.post("/project/{project_id}/predict-image/{image_id}")
+async def predict_dataset_image(
+    project_id: uuid.UUID,
+    image_id: uuid.UUID,
+    min_confidence: float | None = Form(None),
+    high_accuracy: bool = Form(True),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run inference on the exact stored dataset bytes (no upload re-encoding)."""
+    del user
+    artifact = await get_active_model(db, project_id)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="لا يوجد نموذج مدرب")
+
+    image = await db.get(Image, image_id)
+    if not image or image.project_id != project_id:
+        raise HTTPException(status_code=404, detail="الصورة غير موجودة في المشروع")
+
+    try:
+        content = download_bytes(image.minio_key)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="ملف الصورة غير موجود") from exc
+    if not content:
+        raise HTTPException(status_code=400, detail="صورة فارغة")
+
+    ground_truth, gt_errors = await load_ground_truth(db, project_id, image_id)
+    if gt_errors:
+        raise HTTPException(status_code=404, detail=gt_errors[0])
+
+    start = time.perf_counter()
+    predictions, error, meta = await run_detection(
+        db,
+        project_id,
+        content,
+        min_confidence=min_confidence,
+        simple=True,
+        high_accuracy=high_accuracy,
+    )
+    latency_ms = (time.perf_counter() - start) * 1000
+
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+
+    all_candidates = meta.get("all_candidates") or predictions
+    gt_eval = compare_predictions(all_candidates, ground_truth)
+    return _simple_predict_payload(
+        artifact,
+        predictions,
+        meta,
+        latency_ms,
+        ground_truth=ground_truth,
+        ground_truth_eval=gt_eval,
+        from_dataset=True,
+    )
 
 
 @router.post("/project/{project_id}/warmup")

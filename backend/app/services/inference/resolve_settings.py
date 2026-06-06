@@ -28,5 +28,5 @@ def resolve_manual_test_confidence(
     cfg = settings or get_settings()
     class_count = len(artifact.classes_used or []) if artifact else 0
     if class_count <= 1:
-        return min(0.35, cfg.inference_single_class_confidence)
-    return min(0.25, cfg.inference_confidence_threshold)
+        return min(0.15, cfg.inference_single_class_confidence)
+    return min(0.10, cfg.inference_confidence_threshold)
