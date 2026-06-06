@@ -291,7 +291,7 @@ async def retrain_project_model(
     epochs: int | None = Query(None, ge=5, le=200),
     architecture: str = Query("yolo11"),
     preset: str = Query(
-        DEFAULT_CPU_PRESET,
+        "fast_cpu",
         pattern="^(ultimate_accuracy|fine_tune|best_accuracy|max_cpu|fleet_cpu|turbo_cpu|fast_cpu|balanced)$",
     ),
     fine_tune: bool = Query(True, description="Continue training from active Main Model weights"),

@@ -160,6 +160,50 @@ def _apply_speed_overlays(out: dict, *, settings) -> None:
         out["_hostinger"] = True
 
 
+def apply_large_dataset_overlays(config: dict) -> dict:
+    """After export — 8k+ images on CPU VPS: smaller imgsz, larger batch, less val/freeze."""
+    train_n = int(config.get("_train_images") or config.get("_labeled_train_images") or 0)
+    if train_n < 3000:
+        return config
+
+    mem_mb = training_mem_limit_mb()
+    if train_n >= 8000:
+        cap_imgsz = 416
+        val_every = 5
+        batch_target = 40
+    else:
+        cap_imgsz = 512
+        val_every = 4
+        batch_target = 32
+
+    mem_cap = 48 if mem_mb >= 12288 else 40
+    config["image_size"] = min(int(config.get("image_size") or 640), cap_imgsz)
+    config["batch_size"] = max(int(config.get("batch_size") or 16), min(mem_cap, batch_target))
+    config["cache"] = "disk"
+    config["prefer_disk_cache"] = True
+    config["_rect"] = False
+    config["_val_every"] = max(int(config.get("_val_every") or 1), val_every)
+    config["_fast_aug"] = True
+    config["_large_dataset"] = True
+
+    if config.get("augmentation") in ("medium", "heavy"):
+        config["augmentation"] = "light"
+
+    if should_fine_tune_large(config, train_n):
+        config["freeze_layers"] = min(int(config.get("freeze_layers") or 0), 3)
+        config["warmup_epochs"] = 1
+        config["close_mosaic"] = 2
+        config["patience"] = min(int(config.get("patience") or 10), 8)
+
+    return config
+
+
+def should_fine_tune_large(config: dict, train_n: int) -> bool:
+    from app.services.training.fine_tune import should_fine_tune
+
+    return train_n >= 5000 and should_fine_tune(config)
+
+
 def tune_training_config(config: dict, *, export_workers: int = 0) -> dict:
     from app.core.config import get_settings
 
@@ -217,6 +261,8 @@ def speed_boost_summary(config: dict) -> str:
         parts.append("lite-aug")
     if config.get("_hostinger"):
         parts.append("hostinger")
+    if config.get("_large_dataset"):
+        parts.append(f"large-{config.get('_train_images', '?')}")
     if use_ram_workspace():
         parts.append("shm")
     return "Speed boost: " + " · ".join(parts)

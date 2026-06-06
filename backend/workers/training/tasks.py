@@ -175,6 +175,12 @@ def run_training_job(job_id: str):
                     config["cache"] = "disk"
                     config["prefer_disk_cache"] = True
                     config["_rect"] = False
+                from app.services.training.cpu_tuning import apply_large_dataset_overlays, speed_boost_summary
+
+                apply_large_dataset_overlays(config)
+                boost_msg = speed_boost_summary(config)
+                if boost_msg:
+                    config["_speed_boost_note"] = boost_msg
                 job.config = dict(config)
                 session.commit()
                 expected_n = int((validation.get("stats") or {}).get("image_count") or 0)
