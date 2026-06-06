@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -77,6 +79,11 @@ def try_restore_export(output_dir: str, fingerprint: str) -> bool:
     src = root / fingerprint
     if not (src / "data.yaml").is_file():
         return False
+    try:
+        now = time.time()
+        os.utime(src, (now, now))
+    except OSError:
+        pass
     base = Path(output_dir)
     if base.exists():
         shutil.rmtree(base, ignore_errors=True)
@@ -90,6 +97,19 @@ def try_restore_export(output_dir: str, fingerprint: str) -> bool:
     return True
 
 
+def _evict_old_entries(root: Path, keep: int = 2) -> None:
+    """Keep only the most-recent `keep` cache entries to bound RAM-disk usage."""
+    try:
+        entries = [p for p in root.iterdir() if p.is_dir()]
+    except OSError:
+        return
+    if len(entries) <= keep:
+        return
+    entries.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    for stale in entries[keep:]:
+        shutil.rmtree(stale, ignore_errors=True)
+
+
 def save_export_cache(output_dir: str, fingerprint: str) -> None:
     root = cache_root()
     if root is None:
@@ -100,4 +120,9 @@ def save_export_cache(output_dir: str, fingerprint: str) -> None:
     dest = root / fingerprint
     if dest.exists():
         shutil.rmtree(dest, ignore_errors=True)
-    shutil.copytree(src, dest)
+    try:
+        shutil.copytree(src, dest)
+    except OSError:
+        shutil.rmtree(dest, ignore_errors=True)
+        return
+    _evict_old_entries(root, keep=2)
