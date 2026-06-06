@@ -188,7 +188,7 @@ export function TrainingProgressCard({
                 ...(batchesPerMinEpoch != null ? [{
                   label: 'متوسط الدورة الحقيقي',
                   value: `${batchesPerMinEpoch} batch/min`,
-                  sub: 'من بداية الدورة',
+                  sub: 'بعد الإحماء · متوسط الدفعات',
                 }] : []),
                 {
                   label: 'متبقي كلي',
