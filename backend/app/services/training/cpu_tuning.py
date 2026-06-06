@@ -161,20 +161,20 @@ def _apply_speed_overlays(out: dict, *, settings) -> None:
 
 
 def apply_large_dataset_overlays(config: dict) -> dict:
-    """After export — 8k+ images on CPU VPS: smaller imgsz, larger batch, less val/freeze."""
+    """After export — 2.5k+ images on CPU VPS: smaller imgsz, larger batch, less val/freeze."""
     train_n = int(config.get("_train_images") or config.get("_labeled_train_images") or 0)
-    if train_n < 3000:
+    if train_n < 2500:
         return config
 
     mem_mb = training_mem_limit_mb()
-    if train_n >= 8000:
+    if train_n >= 5000:
         cap_imgsz = 416
         val_every = 5
         batch_target = 40
     else:
-        cap_imgsz = 512
+        cap_imgsz = 416
         val_every = 4
-        batch_target = 32
+        batch_target = 36
 
     mem_cap = 48 if mem_mb >= 12288 else 40
     config["image_size"] = min(int(config.get("image_size") or 640), cap_imgsz)
@@ -185,6 +185,7 @@ def apply_large_dataset_overlays(config: dict) -> dict:
     config["_val_every"] = max(int(config.get("_val_every") or 1), val_every)
     config["_fast_aug"] = True
     config["_large_dataset"] = True
+    config["_image_size_locked"] = True
 
     if config.get("augmentation") in ("medium", "heavy"):
         config["augmentation"] = "light"
@@ -194,6 +195,11 @@ def apply_large_dataset_overlays(config: dict) -> dict:
         config["warmup_epochs"] = 1
         config["close_mosaic"] = 2
         config["patience"] = min(int(config.get("patience") or 10), 8)
+
+    epochs = int(config.get("epochs") or 20)
+    if train_n >= 5000 and epochs > 30:
+        config["_epochs_capped_from"] = epochs
+        config["epochs"] = 30
 
     return config
 

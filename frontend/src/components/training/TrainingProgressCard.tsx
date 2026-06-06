@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import {
   computeEpochEtaSeconds,
   computeEtaSeconds,
+  computeJobEtaFromEpochPace,
   formatDuration,
   phaseIndex,
   TRAINING_PHASES,
@@ -63,7 +64,7 @@ export function TrainingProgressCard({
   const pctOverall = Math.min(100, Math.max(0, progress));
   const isActive = status === 'running' || status === 'pending';
   const activePhaseIdx = phaseIndex(phase);
-  const eta = detail?.etaSeconds ?? computeEtaSeconds(durationSeconds, pctOverall);
+  const inTrain = phase === 'train' || phase === 'validation';
   const exportPct = detail?.exportTotal
     ? Math.round(((detail.exportCurrent ?? 0) / detail.exportTotal) * 100)
     : null;
@@ -73,11 +74,14 @@ export function TrainingProgressCard({
   const epochElapsed = detail?.epochElapsedSeconds ?? null;
   const epochEta = detail?.epochEtaSeconds
     ?? computeEpochEtaSeconds(epochElapsed, epochPct);
+  const jobEtaFromEpoch = inTrain
+    ? computeJobEtaFromEpochPace(epochElapsed, epochPct, currentEpoch, totalEpochs)
+    : null;
+  const eta = detail?.etaSeconds ?? jobEtaFromEpoch ?? computeEtaSeconds(durationSeconds, pctOverall);
   const batchesPerMin = detail?.batchesPerMin ?? null;
   const batchesPerMinAvg = detail?.batchesPerMinAvg ?? null;
   const secPerBatch = detail?.secPerBatch ?? null;
   const imagesPerMin = detail?.imagesPerMin ?? null;
-  const inTrain = phase === 'train' || phase === 'validation';
 
   return (
     <div className={cn(

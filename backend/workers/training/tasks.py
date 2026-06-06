@@ -273,6 +273,8 @@ def run_training_job(job_id: str):
             if cancel_check():
                 raise TrainingCancelled("Training cancelled")
 
+            config["_training_class_count"] = len(export_meta.get("names") or class_names or [])
+
             fine_tune_path, fine_tune_source, fine_tune_warning = resolve_fine_tune_weights_path(
                 session,
                 job.project_id,
@@ -286,8 +288,14 @@ def run_training_job(job_id: str):
                 from app.services.training.fine_tune import apply_fine_tune_training_overrides
 
                 apply_fine_tune_training_overrides(config, from_main_model=True)
-                job.config = dict(config)
-                session.commit()
+            from app.services.training.cpu_tuning import apply_large_dataset_overlays, speed_boost_summary
+
+            apply_large_dataset_overlays(config)
+            boost_msg = speed_boost_summary(config)
+            if boost_msg:
+                config["_speed_boost_note"] = boost_msg
+            job.config = dict(config)
+            session.commit()
             export_note = ""
             if export_meta:
                 train_n = int(export_meta.get("train_images") or 0)
@@ -305,6 +313,13 @@ def run_training_job(job_id: str):
                 setup_msg = f"{export_note} · {setup_msg}"
             if config.get("_speed_boost_note"):
                 setup_msg = f"{setup_msg} · {config['_speed_boost_note']}"
+            if config.get("_epochs_capped_from"):
+                setup_msg = (
+                    f"{setup_msg} · epochs capped {config['_epochs_capped_from']}→{config.get('epochs')} "
+                    "for large CPU dataset"
+                )
+            if config.get("_multiclass_expansion"):
+                setup_msg = f"{setup_msg} · multi-class retrain (416px speed mode)"
             publish_metric(job_id, {
                 "phase": "setup",
                 "message": setup_msg,

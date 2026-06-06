@@ -51,7 +51,7 @@ export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string
   },
 };
 
-export const DEFAULT_CPU_PRESET: CpuPreset = 'fine_tune';
+export const DEFAULT_CPU_PRESET: CpuPreset = 'fast_cpu';
 
 export function buildRetrainQuery(params: {
   epochs?: number;

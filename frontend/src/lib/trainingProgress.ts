@@ -51,6 +51,27 @@ export function computeEpochEtaSeconds(
   return Math.max(0, Math.round(total - epochElapsedSeconds));
 }
 
+export function computeJobEtaFromEpochPace(
+  epochElapsedSeconds: number | null | undefined,
+  epochProgress: number | null | undefined,
+  currentEpoch: number,
+  totalEpochs: number,
+): number | null {
+  if (
+    !epochElapsedSeconds
+    || epochElapsedSeconds <= 0
+    || !epochProgress
+    || epochProgress <= 0
+    || totalEpochs <= 0
+  ) {
+    return null;
+  }
+  const epochTotalEst = epochElapsedSeconds / (epochProgress / 100);
+  const remainingThisEpoch = Math.max(0, epochTotalEst - epochElapsedSeconds);
+  const epochsAfterCurrent = Math.max(0, totalEpochs - currentEpoch);
+  return Math.max(0, Math.round(remainingThisEpoch + epochsAfterCurrent * epochTotalEst));
+}
+
 export const TRAINING_PHASES = [
   { id: 'export', label: 'Export dataset', range: [0, 15] as const },
   { id: 'train', label: 'Train model', range: [15, 99] as const },

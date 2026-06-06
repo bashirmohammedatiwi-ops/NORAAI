@@ -22,14 +22,35 @@ def should_fine_tune(config: dict) -> bool:
 
 def inherit_config_from_artifact(config: dict, artifact: ModelArtifact) -> dict:
     """Align training resolution and preset with the active production model."""
+    from app.services.driver.project_classes import model_class_names
+
     out = dict(config)
     metrics = artifact.metrics or {}
-    if metrics.get("image_size") and not out.get("_image_size_locked"):
+    old_nc = len(model_class_names(artifact))
+    new_nc = int(config.get("_training_class_count") or 0)
+    multiclass_expansion = new_nc > old_nc > 0
+
+    if multiclass_expansion:
+        out["_multiclass_expansion"] = True
+
+    if (
+        metrics.get("image_size")
+        and not out.get("_image_size_locked")
+        and not out.get("_large_dataset")
+        and not multiclass_expansion
+    ):
         out["image_size"] = int(metrics["image_size"])
+
     if artifact.architecture and not out.get("architecture_locked"):
         out["_artifact_architecture"] = artifact.architecture
+
     prior_map = metrics.get("map50_95")
-    if prior_map is not None and float(prior_map) < 0.2:
+    if (
+        prior_map is not None
+        and float(prior_map) < 0.2
+        and not out.get("_large_dataset")
+        and not multiclass_expansion
+    ):
         out["epochs"] = max(int(out.get("epochs", 20)), 25)
     return out
 
@@ -38,17 +59,27 @@ def apply_fine_tune_training_overrides(config: dict, *, from_main_model: bool = 
     """Lower LR, freeze backbone layers, and stabilize aug for fine-tuning."""
     if not should_fine_tune(config):
         return config
+
+    train_n = int(config.get("_train_images") or 0)
+    large = bool(config.get("_large_dataset") or train_n >= 3000 or config.get("_multiclass_expansion"))
+
     if config.get("fine_tune_from_active"):
         config["learning_rate"] = min(float(config.get("learning_rate", 0.01)), 0.0015)
-        config["warmup_epochs"] = max(int(config.get("warmup_epochs", 0)), 3)
-        config["patience"] = max(int(config.get("patience", 10)), 15)
-        config["close_mosaic"] = max(int(config.get("close_mosaic", 3)), 8)
+        if large:
+            config["warmup_epochs"] = min(int(config.get("warmup_epochs", 0)), 1)
+            config["patience"] = min(int(config.get("patience", 10)), 8)
+            config["close_mosaic"] = min(int(config.get("close_mosaic", 3)), 2)
+        else:
+            config["warmup_epochs"] = max(int(config.get("warmup_epochs", 0)), 3)
+            config["patience"] = max(int(config.get("patience", 10)), 15)
+            config["close_mosaic"] = max(int(config.get("close_mosaic", 3)), 8)
         config["lrf"] = min(float(config.get("lrf", 0.01)), 0.008)
         if config.get("augmentation") in ("heavy", "medium"):
             config["augmentation"] = "light"
         if from_main_model:
-            config["freeze_layers"] = int(config.get("freeze_layers", 10))
-            config["label_smoothing"] = float(config.get("label_smoothing", 0.05))
+            config["freeze_layers"] = min(int(config.get("freeze_layers", 10)), 3 if large else 10)
+            if not large:
+                config["label_smoothing"] = float(config.get("label_smoothing", 0.05))
     return config
 
 
