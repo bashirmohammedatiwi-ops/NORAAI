@@ -128,10 +128,15 @@ class YOLOAdapter:
                     compute_job_eta_from_epoch_pace,
                 )
 
+                train_batch_size = int(train_kwargs.get("batch") or config.get("batch_size") or 16)
+
                 batch_state = {
                     "last_ts": 0.0,
                     "epoch_start_ts": time.time(),
                     "last_epoch_idx": -1,
+                    "last_batch_i": 0,
+                    "last_speed_ts": None,
+                    "ema_batches_per_min": None,
                 }
 
                 def training_progress(epoch_idx: int, batch_i: int, nb: int) -> int:
@@ -188,7 +193,9 @@ class YOLOAdapter:
                     batch_i = int(getattr(trainer, "ni", 0)) + 1
                     nb = max(int(getattr(trainer, "nb", 1)), 1)
                     epoch_idx = int(getattr(trainer, "epoch", 0))
-                    if now - batch_state["last_ts"] < 2.0 and batch_i % 5 != 0:
+                    min_interval = 1.0 if nb <= 30 else 2.0
+                    batch_stride = 1 if nb <= 50 else 5
+                    if now - batch_state["last_ts"] < min_interval and batch_i % batch_stride != 0:
                         return
                     batch_state["last_ts"] = now
                     loss_items = getattr(trainer, "loss_items", None)
@@ -199,9 +206,39 @@ class YOLOAdapter:
                     total_steps = max(epochs * nb, 1)
                     current_step = epoch_idx * nb + batch_i
                     epoch_elapsed = max(0.0, now - float(batch_state["epoch_start_ts"] or now))
-                    epoch_eta = compute_epoch_eta_seconds(epoch_elapsed, epoch_progress)
-                    batches_per_min = round((batch_i / max(epoch_elapsed, 0.5)) * 60, 1)
-                    sec_per_batch = round(epoch_elapsed / max(batch_i, 1), 1)
+
+                    prev_batch = int(batch_state.get("last_batch_i") or 0)
+                    prev_speed_ts = batch_state.get("last_speed_ts")
+                    instant_bpm: float | None = None
+                    if prev_speed_ts is not None and batch_i > prev_batch:
+                        delta_t = now - float(prev_speed_ts)
+                        delta_b = batch_i - prev_batch
+                        if delta_t > 0.15 and delta_b > 0:
+                            instant_bpm = (delta_b / delta_t) * 60.0
+
+                    ema_bpm = batch_state.get("ema_batches_per_min")
+                    if instant_bpm is not None:
+                        ema_bpm = instant_bpm if ema_bpm is None else (0.6 * instant_bpm + 0.4 * float(ema_bpm))
+                        batch_state["ema_batches_per_min"] = ema_bpm
+
+                    batch_state["last_batch_i"] = batch_i
+                    batch_state["last_speed_ts"] = now
+
+                    epoch_avg_bpm = (batch_i / max(epoch_elapsed, 0.5)) * 60.0
+                    display_bpm = float(ema_bpm) if ema_bpm is not None else epoch_avg_bpm
+                    batches_per_min = round(display_bpm, 1)
+                    batches_per_min_avg = round(epoch_avg_bpm, 1)
+                    sec_per_batch = round(60.0 / display_bpm, 1) if display_bpm > 0 else round(
+                        epoch_elapsed / max(batch_i, 1), 1
+                    )
+                    images_per_min = int(round(display_bpm * train_batch_size))
+
+                    remaining_batches = max(0, nb - batch_i)
+                    if display_bpm > 0 and remaining_batches > 0:
+                        epoch_eta = max(0, int((remaining_batches / display_bpm) * 60))
+                    else:
+                        epoch_eta = compute_epoch_eta_seconds(epoch_elapsed, epoch_progress)
+
                     job_eta = compute_job_eta_from_epoch_pace(
                         epoch_elapsed,
                         epoch_progress,
@@ -217,14 +254,16 @@ class YOLOAdapter:
                         "epoch_elapsed_seconds": int(epoch_elapsed),
                         "epoch_eta_seconds": epoch_eta,
                         "batches_per_min": batches_per_min,
+                        "batches_per_min_avg": batches_per_min_avg,
                         "sec_per_batch": sec_per_batch,
+                        "images_per_min": images_per_min,
                         "eta_seconds": job_eta,
                         "current_step": current_step,
                         "total_steps": total_steps,
                         "phase": "train",
                         "message": (
                             f"Epoch {epoch_idx + 1}/{epochs} · {epoch_progress}% · "
-                            f"{batches_per_min} batch/min · ~{sec_per_batch}s/batch"
+                            f"{batches_per_min} batch/min ({images_per_min} img/min)"
                         ),
                         "progress": training_progress(epoch_idx, batch_i, nb),
                         "loss": loss_val,
@@ -244,6 +283,9 @@ class YOLOAdapter:
                     if batch_state["last_epoch_idx"] != epoch_idx:
                         batch_state["epoch_start_ts"] = time.time()
                         batch_state["last_epoch_idx"] = epoch_idx
+                        batch_state["last_batch_i"] = 0
+                        batch_state["last_speed_ts"] = time.time()
+                        batch_state["ema_batches_per_min"] = None
                     if val_every <= 1:
                         return
                     epoch = epoch_idx + 1

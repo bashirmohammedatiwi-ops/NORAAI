@@ -31,7 +31,9 @@ export interface TrainingJobDetail {
   epoch_elapsed_seconds?: number | null;
   epoch_eta_seconds?: number | null;
   batches_per_min?: number | null;
+  batches_per_min_avg?: number | null;
   sec_per_batch?: number | null;
+  images_per_min?: number | null;
   train_images?: number | null;
   val_images?: number | null;
   exported_images?: number | null;
@@ -136,7 +138,9 @@ export function useTrainingJob(
       epoch_elapsed_seconds: num(latestLive.epoch_elapsed_seconds, base.epoch_elapsed_seconds),
       epoch_eta_seconds: num(latestLive.epoch_eta_seconds, base.epoch_eta_seconds),
       batches_per_min: num(latestLive.batches_per_min, base.batches_per_min),
+      batches_per_min_avg: num(latestLive.batches_per_min_avg, base.batches_per_min_avg),
       sec_per_batch: num(latestLive.sec_per_batch, base.sec_per_batch),
+      images_per_min: num(latestLive.images_per_min, base.images_per_min),
       train_images: num(latestLive.train_images, base.train_images),
       val_images: num(latestLive.val_images, base.val_images),
       exported_images: num(latestLive.exported_images, base.exported_images),
@@ -166,7 +170,9 @@ export function useTrainingJob(
       epochElapsedSeconds: liveJob.epoch_elapsed_seconds,
       epochEtaSeconds: liveJob.epoch_eta_seconds,
       batchesPerMin: liveJob.batches_per_min,
+      batchesPerMinAvg: liveJob.batches_per_min_avg,
       secPerBatch: liveJob.sec_per_batch,
+      imagesPerMin: liveJob.images_per_min,
       trainImages: liveJob.train_images,
       valImages: liveJob.val_images,
       exportedImages: liveJob.exported_images,

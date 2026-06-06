@@ -24,7 +24,9 @@ export interface TrainingProgressDetail {
   epochElapsedSeconds?: number | null;
   epochEtaSeconds?: number | null;
   batchesPerMin?: number | null;
+  batchesPerMinAvg?: number | null;
   secPerBatch?: number | null;
+  imagesPerMin?: number | null;
   trainImages?: number | null;
   valImages?: number | null;
   exportedImages?: number | null;

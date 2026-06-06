@@ -74,7 +74,9 @@ export function TrainingProgressCard({
   const epochEta = detail?.epochEtaSeconds
     ?? computeEpochEtaSeconds(epochElapsed, epochPct);
   const batchesPerMin = detail?.batchesPerMin ?? null;
+  const batchesPerMinAvg = detail?.batchesPerMinAvg ?? null;
   const secPerBatch = detail?.secPerBatch ?? null;
+  const imagesPerMin = detail?.imagesPerMin ?? null;
   const inTrain = phase === 'train' || phase === 'validation';
 
   return (
@@ -154,11 +156,18 @@ export function TrainingProgressCard({
                   icon: <Hourglass className="h-3.5 w-3.5" />,
                 },
                 {
-                  label: 'السرعة',
-                  value: batchesPerMin != null ? `${batchesPerMin}` : '—',
-                  sub: secPerBatch != null ? `${secPerBatch}s / batch` : 'batch/min',
+                  label: 'السرعة الآن',
+                  value: batchesPerMin != null ? `${batchesPerMin} batch/min` : '—',
+                  sub: imagesPerMin != null
+                    ? `${imagesPerMin} صورة/min · ~${secPerBatch ?? '—'}s/batch`
+                    : (secPerBatch != null ? `~${secPerBatch}s/batch` : undefined),
                   icon: <Zap className="h-3.5 w-3.5" />,
                 },
+                ...(batchesPerMinAvg != null && batchesPerMinAvg !== batchesPerMin ? [{
+                  label: 'متوسط الدورة',
+                  value: `${batchesPerMinAvg} batch/min`,
+                  sub: 'متوسط تراكمي',
+                }] : []),
                 {
                   label: 'متبقي كلي',
                   value: eta != null ? `~${formatDuration(eta)}` : '—',
