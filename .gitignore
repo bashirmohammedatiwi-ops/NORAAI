@@ -17,6 +17,7 @@ htmlcov/
 # Environment
 .env
 .env.local
+.env.local-worker
 .env.*.local
 
 # Node

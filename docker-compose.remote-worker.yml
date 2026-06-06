@@ -1,0 +1,20 @@
+# VPS overlay: expose DB/Redis on localhost only (for SSH tunnel from dev PC).
+# Usage on VPS:
+#   cd /opt/aiops
+#   docker compose -f docker-compose.prod.yml -f docker-compose.remote-worker.yml up -d
+#   docker compose -f docker-compose.prod.yml -f docker-compose.remote-worker.yml stop worker-training
+#
+# Then from Windows: scripts/tunnel_vps.ps1
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  worker-training:
+    profiles:
+      - disabled-on-vps

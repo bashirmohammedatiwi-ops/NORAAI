@@ -40,6 +40,28 @@ docker compose exec api python scripts/init_db.py
 
 **Login:** `admin@aiops.com` / `admin123`
 
+### Local training → VPS storage (no Docker on PC)
+
+Train on your computer (full CPU/GPU); models and data stay on the VPS.
+
+**On VPS (once):**
+```bash
+cd /opt/aiops && git pull
+bash scripts/enable_vps_remote_training.sh
+```
+
+**On Windows:**
+```powershell
+copy .env.local-worker.example .env.local-worker
+# Edit: VPS_HOST, passwords (same as VPS .env)
+scripts\setup_local_worker.ps1
+scripts\tunnel_vps.ps1          # keep open
+scripts\start_local_training_worker.ps1
+scripts\start_local_app.ps1     # optional UI → http://localhost:5173
+```
+
+Start training from the VPS UI (`http://VPS:8080`); the local worker picks up the job.
+
 ## Features
 
 - AI Project Module, Data Ingestion (6 sources), Dataset Versioning
