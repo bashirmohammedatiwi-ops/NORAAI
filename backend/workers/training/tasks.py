@@ -180,15 +180,28 @@ def run_training_job(job_id: str):
                     "progress": 14,
                     "status": "running",
                 })
+                labeled_n = int((validation.get("stats") or {}).get("labeled_images") or 0)
+                labeled_export = int(export_meta.get("labeled_train_images") or 0) + int(
+                    export_meta.get("labeled_val_images") or 0
+                )
+                publish_metric(job_id, {
+                    "phase": "validate",
+                    "message": (
+                        f"Labels: {labeled_n} labeled in DB · {labeled_export} exported with boxes"
+                    ),
+                    "status": "running",
+                })
                 if expected_n and exported_n < max(10, int(expected_n * 0.9)):
-                    publish_metric(job_id, {
-                        "phase": "validate",
-                        "message": (
-                            f"Warning: only {exported_n}/{expected_n} images exported — "
-                            "training may be much faster than expected and less accurate."
-                        ),
-                        "status": "running",
-                    })
+                    raise ValueError(
+                        f"Dataset export incomplete: only {exported_n}/{expected_n} images "
+                        f"downloaded from MinIO ({export_meta.get('export_failures', 0)} failed). "
+                        "Fix storage connectivity before training."
+                    )
+                if expected_n >= 100 and labeled_n < max(50, int(expected_n * 0.05)):
+                    raise ValueError(
+                        f"Only {labeled_n}/{expected_n} images have labels — "
+                        "add annotations or import YOLO labels before training on this dataset."
+                    )
                 for warning in validation.get("warnings", []):
                     publish_metric(job_id, {
                         "phase": "validate",

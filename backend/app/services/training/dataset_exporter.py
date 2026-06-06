@@ -33,12 +33,20 @@ def export_yolo_dataset_sync(
     if not version:
         raise ValueError("Dataset version not found")
 
-    image_ids = [uuid.UUID(i) for i in version.manifest.get("image_ids", [])]
+    # DatasetImage rows are the source of truth (manifest can be stale vs image_count).
+    result = session.execute(
+        select(DatasetImage.image_id).where(DatasetImage.version_id == dataset_version_id)
+    )
+    image_ids = [row[0] for row in result.all()]
     if not image_ids:
-        result = session.execute(
-            select(DatasetImage.image_id).where(DatasetImage.version_id == dataset_version_id)
-        )
-        image_ids = [row[0] for row in result.all()]
+        image_ids = [uuid.UUID(i) for i in version.manifest.get("image_ids", [])]
+    if image_ids and (
+        version.image_count != len(image_ids)
+        or len(version.manifest.get("image_ids", [])) != len(image_ids)
+    ):
+        version.manifest = {"image_ids": [str(i) for i in image_ids]}
+        version.image_count = len(image_ids)
+        session.flush()
 
     version_manifest = version.class_manifest or {}
     classes = load_classes_for_export(
@@ -151,6 +159,19 @@ def export_yolo_dataset_sync(
             "Check MinIO connectivity and image keys before training."
         )
 
+    train_on_disk = len(list((base / "images" / "train").glob("*.jpg")))
+    val_on_disk = len(list((base / "images" / "val").glob("*.jpg")))
+    labeled_train = sum(
+        1
+        for p in (base / "labels" / "train").glob("*.txt")
+        if p.read_text(encoding="utf-8").strip()
+    )
+    labeled_val = sum(
+        1
+        for p in (base / "labels" / "val").glob("*.txt")
+        if p.read_text(encoding="utf-8").strip()
+    )
+
     nc = max(len(class_names), 1)
     names = class_names if class_names else ["object"]
     yaml_content = f"path: {output_dir}\ntrain: images/train\nval: images/val\nnc: {nc}\nnames: {names}\n"
@@ -162,6 +183,12 @@ def export_yolo_dataset_sync(
         "exported_images": exported,
         "val_images": len(val_ids),
         "train_images": max(0, exported - len(val_ids)),
+        "train_images_on_disk": train_on_disk,
+        "val_images_on_disk": val_on_disk,
+        "labeled_train_images": labeled_train,
+        "labeled_val_images": labeled_val,
+        "total_images_in_version": total,
+        "export_failures": max(0, total - exported),
         "skipped_labels": skipped_labels,
         "val_split": val_split,
     }
