@@ -151,6 +151,40 @@ def ensure_live_deployment_sync(session: Session, project_id: uuid.UUID, artifac
     return deployment
 
 
+async def ensure_live_deployment(
+    db: AsyncSession, project_id: uuid.UUID, artifact_id: uuid.UUID
+) -> Deployment:
+    result = await db.execute(
+        select(Deployment).where(
+            Deployment.project_id == project_id,
+            Deployment.name == LIVE_DEPLOYMENT_NAME,
+        )
+    )
+    deployment = result.scalar_one_or_none()
+    endpoint = f"/api/v1/inference/project/{project_id}/predict"
+    now = datetime.now(timezone.utc)
+    if deployment:
+        deployment.model_artifact_id = artifact_id
+        deployment.status = DeploymentStatus.ACTIVE
+        deployment.target = DeploymentTarget.REST_API
+        deployment.endpoint_url = endpoint
+        deployment.deployed_at = now
+    else:
+        deployment = Deployment(
+            project_id=project_id,
+            model_artifact_id=artifact_id,
+            name=LIVE_DEPLOYMENT_NAME,
+            target=DeploymentTarget.REST_API,
+            status=DeploymentStatus.ACTIVE,
+            endpoint_url=endpoint,
+            config={"auto": True, "single_model": True},
+            deployed_at=now,
+        )
+        db.add(deployment)
+    await db.flush()
+    return deployment
+
+
 async def get_active_model_status(db: AsyncSession, project_id: uuid.UUID) -> dict:
     from app.models import TrainingJob, TrainingStatus
     from app.services.driver.project_classes import model_class_names

@@ -402,12 +402,26 @@ def run_training_job(job_id: str):
                 validation.get("stats") if validation else None
             )
 
+            from app.services.training.class_ordering import is_partial_class_selection
+
+            partial_training = is_partial_class_selection(session, job.project_id, selected_class_ids)
+            partial_label = (
+                ", ".join(classes_used)
+                if isinstance(classes_used, list)
+                else str(classes_used or "subset")
+            )
+            training_metrics["partial_training"] = partial_training
+            if partial_training:
+                training_metrics["partial_class_note"] = (
+                    "Trained on a subset of classes; Main Model was not replaced."
+                )
+
             artifact = ModelArtifact(
                 project_id=job.project_id,
                 training_job_id=job.id,
-                name="Main Model",
+                name=f"Partial · {partial_label}" if partial_training else "Main Model",
                 architecture=job.architecture.value,
-                lifecycle=ModelLifecycle.REGISTERED,
+                lifecycle=ModelLifecycle.STAGING if partial_training else ModelLifecycle.REGISTERED,
                 minio_weights_key=minio_key,
                 minio_onnx_key=onnx_key,
                 dataset_version_id=job.dataset_version_id,
@@ -422,8 +436,20 @@ def run_training_job(job_id: str):
 
             from app.services.models.active_model import ensure_live_deployment_sync, promote_as_active_model_sync
 
-            promote_as_active_model_sync(session, job.project_id, artifact.id)
-            ensure_live_deployment_sync(session, job.project_id, artifact.id)
+            if partial_training:
+                publish_metric(job_id, {
+                    "phase": "finalize",
+                    "message": (
+                        f"Partial model saved ({partial_label}) — Main Model unchanged. "
+                        "Select all classes to replace the production model."
+                    ),
+                    "status": "running",
+                    "partial_training": True,
+                })
+            else:
+                promote_as_active_model_sync(session, job.project_id, artifact.id)
+                ensure_live_deployment_sync(session, job.project_id, artifact.id)
+                training_metrics["promoted_to_active"] = True
 
         job.status = TrainingStatus.COMPLETED
         job.completed_at = datetime.now(timezone.utc)

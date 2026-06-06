@@ -370,6 +370,22 @@ class ModelArtifactResponse(BaseModel):
     metrics: dict
     model_size_mb: float | None
     created_at: datetime
+    classes_used: list[str] = Field(default_factory=list)
+
+    @classmethod
+    def from_artifact(cls, artifact) -> "ModelArtifactResponse":
+        from app.services.driver.project_classes import model_class_names
+
+        return cls(
+            id=artifact.id,
+            name=artifact.name,
+            architecture=artifact.architecture,
+            lifecycle=artifact.lifecycle.value if hasattr(artifact.lifecycle, "value") else str(artifact.lifecycle),
+            metrics=artifact.metrics or {},
+            model_size_mb=artifact.model_size_mb,
+            created_at=artifact.created_at,
+            classes_used=model_class_names(artifact),
+        )
 
     model_config = {"from_attributes": True}
 

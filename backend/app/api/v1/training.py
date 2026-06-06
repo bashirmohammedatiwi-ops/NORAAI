@@ -199,7 +199,7 @@ async def list_models(project_id: UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(ModelArtifact).where(ModelArtifact.project_id == project_id).order_by(ModelArtifact.created_at.desc())
     )
-    return list(result.scalars().all())
+    return [ModelArtifactResponse.from_artifact(m) for m in result.scalars().all()]
 
 
 @router.get("/models/{model_id}", response_model=ModelArtifactResponse)
@@ -207,7 +207,7 @@ async def get_model(model_id: UUID, db: AsyncSession = Depends(get_db)):
     model = await db.get(ModelArtifact, model_id)
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    return model
+    return ModelArtifactResponse.from_artifact(model)
 
 
 @router.get("/training/project/{project_id}/environment")
@@ -265,10 +265,19 @@ async def remove_all_project_models(
 @router.patch("/models/{model_id}/lifecycle")
 async def update_model_lifecycle(model_id: UUID, lifecycle: str, db: AsyncSession = Depends(get_db)):
     from app.models import ModelLifecycle
+    from app.services.models.active_model import ensure_live_deployment, promote_as_active_model
+
     model = await db.get(ModelArtifact, model_id)
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    model.lifecycle = ModelLifecycle(lifecycle)
+
+    new_lifecycle = ModelLifecycle(lifecycle)
+    if new_lifecycle == ModelLifecycle.PRODUCTION:
+        model = await promote_as_active_model(db, model.project_id, model_id)
+        await ensure_live_deployment(db, model.project_id, model_id)
+    else:
+        model.lifecycle = new_lifecycle
+
     return {"id": str(model.id), "lifecycle": model.lifecycle.value}
 
 

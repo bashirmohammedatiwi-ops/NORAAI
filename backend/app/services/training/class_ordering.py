@@ -20,6 +20,22 @@ def load_project_classes(session: Session, project_id: uuid.UUID) -> list[ClassL
     return list(result.scalars().all())
 
 
+def is_partial_class_selection(
+    session: Session,
+    project_id: uuid.UUID,
+    selected_class_ids: list[str] | None,
+) -> bool:
+    """True when user explicitly trains a strict subset of project classes."""
+    if not selected_class_ids:
+        return False
+    all_classes = load_project_classes(session, project_id)
+    if not all_classes:
+        return False
+    selected = set(normalize_class_id_list(selected_class_ids) or [])
+    all_ids = {str(c.id) for c in all_classes}
+    return bool(selected) and selected != all_ids
+
+
 def normalize_class_id_list(class_ids: list[str] | list[uuid.UUID] | None) -> list[str] | None:
     if not class_ids:
         return None

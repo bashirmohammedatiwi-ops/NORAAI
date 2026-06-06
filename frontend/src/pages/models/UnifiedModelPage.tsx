@@ -48,7 +48,8 @@ interface ModelArtifact {
   name: string;
   architecture: string;
   lifecycle: string;
-  metrics: Record<string, number>;
+  metrics: Record<string, unknown>;
+  classes_used?: string[];
   model_size_mb: number | null;
   created_at: string;
 }
@@ -69,6 +70,7 @@ export default function UnifiedModelPage() {
   const [deleteTarget, setDeleteTarget] = useState<'model' | 'all' | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const loadModels = useCallback(() => {
     if (!projectId) return;
@@ -125,6 +127,22 @@ export default function UnifiedModelPage() {
       window.alert(e instanceof Error ? e.message : 'Failed to delete model');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const restoreModel = async (modelId: string) => {
+    if (!projectId) return;
+    if (!window.confirm('استعادة هذا النموذج كنموذج رئيسي للإنتاج؟')) return;
+    setRestoringId(modelId);
+    try {
+      await api.patch(`/api/v1/models/${modelId}/lifecycle?lifecycle=production`);
+      await refetch();
+      loadModels();
+      invalidateProject(projectId);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Failed to restore model');
+    } finally {
+      setRestoringId(null);
     }
   };
 
@@ -244,6 +262,11 @@ export default function UnifiedModelPage() {
                     </div>
                   ))}
                 </div>
+                {Boolean(model.metrics?.partial_training) && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    هذا نموذج تجريبي لفئة محدودة. استعد النموذج متعدد الفئات من «سجل النماذج» إن لزم.
+                  </div>
+                )}
                 {modelClasses.length > 0 && (
                   <div>
                     <p className="text-xs text-muted-foreground mb-2">Classes</p>
@@ -331,21 +354,50 @@ export default function UnifiedModelPage() {
         </Card>
       </div>
 
-      {models.length > 1 && (
+      {models.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Model history</CardTitle>
+            <CardTitle className="text-base">سجل النماذج</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {models.map((m) => (
-              <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-                <div>
-                  <span className="font-medium">{m.name}</span>
-                  <span className="text-muted-foreground ml-2">{m.architecture} · {m.lifecycle}</span>
+            {models.map((m) => {
+              const historyClasses = normalizeClassesUsed(m.classes_used);
+              const isActive = m.lifecycle === 'production';
+              return (
+                <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                  <div className="space-y-1">
+                    <div>
+                      <span className="font-medium">{m.name}</span>
+                      <span className="text-muted-foreground ml-2">{m.architecture} · {m.lifecycle}</span>
+                      {Boolean(m.metrics?.partial_training) && (
+                        <Badge variant="warning" className="ml-2 text-[10px]">تجريبي</Badge>
+                      )}
+                    </div>
+                    {historyClasses.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {historyClasses.map((c) => (
+                          <Badge key={c} variant="secondary" className="text-[10px]">{c}</Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{new Date(m.created_at).toLocaleString()}</span>
+                    {!isActive && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={restoringId === m.id || training?.is_running}
+                        onClick={() => restoreModel(m.id)}
+                      >
+                        {restoringId === m.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                        استعادة
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <span className="text-xs text-muted-foreground">{new Date(m.created_at).toLocaleString()}</span>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}
