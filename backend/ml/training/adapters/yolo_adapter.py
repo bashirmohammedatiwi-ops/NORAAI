@@ -304,25 +304,16 @@ class YOLOAdapter:
                     )
                     images_per_min = int(round(display_bpm * train_batch_size))
 
-                    pace_for_eta = epoch_pace_bpm or display_bpm
+                    # Guaranteed non-zero pace: refined epoch pace > smoothed > raw cumulative.
+                    cumulative_bpm = (batch_i / max(epoch_elapsed, 0.5)) * 60.0
+                    pace_for_eta = epoch_pace_bpm or display_bpm or cumulative_bpm or 1.0
                     remaining_batches = max(0, nb - batch_i)
-                    if pace_for_eta > 0 and remaining_batches > 0:
-                        epoch_eta = max(0, int((remaining_batches / pace_for_eta) * 60))
-                    else:
-                        epoch_eta = compute_epoch_eta_seconds(epoch_elapsed, epoch_progress)
+                    epoch_eta = max(0, int((remaining_batches / pace_for_eta) * 60))
 
-                    if pace_for_eta > 0 and batch_i > 0:
-                        epoch_total_est = (nb / pace_for_eta) * 60.0
-                        remaining_this_epoch = max(0.0, epoch_total_est - epoch_elapsed)
-                        epochs_after = max(0, epochs - (epoch_idx + 1))
-                        job_eta = max(0, int(remaining_this_epoch + epochs_after * epoch_total_est))
-                    else:
-                        job_eta = compute_job_eta_from_epoch_pace(
-                            epoch_elapsed,
-                            epoch_progress,
-                            epoch_idx + 1,
-                            epochs,
-                        )
+                    epoch_total_est = (nb / pace_for_eta) * 60.0
+                    remaining_this_epoch = max(0.0, epoch_total_est - epoch_elapsed)
+                    epochs_after = max(0, epochs - (epoch_idx + 1))
+                    job_eta = max(0, int(remaining_this_epoch + epochs_after * epoch_total_est))
                     metrics_callback({
                         "epoch": epoch_idx + 1,
                         "total_epochs": epochs,

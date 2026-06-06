@@ -3,6 +3,28 @@
 from app.services.training.cpu_tuning import tune_training_config
 
 CPU_PRESETS: dict[str, dict] = {
+    "turbo_accuracy": {
+        "label": "Turbo Accuracy",
+        "description": "أفضل دقة + أسرع زمن: يكمل من النموذج الرئيسي · 448px · إيقاف مبكر ذكي · RAM cache",
+        "epochs": 30,
+        "batch_size": "auto",
+        "learning_rate": 0.006,
+        "optimizer": "AdamW",
+        "scheduler": "cosine",
+        "augmentation": "medium",
+        "image_size": 448,
+        "mixed_precision": False,
+        "val_split": 0.12,
+        "cache": True,
+        "patience": 8,
+        "close_mosaic": 6,
+        "warmup_epochs": 2,
+        "freeze_layers": 4,
+        "label_smoothing": 0.03,
+        "workers": "auto",
+        "device": "cpu",
+        "fine_tune_from_active": True,
+    },
     "hostinger_production": {
         "label": "Hostinger Production",
         "description": "20 epochs · 512px · RAM cache · best quality/speed on 4-core CPU VPS",
@@ -180,7 +202,7 @@ CPU_PRESETS: dict[str, dict] = {
     },
 }
 
-DEFAULT_CPU_PRESET = "hostinger_production"
+DEFAULT_CPU_PRESET = "turbo_accuracy"
 
 
 def build_retrain_config(

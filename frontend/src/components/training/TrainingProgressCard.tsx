@@ -180,15 +180,10 @@ export function TrainingProgressCard({
                     : (secPerBatch != null ? `~${secPerBatch}s/batch` : undefined),
                   icon: <Zap className="h-3.5 w-3.5" />,
                 },
-                ...(batchesPerMinAvg != null ? [{
-                  label: 'متوسط آخر دقيقة',
-                  value: `${batchesPerMinAvg} batch/min`,
-                  sub: 'نافذة 60ث',
-                }] : []),
-                ...(batchesPerMinEpoch != null ? [{
-                  label: 'متوسط الدورة الحقيقي',
-                  value: `${batchesPerMinEpoch} batch/min`,
-                  sub: 'بعد الإحماء · متوسط الدفعات',
+                ...((batchesPerMinAvg ?? batchesPerMinEpoch) != null ? [{
+                  label: 'متوسط السرعة',
+                  value: `${batchesPerMinAvg ?? batchesPerMinEpoch} batch/min`,
+                  sub: 'مستقر · يتجاهل الإحماء',
                 }] : []),
                 {
                   label: 'متبقي كلي',

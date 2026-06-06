@@ -161,7 +161,9 @@ def _apply_speed_overlays(out: dict, *, settings) -> None:
 
 
 QUALITY_PRESETS = frozenset({"ultimate_accuracy", "best_accuracy", "fine_tune", "balanced"})
-PRODUCTION_PRESETS = frozenset({"hostinger_production", "best_accuracy", "balanced", "ultimate_accuracy", "fine_tune"})
+PRODUCTION_PRESETS = frozenset(
+    {"turbo_accuracy", "hostinger_production", "best_accuracy", "balanced", "ultimate_accuracy", "fine_tune"}
+)
 
 
 def is_quality_preset(config: dict) -> bool:
