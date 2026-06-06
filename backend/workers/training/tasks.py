@@ -160,23 +160,37 @@ def run_training_job(job_id: str):
                 train_n = int(export_meta.get("train_images") or 0)
                 val_n = int(export_meta.get("val_images") or 0)
                 exported_n = int(export_meta.get("exported_images") or 0)
-                config["_train_images"] = train_n
-                config["_val_images"] = val_n
+                train_disk = int(export_meta.get("train_images_on_disk") or train_n)
+                val_disk = int(export_meta.get("val_images_on_disk") or val_n)
+                labeled_train = int(export_meta.get("labeled_train_images") or 0)
+                labeled_val = int(export_meta.get("labeled_val_images") or 0)
+                skipped_labels = int(export_meta.get("skipped_labels") or 0)
+                config["_train_images"] = train_disk
+                config["_val_images"] = val_disk
                 config["_exported_images"] = exported_n
-                if train_n >= 2000:
+                config["_labeled_train_images"] = labeled_train
+                config["_labeled_val_images"] = labeled_val
+                config["_skipped_labels"] = skipped_labels
+                if train_disk >= 2000:
                     config["cache"] = "disk"
                     config["prefer_disk_cache"] = True
+                    config["_rect"] = False
                 job.config = dict(config)
                 session.commit()
                 expected_n = int((validation.get("stats") or {}).get("image_count") or 0)
                 publish_metric(job_id, {
                     "phase": "export",
-                    "message": f"Exported {exported_n} images · train {train_n} · val {val_n}",
+                    "message": (
+                        f"On disk: {train_disk} train ({labeled_train} labeled) · "
+                        f"{val_disk} val ({labeled_val} labeled)"
+                    ),
                     "export_current": exported_n,
                     "export_total": expected_n or exported_n,
-                    "train_images": train_n,
-                    "val_images": val_n,
+                    "train_images": train_disk,
+                    "val_images": val_disk,
                     "exported_images": exported_n,
+                    "labeled_train_images": labeled_train,
+                    "labeled_val_images": labeled_val,
                     "progress": 14,
                     "status": "running",
                 })
@@ -197,10 +211,11 @@ def run_training_job(job_id: str):
                         f"downloaded from MinIO ({export_meta.get('export_failures', 0)} failed). "
                         "Fix storage connectivity before training."
                     )
-                if labeled_export < max(50, int(exported_n * 0.05)) and exported_n >= 100:
+                if train_disk >= 100 and labeled_train < max(50, int(train_disk * 0.1)):
                     raise ValueError(
-                        f"Only {labeled_export}/{exported_n} exported images have label boxes — "
-                        f"({labeled_n} labeled in DB). Import YOLO labels or approve annotations."
+                        f"Only {labeled_train}/{train_disk} train images have non-empty label files "
+                        f"({labeled_n} labeled in DB, {skipped_labels} boxes skipped on export). "
+                        "Check selected training classes match annotation classes."
                     )
                 for warning in validation.get("warnings", []):
                     publish_metric(job_id, {

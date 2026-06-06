@@ -140,7 +140,10 @@ export function TrainingProgressCard({
                 ...(detail?.trainImages != null ? [{
                   label: 'صور التدريب',
                   value: `${detail.trainImages}${detail.valImages != null ? ` + ${detail.valImages} val` : ''}`,
-                  sub: detail.exportedImages != null ? `${detail.exportedImages} مُصدَّرة` : undefined,
+                  sub: [
+                    detail.labeledTrainImages != null ? `${detail.labeledTrainImages} مُوسومة` : null,
+                    detail.exportedImages != null ? `${detail.exportedImages} مُصدَّرة` : null,
+                  ].filter(Boolean).join(' · ') || undefined,
                 }] : []),
                 {
                   label: 'الدورة',

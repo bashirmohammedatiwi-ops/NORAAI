@@ -181,8 +181,8 @@ def export_yolo_dataset_sync(
     export_meta = {
         **manifest,
         "exported_images": exported,
-        "val_images": len(val_ids),
-        "train_images": max(0, exported - len(val_ids)),
+        "val_images": val_on_disk,
+        "train_images": train_on_disk,
         "train_images_on_disk": train_on_disk,
         "val_images_on_disk": val_on_disk,
         "labeled_train_images": labeled_train,

@@ -30,6 +30,8 @@ export interface TrainingProgressDetail {
   trainImages?: number | null;
   valImages?: number | null;
   exportedImages?: number | null;
+  labeledTrainImages?: number | null;
+  yoloTrainImages?: number | null;
   loss?: number | null;
   lossBox?: number | null;
   lossCls?: number | null;

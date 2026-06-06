@@ -145,7 +145,11 @@ class YOLOAdapter:
 
                 def emit_validation_metrics(trainer, *, save_epoch: bool) -> None:
                     epoch = int(getattr(trainer, "epoch", 0)) + 1
-                    nb = max(int(getattr(trainer, "nb", 1)), 1)
+                    nb = max(
+                        int(batch_state.get("yolo_nb") or 0),
+                        int(getattr(trainer, "nb", 1)),
+                        1,
+                    )
                     metrics = getattr(trainer, "metrics", None) or {}
                     loss_items = getattr(trainer, "loss_items", None)
                     train_loss = float(sum(loss_items)) if loss_items is not None else None
@@ -191,7 +195,11 @@ class YOLOAdapter:
                         return
                     now = time.time()
                     batch_i = int(getattr(trainer, "ni", 0)) + 1
-                    nb = max(int(getattr(trainer, "nb", 1)), 1)
+                    nb = max(
+                        int(batch_state.get("yolo_nb") or 0),
+                        int(getattr(trainer, "nb", 1)),
+                        1,
+                    )
                     epoch_idx = int(getattr(trainer, "epoch", 0))
                     min_interval = 1.0 if nb <= 30 else 2.0
                     batch_stride = 1 if nb <= 50 else 5
@@ -285,6 +293,28 @@ class YOLOAdapter:
 
                 val_every = int(config.get("_val_every") or 1)
 
+                def on_pretrain_routine_end(trainer):
+                    loader = getattr(trainer, "train_loader", None)
+                    if loader is None:
+                        return
+                    try:
+                        yolo_nb = max(int(len(loader)), 1)
+                        batch_state["yolo_nb"] = yolo_nb
+                        dataset = getattr(loader, "dataset", None)
+                        n_imgs = len(getattr(dataset, "im_files", []) or []) or len(dataset or [])
+                        metrics_callback({
+                            "phase": "setup",
+                            "message": (
+                                f"YOLO loader: {n_imgs} train images · {yolo_nb} batches · "
+                                f"batch {train_batch_size}"
+                            ),
+                            "total_batches": yolo_nb,
+                            "yolo_train_images": n_imgs,
+                            "status": "running",
+                        })
+                    except Exception:
+                        pass
+
                 def on_train_epoch_start(trainer):
                     epoch_idx = int(getattr(trainer, "epoch", 0))
                     if batch_state["last_epoch_idx"] != epoch_idx:
@@ -301,6 +331,7 @@ class YOLOAdapter:
                     if hasattr(trainer, "args"):
                         trainer.args.val = run_val
 
+                model.add_callback("on_pretrain_routine_end", on_pretrain_routine_end)
                 model.add_callback("on_train_batch_end", on_train_batch_end)
                 model.add_callback("on_train_epoch_start", on_train_epoch_start)
                 model.add_callback("on_fit_epoch_end", on_fit_epoch_end)

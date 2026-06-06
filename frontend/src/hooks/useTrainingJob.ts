@@ -37,6 +37,8 @@ export interface TrainingJobDetail {
   train_images?: number | null;
   val_images?: number | null;
   exported_images?: number | null;
+  labeled_train_images?: number | null;
+  yolo_train_images?: number | null;
   latest_metrics: {
     loss: number | null;
     precision: number | null;
@@ -144,6 +146,8 @@ export function useTrainingJob(
       train_images: num(latestLive.train_images, base.train_images),
       val_images: num(latestLive.val_images, base.val_images),
       exported_images: num(latestLive.exported_images, base.exported_images),
+      labeled_train_images: num(latestLive.labeled_train_images, base.labeled_train_images),
+      yolo_train_images: num(latestLive.yolo_train_images, base.yolo_train_images),
       latest_metrics: validationLive
         ? {
             loss: num(validationLive.loss, base.latest_metrics?.loss),
@@ -176,6 +180,8 @@ export function useTrainingJob(
       trainImages: liveJob.train_images,
       valImages: liveJob.val_images,
       exportedImages: liveJob.exported_images,
+      labeledTrainImages: liveJob.labeled_train_images,
+      yoloTrainImages: liveJob.yolo_train_images,
       loss: liveJob.latest_metrics?.loss,
       lossBox: num(latestLive?.loss_box, null),
       lossCls: num(latestLive?.loss_cls, null),
