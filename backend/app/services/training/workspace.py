@@ -10,17 +10,20 @@ from contextlib import contextmanager
 from pathlib import Path
 
 
-def _shm_base() -> Path | None:
-    shm = Path("/dev/shm")
-    if not shm.is_dir():
-        return None
+def _ram_workspace_bases() -> list[Path]:
+    return [
+        Path("/tmp/training/workspaces"),
+        Path("/dev/shm/aiops_train"),
+    ]
+
+
+def _writable_base(path: Path) -> Path | None:
     try:
-        base = shm / "aiops_train"
-        base.mkdir(parents=True, exist_ok=True)
-        test = base / f".write_test_{uuid.uuid4().hex}"
+        path.mkdir(parents=True, exist_ok=True)
+        test = path / f".write_test_{uuid.uuid4().hex}"
         test.write_text("ok", encoding="utf-8")
         test.unlink(missing_ok=True)
-        return base
+        return path
     except OSError:
         return None
 
@@ -37,7 +40,11 @@ def fast_training_workspace(job_id: str):
     """Use /dev/shm when available (critical on Hostinger KVM — avoids slow disk I/O)."""
     path: Path | None = None
     if use_ram_workspace():
-        base = _shm_base()
+        base = None
+        for candidate in _ram_workspace_bases():
+            base = _writable_base(candidate)
+            if base is not None:
+                break
         if base is not None:
             path = base / str(job_id)
             if path.exists():

@@ -1,4 +1,5 @@
 export type CpuPreset =
+  | 'hostinger_production'
   | 'ultimate_accuracy'
   | 'fine_tune'
   | 'best_accuracy'
@@ -9,9 +10,14 @@ export type CpuPreset =
   | 'balanced';
 
 export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string; epochs: number }> = {
+  hostinger_production: {
+    label: 'إنتاج Hostinger',
+    description: '20 دورة · 512px · RAM cache — أفضل توازن جودة/سرعة على CPU',
+    epochs: 20,
+  },
   ultimate_accuracy: {
     label: 'أقصى دقة',
-    description: '40 دورة · 640px · medium aug — أفضل جودة على CPU',
+    description: '40 دورة · 640px · بطيء — للجودة القصوى فقط',
     epochs: 40,
   },
   fine_tune: {
@@ -51,7 +57,7 @@ export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string
   },
 };
 
-export const DEFAULT_CPU_PRESET: CpuPreset = 'ultimate_accuracy';
+export const DEFAULT_CPU_PRESET: CpuPreset = 'hostinger_production';
 
 export function buildRetrainQuery(params: {
   epochs?: number;

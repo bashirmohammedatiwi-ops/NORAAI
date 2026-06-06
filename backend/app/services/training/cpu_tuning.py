@@ -161,6 +161,7 @@ def _apply_speed_overlays(out: dict, *, settings) -> None:
 
 
 QUALITY_PRESETS = frozenset({"ultimate_accuracy", "best_accuracy", "fine_tune", "balanced"})
+PRODUCTION_PRESETS = frozenset({"hostinger_production", "best_accuracy", "balanced", "ultimate_accuracy", "fine_tune"})
 
 
 def is_quality_preset(config: dict) -> bool:
@@ -168,20 +169,89 @@ def is_quality_preset(config: dict) -> bool:
     return bool(config.get("_prioritize_accuracy")) or preset in QUALITY_PRESETS
 
 
-def _apply_large_dataset_quality(config: dict, train_n: int) -> dict:
-    """Large dataset + quality preset: keep 640px, medium aug, full validation cadence."""
+def resolve_training_cache(config: dict, train_n: int, val_n: int) -> dict:
+    """Pick RAM vs disk YOLO cache from memory budget — not a blind image-count threshold."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    budget_mb = int(settings.training_ram_cache_budget_mb or 4096)
+    disk_min = int(settings.training_disk_cache_min_images or 12000)
+    total_images = train_n + val_n
+    imgsz = int(config.get("image_size") or 640)
+    # Ultralytics RAM cache: rough ~1.2MB per image at 416, ~2.5MB at 640
+    mb_per_image = 1.2 if imgsz <= 416 else (1.8 if imgsz <= 512 else 2.5)
+    est_mb = total_images * mb_per_image
+
+    use_ram = (
+        hostinger_mode_enabled()
+        and total_images < disk_min
+        and est_mb <= budget_mb * 0.85
+    )
+    if use_ram:
+        config["cache"] = "ram"
+        config.pop("prefer_disk_cache", None)
+        config["_rect"] = True
+        config["_ram_cache_est_mb"] = int(est_mb)
+    else:
+        config["cache"] = "disk"
+        config["prefer_disk_cache"] = True
+        config["_rect"] = False
+    return config
+
+
+def _apply_hostinger_production_overlays(config: dict, train_n: int) -> dict:
+    """Best CPU VPS balance: 512px, RAM cache, rect batches, val every N epochs."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    val_n = int(config.get("_val_images") or 0)
+    resolve_training_cache(config, train_n, val_n)
+    config["image_size"] = min(int(config.get("image_size") or 640), 512)
     mem_mb = training_mem_limit_mb()
+    mem_cap = 28 if mem_mb >= 12288 else 22
+    batch_floor = int(config.get("batch_size") or 12) if not isinstance(config.get("batch_size"), str) else 12
+    config["batch_size"] = max(batch_floor, min(mem_cap, 32 if train_n >= 5000 else 24))
+    config["_val_every"] = _resolve_val_every(settings)
+    config["_large_dataset"] = True
+    config["_production_cpu"] = True
+    config["_image_size_locked"] = True
+    if config.get("augmentation") == "none":
+        config["augmentation"] = "light"
+    if str(config.get("_preset") or "") == "ultimate_accuracy":
+        config["image_size"] = 640
+        config["_val_every"] = 2
+        config["_quality_large_dataset"] = True
+        config["_prioritize_accuracy"] = True
+    if should_fine_tune_large(config, train_n):
+        config["freeze_layers"] = min(int(config.get("freeze_layers") or 0), 6)
+        config["warmup_epochs"] = min(int(config.get("warmup_epochs") or 3), 2)
+        config["close_mosaic"] = min(int(config.get("close_mosaic") or 5), 3)
+    return config
+
+
+def _apply_large_dataset_quality(config: dict, train_n: int) -> dict:
+    """Ultimate accuracy on large data — only when user explicitly opts in."""
     preset = str(config.get("_preset") or "")
-    val_every = 1 if preset == "ultimate_accuracy" else 2
-    mem_cap = 24 if mem_mb >= 12288 else 16
+    val_n = int(config.get("_val_images") or 0)
+    if preset == "ultimate_accuracy" and hostinger_mode_enabled():
+        config = _apply_hostinger_production_overlays(config, train_n)
+        config["image_size"] = 640
+        config["_val_every"] = 2
+        config["_quality_large_dataset"] = True
+        config["_prioritize_accuracy"] = True
+        return config
+
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    val_every = 2
+    mem_cap = 24 if training_mem_limit_mb() >= 12288 else 16
     batch_floor = int(config.get("batch_size") or 8)
     if isinstance(batch_floor, str):
         batch_floor = 12
-    config["image_size"] = max(int(config.get("image_size") or 640), 640)
+    resolve_training_cache(config, train_n, val_n)
+    config["image_size"] = max(int(config.get("image_size") or 640), 512)
     config["batch_size"] = max(batch_floor, min(mem_cap, 20 if train_n >= 5000 else 16))
-    config["cache"] = "disk"
-    config["prefer_disk_cache"] = True
-    config["_rect"] = False
     config["_val_every"] = val_every
     config["_large_dataset"] = True
     config["_prioritize_accuracy"] = True
@@ -231,10 +301,14 @@ def _apply_large_dataset_speed(config: dict, train_n: int) -> dict:
 
 
 def apply_large_dataset_overlays(config: dict) -> dict:
-    """After export — tune large CPU datasets for quality or speed based on preset."""
+    """After export — tune large CPU datasets for production, quality, or speed."""
     train_n = int(config.get("_train_images") or config.get("_labeled_train_images") or 0)
     if train_n < 2500:
+        resolve_training_cache(config, train_n, int(config.get("_val_images") or 0))
         return config
+    preset = str(config.get("_preset") or "")
+    if hostinger_mode_enabled() and preset in PRODUCTION_PRESETS:
+        return _apply_hostinger_production_overlays(config, train_n)
     if is_quality_preset(config):
         return _apply_large_dataset_quality(config, train_n)
     return _apply_large_dataset_speed(config, train_n)
@@ -303,7 +377,9 @@ def speed_boost_summary(config: dict) -> str:
         parts.append("lite-aug")
     if config.get("_hostinger"):
         parts.append("hostinger")
-    if config.get("_quality_large_dataset"):
+    if config.get("_production_cpu"):
+        parts.append(f"production-{config.get('_train_images', '?')}")
+    elif config.get("_quality_large_dataset"):
         parts.append(f"quality-{config.get('_train_images', '?')}")
     elif config.get("_large_dataset"):
         parts.append(f"large-{config.get('_train_images', '?')}")

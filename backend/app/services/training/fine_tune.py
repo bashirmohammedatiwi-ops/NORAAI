@@ -87,9 +87,7 @@ def apply_fine_tune_training_overrides(config: dict, *, from_main_model: bool = 
 
 
 def recommend_preset(has_production_model: bool, can_fine_tune: bool) -> str:
-    if has_production_model and can_fine_tune:
-        return "ultimate_accuracy"
-    return "ultimate_accuracy"
+    return "hostinger_production"
 
 
 def resolve_fine_tune_weights_path(

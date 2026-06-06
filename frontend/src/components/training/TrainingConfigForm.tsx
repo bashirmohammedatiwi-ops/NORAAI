@@ -205,7 +205,6 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           close_mosaic: 3,
           workers: 'auto',
           cache: true,
-          prefer_disk_cache: true,
           device: 'auto',
           fine_tune_from_active: fineTuneFromActive,
           continuous: fineTuneFromActive,

@@ -97,7 +97,56 @@ def export_yolo_dataset_sync(
             names = ", ".join(class_names) or "selected classes"
             raise ValueError(f"No images contain labels for selected classes: {names}")
 
-    val_ids = stratified_val_ids(image_ids, ann_by_image, class_map, val_split)
+    from app.services.training.export_cache import export_fingerprint, save_export_cache, try_restore_export
+
+    val_seed = int(version.id.int % (2**31 - 1))
+    val_ids = stratified_val_ids(
+        image_ids, ann_by_image, class_map, val_split, seed=val_seed
+    )
+
+    cache_fp = export_fingerprint(session, version, image_ids, selected_class_ids, val_split)
+    if try_restore_export(output_dir, cache_fp):
+        train_on_disk = len(list((base / "images" / "train").glob("*.jpg")))
+        val_on_disk = len(list((base / "images" / "val").glob("*.jpg")))
+        labeled_train = sum(
+            1
+            for p in (base / "labels" / "train").glob("*.txt")
+            if p.read_text(encoding="utf-8").strip()
+        )
+        labeled_val = sum(
+            1
+            for p in (base / "labels" / "val").glob("*.txt")
+            if p.read_text(encoding="utf-8").strip()
+        )
+        yaml_path = str(base / "data.yaml")
+        export_meta = {
+            **manifest,
+            "exported_images": train_on_disk + val_on_disk,
+            "val_images": val_on_disk,
+            "train_images": train_on_disk,
+            "train_images_on_disk": train_on_disk,
+            "val_images_on_disk": val_on_disk,
+            "labeled_train_images": labeled_train,
+            "labeled_val_images": labeled_val,
+            "total_images_in_version": total_in_version,
+            "exported_for_classes": len(image_ids),
+            "selected_class_ids": selected_class_ids or [],
+            "export_failures": 0,
+            "skipped_labels": 0,
+            "val_split": val_split,
+            "export_cache_hit": True,
+        }
+        if progress_callback:
+            progress_callback({
+                "phase": "export",
+                "message": f"Export cache hit — {export_meta['exported_images']} images (skipped MinIO)",
+                "export_current": export_meta["exported_images"],
+                "export_total": export_meta["exported_images"],
+                "progress": 15,
+                "epoch": 0,
+                "status": "running",
+            })
+        return yaml_path, class_names, export_meta
 
     total = len(image_ids)
     if progress_callback:
@@ -208,6 +257,9 @@ def export_yolo_dataset_sync(
         "skipped_labels": skipped_labels,
         "val_split": val_split,
     }
+
+    save_export_cache(output_dir, cache_fp)
+    export_meta["export_cache_saved"] = True
 
     if progress_callback:
         progress_callback({

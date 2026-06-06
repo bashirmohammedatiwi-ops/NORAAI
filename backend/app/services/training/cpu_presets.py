@@ -3,6 +3,27 @@
 from app.services.training.cpu_tuning import tune_training_config
 
 CPU_PRESETS: dict[str, dict] = {
+    "hostinger_production": {
+        "label": "Hostinger Production",
+        "description": "20 epochs · 512px · RAM cache · best quality/speed on 4-core CPU VPS",
+        "epochs": 20,
+        "batch_size": "auto",
+        "learning_rate": 0.008,
+        "optimizer": "AdamW",
+        "scheduler": "cosine",
+        "augmentation": "medium",
+        "image_size": 512,
+        "mixed_precision": False,
+        "val_split": 0.15,
+        "cache": True,
+        "patience": 12,
+        "close_mosaic": 4,
+        "warmup_epochs": 2,
+        "freeze_layers": 6,
+        "workers": "auto",
+        "device": "cpu",
+        "fine_tune_from_active": True,
+    },
     "ultimate_accuracy": {
         "label": "Ultimate Accuracy",
         "description": "40 epochs · 640px · medium aug · frozen backbone — maximum mAP on CPU VPS",
@@ -159,7 +180,7 @@ CPU_PRESETS: dict[str, dict] = {
     },
 }
 
-DEFAULT_CPU_PRESET = "ultimate_accuracy"
+DEFAULT_CPU_PRESET = "hostinger_production"
 
 
 def build_retrain_config(

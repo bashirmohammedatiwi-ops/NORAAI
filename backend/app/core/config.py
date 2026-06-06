@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     training_val_every: int = 0
     training_skip_onnx_export: bool = True
     training_export_max_workers: int = 0
+    training_export_cache_enabled: bool = True
+    training_ram_cache_budget_mb: int = 4096
+    training_disk_cache_min_images: int = 12000
     static_frontend_dir: str = ""
     desktop_mode: bool = False
 

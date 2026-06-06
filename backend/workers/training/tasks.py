@@ -171,10 +171,6 @@ def run_training_job(job_id: str):
                 config["_labeled_train_images"] = labeled_train
                 config["_labeled_val_images"] = labeled_val
                 config["_skipped_labels"] = skipped_labels
-                if train_disk >= 2000:
-                    config["cache"] = "disk"
-                    config["prefer_disk_cache"] = True
-                    config["_rect"] = False
                 from app.services.training.cpu_tuning import apply_large_dataset_overlays, speed_boost_summary
 
                 apply_large_dataset_overlays(config)

@@ -129,9 +129,13 @@ def stratified_val_ids(
     ann_by_image: dict[uuid.UUID, list],
     class_index: dict[str, int],
     val_split: float,
+    *,
+    seed: int | None = None,
 ) -> set[uuid.UUID]:
     """Keep at least one val image per class bucket when possible."""
     import random
+
+    rng = random.Random(seed)
 
     buckets: dict[frozenset[int], list[uuid.UUID]] = defaultdict(list)
     for img_id in image_ids:
@@ -145,7 +149,7 @@ def stratified_val_ids(
     val_ids: set[uuid.UUID] = set()
     for _key, ids in buckets.items():
         shuffled = list(ids)
-        random.shuffle(shuffled)
+        rng.shuffle(shuffled)
         if len(shuffled) <= 2:
             val_ids.add(shuffled[-1])
             continue
