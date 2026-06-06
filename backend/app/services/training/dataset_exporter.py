@@ -83,6 +83,20 @@ def export_yolo_dataset_sync(
         for ann in ann_rows.scalars().all():
             ann_by_image[ann.image_id].append(ann)
 
+    total_in_version = len(image_ids)
+    if selected_class_ids:
+        image_ids = [
+            img_id
+            for img_id in image_ids
+            if any(
+                class_map.get(str(ann.class_id)) is not None
+                for ann in ann_by_image.get(img_id, [])
+            )
+        ]
+        if not image_ids:
+            names = ", ".join(class_names) or "selected classes"
+            raise ValueError(f"No images contain labels for selected classes: {names}")
+
     val_ids = stratified_val_ids(image_ids, ann_by_image, class_map, val_split)
 
     total = len(image_ids)
@@ -187,7 +201,9 @@ def export_yolo_dataset_sync(
         "val_images_on_disk": val_on_disk,
         "labeled_train_images": labeled_train,
         "labeled_val_images": labeled_val,
-        "total_images_in_version": total,
+        "total_images_in_version": total_in_version,
+        "exported_for_classes": total,
+        "selected_class_ids": selected_class_ids or [],
         "export_failures": max(0, total - exported),
         "skipped_labels": skipped_labels,
         "val_split": val_split,

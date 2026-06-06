@@ -217,12 +217,35 @@ def run_training_job(job_id: str):
                         f"downloaded from MinIO ({export_meta.get('export_failures', 0)} failed). "
                         "Fix storage connectivity before training."
                     )
-                if train_disk >= 100 and labeled_train < max(50, int(train_disk * 0.1)):
-                    raise ValueError(
-                        f"Only {labeled_train}/{train_disk} train images have non-empty label files "
-                        f"({labeled_n} labeled in DB, {skipped_labels} boxes skipped on export). "
-                        "Check selected training classes match annotation classes."
+                selected_classes = bool(selected_class_ids)
+                class_names = ", ".join(export_meta.get("names") or []) or "selected classes"
+                if selected_classes:
+                    min_labeled = max(30, int(labeled_n * 0.4)) if labeled_n else 30
+                else:
+                    min_labeled = max(50, int(train_disk * 0.1))
+
+                if labeled_train < min_labeled:
+                    hint = (
+                        f"Selected classes [{class_names}] — {labeled_n} images in DB have these labels. "
+                        "Select all 5 classes in Train step to use the full dataset."
+                        if selected_classes
+                        else "Import YOLO labels or approve annotations for this dataset."
                     )
+                    raise ValueError(
+                        f"Only {labeled_train} train images have label boxes "
+                        f"({labeled_n} labeled in DB, {skipped_labels} boxes from other classes skipped). "
+                        f"{hint}"
+                    )
+                exported_for_classes = int(export_meta.get("exported_for_classes") or exported_n)
+                if selected_classes and int(export_meta.get("total_images_in_version") or 0) > exported_for_classes * 2:
+                    publish_metric(job_id, {
+                        "phase": "validate",
+                        "message": (
+                            f"Training {class_names} only — exported {exported_n} images "
+                            f"(dataset has {export_meta.get('total_images_in_version')} total)"
+                        ),
+                        "status": "running",
+                    })
                 for warning in validation.get("warnings", []):
                     publish_metric(job_id, {
                         "phase": "validate",
