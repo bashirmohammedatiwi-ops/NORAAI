@@ -281,7 +281,7 @@ def export_yolo_dataset_sync(
             "status": "running",
         })
 
-    return yaml_path, names, export_meta
+    return yaml_path, class_names, export_meta
 
 
 def _write_placeholder_dataset(base: Path) -> None:
