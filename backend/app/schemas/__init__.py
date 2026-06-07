@@ -371,9 +371,17 @@ class ModelArtifactResponse(BaseModel):
     model_size_mb: float | None
     created_at: datetime
     classes_used: list[str] = Field(default_factory=list)
+    model_number: int = 0
+    is_active: bool = False
 
     @classmethod
-    def from_artifact(cls, artifact) -> "ModelArtifactResponse":
+    def from_artifact(
+        cls,
+        artifact,
+        *,
+        model_number: int = 0,
+        is_active: bool = False,
+    ) -> "ModelArtifactResponse":
         from app.services.driver.project_classes import model_class_names
 
         return cls(
@@ -385,6 +393,8 @@ class ModelArtifactResponse(BaseModel):
             model_size_mb=artifact.model_size_mb,
             created_at=artifact.created_at,
             classes_used=model_class_names(artifact),
+            model_number=model_number,
+            is_active=is_active,
         )
 
     model_config = {"from_attributes": True}

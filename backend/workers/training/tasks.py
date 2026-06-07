@@ -297,14 +297,16 @@ def run_training_job(job_id: str):
                 train_n = int(export_meta.get("train_images") or 0)
                 val_n = int(export_meta.get("val_images") or 0)
                 export_note = f"Dataset: {train_n} train · {val_n} val"
-            setup_msg = (
-                "Fine-tuning from Main Model"
-                if fine_tune_source == "main_model"
-                else (
+            if fine_tune_source == "selected_model":
+                model_num = config.get("_source_model_number")
+                setup_msg = f"Fine-tuning from Model #{model_num}" if model_num else "Fine-tuning from selected model"
+            elif fine_tune_source == "main_model":
+                setup_msg = "Fine-tuning from Main Model"
+            else:
+                setup_msg = (
                     fine_tune_warning
                     or f"CPU tune: {config.get('cpu_threads')} threads · batch {config.get('batch_size')}"
                 )
-            )
             if export_note:
                 setup_msg = f"{export_note} · {setup_msg}"
             if config.get("_speed_boost_note"):

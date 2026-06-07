@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
 import { TrainingClassPicker, type TrainClassOption } from '@/components/training/TrainingClassPicker';
+import { TrainSourceModelPicker, type TrainSourceMode } from '@/components/training/TrainSourceModelPicker';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -36,7 +37,8 @@ export function SimpleTrainCard({
 }: Props) {
   const [architecture, setArchitecture] = useState('yolo11');
   const [preset, setPreset] = useState<CpuPreset>(DEFAULT_CPU_PRESET);
-  const [fineTune, setFineTune] = useState(true);
+  const [sourceMode, setSourceMode] = useState<TrainSourceMode>('existing');
+  const [sourceModelId, setSourceModelId] = useState('');
   const [epochs, setEpochs] = useState(CPU_PRESETS[DEFAULT_CPU_PRESET].epochs);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -55,7 +57,8 @@ export function SimpleTrainCard({
         epochs,
         architecture,
         preset,
-        fineTune,
+        fineTune: sourceMode === 'existing',
+        sourceModelArtifactId: sourceMode === 'existing' ? sourceModelId : undefined,
         classIds: selectedClassIds,
       });
       const job = await api.post<{ id: string }>(
@@ -127,7 +130,7 @@ export function SimpleTrainCard({
           </div>
           <Button
             onClick={start}
-            disabled={loading || !ready || selectedClassIds.length < 1}
+            disabled={loading || !ready || selectedClassIds.length < 1 || (sourceMode === 'existing' && !sourceModelId)}
             variant="success"
             className="min-w-[140px]"
           >
@@ -146,15 +149,15 @@ export function SimpleTrainCard({
           compact
         />
 
-        <label className="flex items-center gap-2 text-xs cursor-pointer">
-          <input
-            type="checkbox"
-            checked={fineTune}
-            onChange={(e) => setFineTune(e.target.checked)}
-            className="rounded border-border"
-          />
-          Fine-tune from Main Model
-        </label>
+        <TrainSourceModelPicker
+          projectId={projectId}
+          mode={sourceMode}
+          onModeChange={setSourceMode}
+          selectedModelId={sourceModelId}
+          onSelectedModelIdChange={setSourceModelId}
+          disabled={loading}
+          compact
+        />
         {error && (
           <p className="text-sm text-destructive rounded-lg bg-destructive/10 px-3 py-2">{error}</p>
         )}

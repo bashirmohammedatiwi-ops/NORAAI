@@ -90,44 +90,34 @@ def recommend_preset(has_production_model: bool, can_fine_tune: bool) -> str:
     return "turbo_accuracy"
 
 
-def resolve_fine_tune_weights_path(
+def _load_artifact_weights(
     session: Session,
     project_id: uuid.UUID,
     job_architecture: str,
+    artifact: ModelArtifact,
     config: dict,
-    *,
     work_dir: str,
+    *,
+    source_tag: str,
+    label: str,
 ) -> tuple[str | None, str, str | None]:
-    """
-    Returns (local_weights_path, source_tag, warning_message).
-    source_tag: base | main_model | skipped
-    """
-    if not should_fine_tune(config):
-        return None, "base", None
-
-    if job_architecture not in YOLO_FINE_TUNE_ARCHITECTURES:
-        return None, "base", f"Fine-tune not supported for {job_architecture}"
-
-    artifact: ModelArtifact | None = get_active_model_sync(session, project_id)
-    if not artifact or not is_production_model(artifact):
-        if config.get("fine_tune_from_active"):
-            return None, "base", "No production Main Model — starting from pretrained weights"
-        return None, "base", None
+    if not is_production_model(artifact):
+        return None, "base", f"{label} has no valid weights — using pretrained base"
 
     if artifact.architecture != job_architecture:
         return (
             None,
             "base",
-            f"Active model is {artifact.architecture} but job is {job_architecture} — using pretrained base",
+            f"{label} is {artifact.architecture} but job is {job_architecture} — using pretrained base",
         )
 
     try:
         weights_bytes = download_bytes(artifact.minio_weights_key)
     except Exception as exc:
-        return None, "base", f"Could not load Main Model weights: {exc}"
+        return None, "base", f"Could not load {label} weights: {exc}"
 
     if not weights_bytes or weights_bytes == b"mock_weights":
-        return None, "base", "Main Model weights invalid — using pretrained base"
+        return None, "base", f"{label} weights invalid — using pretrained base"
 
     inherited = inherit_config_from_artifact(config, artifact)
     for key, val in inherited.items():
@@ -139,6 +129,66 @@ def resolve_fine_tune_weights_path(
 
     weights_dir = Path(work_dir) / "fine_tune_base"
     weights_dir.mkdir(parents=True, exist_ok=True)
-    weights_path = str(weights_dir / "main_model.pt")
+    weights_path = str(weights_dir / "source_model.pt")
     Path(weights_path).write_bytes(weights_bytes)
-    return weights_path, "main_model", None
+    return weights_path, source_tag, None
+
+
+def resolve_fine_tune_weights_path(
+    session: Session,
+    project_id: uuid.UUID,
+    job_architecture: str,
+    config: dict,
+    *,
+    work_dir: str,
+) -> tuple[str | None, str, str | None]:
+    """
+    Returns (local_weights_path, source_tag, warning_message).
+    source_tag: base | main_model | selected_model | skipped
+    """
+    if not should_fine_tune(config):
+        return None, "base", None
+
+    if job_architecture not in YOLO_FINE_TUNE_ARCHITECTURES:
+        return None, "base", f"Fine-tune not supported for {job_architecture}"
+
+    source_id = config.get("source_model_artifact_id")
+    if source_id:
+        try:
+            artifact_id = uuid.UUID(str(source_id))
+        except (TypeError, ValueError):
+            return None, "base", "Invalid source model ID — using pretrained base"
+
+        artifact = session.get(ModelArtifact, artifact_id)
+        if not artifact or artifact.project_id != project_id:
+            return None, "base", "Selected model not found — using pretrained base"
+
+        model_number = config.get("_source_model_number")
+        label = f"Model #{model_number}" if model_number else artifact.name
+        return _load_artifact_weights(
+            session,
+            project_id,
+            job_architecture,
+            artifact,
+            config,
+            work_dir,
+            source_tag="selected_model",
+            label=label,
+        )
+
+    artifact: ModelArtifact | None = get_active_model_sync(session, project_id)
+    if not artifact or not is_production_model(artifact):
+        if config.get("fine_tune_from_active"):
+            return None, "base", "No production Main Model — starting from pretrained weights"
+        return None, "base", None
+
+    return _load_artifact_weights(
+        session,
+        project_id,
+        job_architecture,
+        artifact,
+        config,
+        work_dir,
+        source_tag="main_model",
+        label="Main Model",
+    )

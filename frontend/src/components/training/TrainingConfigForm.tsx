@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useProjectClasses, useProjectDatasets } from '@/hooks/useDatasets';
 import { TrainingClassPicker } from '@/components/training/TrainingClassPicker';
+import { TrainSourceModelPicker, type TrainSourceMode } from '@/components/training/TrainSourceModelPicker';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -90,7 +91,8 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
   const [patience, setPatience] = useState(10);
   const [hpoEnabled, setHpoEnabled] = useState(false);
   const [hpoTrials, setHpoTrials] = useState(5);
-  const [fineTuneFromActive, setFineTuneFromActive] = useState(true);
+  const [sourceMode, setSourceMode] = useState<TrainSourceMode>('existing');
+  const [sourceModelId, setSourceModelId] = useState('');
 
   const applyCpuPreset = (presetKey: string, presets: CpuPresetOption[]) => {
     const preset = presets.find((p) => p.value === presetKey);
@@ -117,7 +119,7 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
         setArchitecture(o.recommendations.architecture);
       }
       if (o.recommendations?.default_fine_tune != null) {
-        setFineTuneFromActive(o.recommendations.default_fine_tune);
+        setSourceMode(o.recommendations.default_fine_tune ? 'existing' : 'scratch');
       }
       if (o.cpu_presets?.length) {
         applyCpuPreset(presetKey, o.cpu_presets);
@@ -206,8 +208,9 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           workers: 'auto',
           cache: true,
           device: 'auto',
-          fine_tune_from_active: fineTuneFromActive,
-          continuous: fineTuneFromActive,
+          fine_tune_from_active: sourceMode === 'existing',
+          continuous: sourceMode === 'existing',
+          source_model_artifact_id: sourceMode === 'existing' && sourceModelId ? sourceModelId : null,
           class_ids: selectedClassIds,
         },
       });
@@ -326,15 +329,14 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           disabled={loading}
         />
 
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={fineTuneFromActive}
-            onChange={(e) => setFineTuneFromActive(e.target.checked)}
-            className="rounded border-border"
-          />
-          Fine-tune from Main Model
-        </label>
+        <TrainSourceModelPicker
+          projectId={projectId}
+          mode={sourceMode}
+          onModeChange={setSourceMode}
+          selectedModelId={sourceModelId}
+          onSelectedModelIdChange={setSourceModelId}
+          disabled={loading}
+        />
 
         <div className="border-t border-border pt-4">
           <h4 className="text-sm font-medium mb-3">{advanced ? 'Hyperparameters' : 'Training settings'}</h4>

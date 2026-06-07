@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
+import { TrainSourceModelPicker, type TrainSourceMode } from '@/components/training/TrainSourceModelPicker';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +18,8 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
   const [architecture, setArchitecture] = useState('yolo11');
   const [preset, setPreset] = useState<CpuPreset>(DEFAULT_CPU_PRESET);
   const [epochs, setEpochs] = useState(CPU_PRESETS[DEFAULT_CPU_PRESET].epochs);
-  const [fineTune, setFineTune] = useState(true);
+  const [sourceMode, setSourceMode] = useState<TrainSourceMode>('existing');
+  const [sourceModelId, setSourceModelId] = useState('');
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -26,7 +28,13 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
     setLoading(true);
     setDone(false);
     try {
-      const query = buildRetrainQuery({ epochs, architecture, preset, fineTune });
+      const query = buildRetrainQuery({
+        epochs,
+        architecture,
+        preset,
+        fineTune: sourceMode === 'existing',
+        sourceModelArtifactId: sourceMode === 'existing' ? sourceModelId : undefined,
+      });
       await api.post(`/api/v1/training/project/${projectId}/retrain?${query}`);
       setDone(true);
     } catch (e) {
@@ -77,11 +85,20 @@ export function SimpleTrainingPanel({ projectId, imageCount }: Props) {
             <label className="text-xs font-medium text-muted-foreground block mb-1.5">Epochs</label>
             <Input type="number" className="w-24" value={epochs} min={5} max={200} onChange={(e) => setEpochs(+e.target.value)} />
           </div>
-          <label className="flex items-center gap-2 text-xs w-full">
-            <input type="checkbox" checked={fineTune} onChange={(e) => setFineTune(e.target.checked)} />
-            Fine-tune from Main Model
-          </label>
-          <Button onClick={startTraining} disabled={loading || imageCount < 1} variant="success">
+          <TrainSourceModelPicker
+            projectId={projectId}
+            mode={sourceMode}
+            onModeChange={setSourceMode}
+            selectedModelId={sourceModelId}
+            onSelectedModelIdChange={setSourceModelId}
+            disabled={loading}
+            compact
+          />
+          <Button
+            onClick={startTraining}
+            disabled={loading || imageCount < 1 || (sourceMode === 'existing' && !sourceModelId)}
+            variant="success"
+          >
             <Play className="h-4 w-4" />
             {loading ? 'Starting...' : 'Retrain Model'}
           </Button>

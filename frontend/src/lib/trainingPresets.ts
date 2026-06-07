@@ -70,13 +70,19 @@ export function buildRetrainQuery(params: {
   architecture?: string;
   preset?: CpuPreset;
   fineTune?: boolean;
+  sourceModelArtifactId?: string;
   classIds?: string[];
 }): string {
   const q = new URLSearchParams();
   if (params.epochs != null) q.set('epochs', String(params.epochs));
   if (params.architecture) q.set('architecture', params.architecture);
   q.set('preset', params.preset ?? DEFAULT_CPU_PRESET);
-  q.set('fine_tune', String(params.fineTune ?? true));
+  if (params.sourceModelArtifactId) {
+    q.set('source_model_artifact_id', params.sourceModelArtifactId);
+    q.set('fine_tune', 'true');
+  } else {
+    q.set('fine_tune', String(params.fineTune ?? true));
+  }
   for (const id of params.classIds ?? []) {
     q.append('class_ids', id);
   }

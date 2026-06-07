@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
 import { cancelTrainingJob } from '@/lib/cancelTraining';
+import { TrainSourceModelPicker, type TrainSourceMode } from '@/components/training/TrainSourceModelPicker';
 
 function normalizeClassesUsed(raw: unknown): string[] {
   if (Array.isArray(raw)) {
@@ -52,6 +53,8 @@ interface ModelArtifact {
   classes_used?: string[];
   model_size_mb: number | null;
   created_at: string;
+  model_number: number;
+  is_active: boolean;
 }
 
 export default function UnifiedModelPage() {
@@ -63,7 +66,8 @@ export default function UnifiedModelPage() {
 
   const [epochs, setEpochs] = useState(CPU_PRESETS[DEFAULT_CPU_PRESET].epochs);
   const [preset, setPreset] = useState<CpuPreset>(DEFAULT_CPU_PRESET);
-  const [fineTune, setFineTune] = useState(true);
+  const [sourceMode, setSourceMode] = useState<TrainSourceMode>('existing');
+  const [sourceModelId, setSourceModelId] = useState('');
   const [architecture, setArchitecture] = useState('yolo11');
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState<ModelArtifact[]>([]);
@@ -86,7 +90,7 @@ export default function UnifiedModelPage() {
       setPreset(rec);
       setEpochs(CPU_PRESETS[rec].epochs);
     }
-    if (status.can_fine_tune) setFineTune(true);
+    if (status.can_fine_tune) setSourceMode('existing');
     if (status.model?.architecture) setArchitecture(status.model.architecture);
   }, [status?.recommended_preset, status?.can_fine_tune, status?.model?.architecture]);
 
@@ -94,7 +98,13 @@ export default function UnifiedModelPage() {
     if (!projectId) return;
     setLoading(true);
     try {
-      const query = buildRetrainQuery({ epochs, architecture, preset, fineTune });
+      const query = buildRetrainQuery({
+        epochs,
+        architecture,
+        preset,
+        fineTune: sourceMode === 'existing',
+        sourceModelArtifactId: sourceMode === 'existing' ? sourceModelId : undefined,
+      });
       await api.post(`/api/v1/training/project/${projectId}/retrain?${query}`);
       await refetch();
       invalidateProject(projectId);
@@ -322,16 +332,19 @@ export default function UnifiedModelPage() {
               <label className="text-xs font-medium text-muted-foreground block mb-1.5">Epochs</label>
               <Input type="number" min={5} max={200} value={epochs} onChange={(e) => setEpochs(+e.target.value)} />
             </div>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={fineTune}
-                onChange={(e) => setFineTune(e.target.checked)}
-                disabled={!status?.can_fine_tune}
-              />
-              Fine-tune from Main Model
-            </label>
-            <Button className="w-full" onClick={retrain} disabled={loading || training?.is_running}>
+            <TrainSourceModelPicker
+              projectId={projectId!}
+              mode={sourceMode}
+              onModeChange={setSourceMode}
+              selectedModelId={sourceModelId}
+              onSelectedModelIdChange={setSourceModelId}
+              disabled={loading || training?.is_running}
+            />
+            <Button
+              className="w-full"
+              onClick={retrain}
+              disabled={loading || training?.is_running || (sourceMode === 'existing' && !sourceModelId)}
+            >
               {preset === 'fast_cpu' ? <Zap className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               {preset === 'fast_cpu' ? 'Fast CPU Retrain' : 'Retrain on latest data'}
             </Button>
@@ -367,6 +380,7 @@ export default function UnifiedModelPage() {
                 <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
                   <div className="space-y-1">
                     <div>
+                      <span className="text-xs font-mono bg-muted px-1 rounded mr-1">#{m.model_number}</span>
                       <span className="font-medium">{m.name}</span>
                       <span className="text-muted-foreground ml-2">{m.architecture} · {m.lifecycle}</span>
                       {Boolean(m.metrics?.partial_training) && (

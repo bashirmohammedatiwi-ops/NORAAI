@@ -99,6 +99,24 @@ async def create_training_job(
         parsed = [UUID(str(cid)) for cid in raw_class_ids]
         config["class_ids"] = await _normalize_training_class_ids(db, project_id, parsed)
 
+    source_model_id = config.get("source_model_artifact_id")
+    if source_model_id:
+        try:
+            artifact_uuid = UUID(str(source_model_id))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid source model ID") from exc
+        artifact = await db.get(ModelArtifact, artifact_uuid)
+        if not artifact or artifact.project_id != project_id:
+            raise HTTPException(status_code=400, detail="Selected model not found in this project")
+        from app.services.models.registry import assign_model_numbers
+
+        result = await db.execute(select(ModelArtifact).where(ModelArtifact.project_id == project_id))
+        numbers = assign_model_numbers(list(result.scalars().all()))
+        config["source_model_artifact_id"] = str(artifact_uuid)
+        config["_source_model_number"] = numbers.get(artifact_uuid)
+        config["fine_tune_from_active"] = True
+        config["continuous"] = True
+
     job = TrainingJob(
         project_id=project_id,
         name=data.name,
@@ -196,18 +214,29 @@ async def get_hpo_trials(job_id: UUID, db: AsyncSession = Depends(get_db)):
 
 @router.get("/models/project/{project_id}", response_model=list[ModelArtifactResponse])
 async def list_models(project_id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(ModelArtifact).where(ModelArtifact.project_id == project_id).order_by(ModelArtifact.created_at.desc())
-    )
-    return [ModelArtifactResponse.from_artifact(m) for m in result.scalars().all()]
+    from app.services.models.registry import list_project_model_artifacts
+
+    return await list_project_model_artifacts(db, project_id)
 
 
 @router.get("/models/{model_id}", response_model=ModelArtifactResponse)
 async def get_model(model_id: UUID, db: AsyncSession = Depends(get_db)):
+    from app.models import Project
+    from app.services.models.registry import assign_model_numbers
+
     model = await db.get(ModelArtifact, model_id)
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    return ModelArtifactResponse.from_artifact(model)
+    result = await db.execute(
+        select(ModelArtifact).where(ModelArtifact.project_id == model.project_id)
+    )
+    numbers = assign_model_numbers(list(result.scalars().all()))
+    project = await db.get(Project, model.project_id)
+    return ModelArtifactResponse.from_artifact(
+        model,
+        model_number=numbers.get(model.id, 0),
+        is_active=project.active_model_artifact_id == model.id if project else False,
+    )
 
 
 @router.get("/training/project/{project_id}/environment")
@@ -304,11 +333,14 @@ async def retrain_project_model(
         pattern="^(turbo_accuracy|hostinger_production|ultimate_accuracy|fine_tune|best_accuracy|max_cpu|fleet_cpu|turbo_cpu|fast_cpu|balanced)$",
     ),
     fine_tune: bool = Query(True, description="Continue training from active Main Model weights"),
+    source_model_artifact_id: UUID | None = Query(
+        None, description="Specific trained model to continue from (#1, #2, …)"
+    ),
     class_ids: list[UUID] | None = Query(None, description="Train only on these class IDs"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Retrain the single project model on the latest dataset — no manual model selection."""
+    """Retrain on the latest dataset — optionally continue from a numbered trained model."""
     from app.services.training.guard import ensure_no_running_training_async
 
     await ensure_no_running_training_async(db, project_id)
@@ -323,6 +355,18 @@ async def retrain_project_model(
         raise HTTPException(status_code=400, detail="Dataset has no version")
 
     config = build_retrain_config(epochs, preset, fine_tune_from_active=fine_tune)
+    if source_model_artifact_id:
+        artifact = await db.get(ModelArtifact, source_model_artifact_id)
+        if not artifact or artifact.project_id != project_id:
+            raise HTTPException(status_code=400, detail="Selected model not found in this project")
+        from app.services.models.registry import assign_model_numbers
+
+        result = await db.execute(select(ModelArtifact).where(ModelArtifact.project_id == project_id))
+        numbers = assign_model_numbers(list(result.scalars().all()))
+        config["source_model_artifact_id"] = str(source_model_artifact_id)
+        config["_source_model_number"] = numbers.get(source_model_artifact_id)
+        config["fine_tune_from_active"] = True
+        config["continuous"] = True
     normalized_class_ids = await _normalize_training_class_ids(db, project_id, class_ids)
     if normalized_class_ids:
         config["class_ids"] = normalized_class_ids

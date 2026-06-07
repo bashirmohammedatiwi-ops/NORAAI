@@ -19,6 +19,8 @@ interface ModelArtifact {
   training_duration_seconds: number | null;
   gpu_used: string | null;
   created_at: string;
+  model_number: number;
+  is_active: boolean;
 }
 
 const LIFECYCLE_OPTIONS = ['registered', 'staging', 'production', 'archived'];
@@ -96,7 +98,11 @@ export default function ModelsPage() {
             >
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
-                  <CardTitle className="text-base">{m.name}</CardTitle>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">#{m.model_number}</span>
+                    {m.name}
+                    {m.is_active && <span className="text-[10px] text-emerald-600 font-normal">رئيسي</span>}
+                  </CardTitle>
                   <input
                     type="checkbox"
                     checked={selected.includes(m.id)}
