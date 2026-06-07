@@ -253,7 +253,7 @@ export default function UnifiedModelPage() {
                   <Badge variant="success">{model.lifecycle}</Badge>
                   <Badge variant="secondary" className="gap-1"><Cpu className="h-3 w-3" /> {model.gpu_used ?? 'cpu'}</Badge>
                   {model.is_mock && (
-                    <Badge variant="warning" className="gap-1"><AlertTriangle className="h-3 w-3" /> Mock weights</Badge>
+                    <Badge variant="warning" className="gap-1"><AlertTriangle className="h-3 w-3" /> تدريب محاكى — أعد التدريب</Badge>
                   )}
                   {model.model_size_mb != null && (
                     <Badge variant="outline">{model.model_size_mb.toFixed(1)} MB</Badge>

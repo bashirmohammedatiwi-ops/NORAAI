@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { Target, Crosshair, Scan, Gauge, TrendingDown, Activity, AlertTriangle } from 'lucide-react';
-import { normalizeQualityMetrics, METRIC_DISPLAY, type TrainingMetricsMeta } from '@/lib/trainingMetrics';
+import { normalizeQualityMetrics, METRIC_DISPLAY, simulatedMetricsWarning, type TrainingMetricsMeta } from '@/lib/trainingMetrics';
 
 export interface QualityMetrics {
   loss?: number | null;
@@ -72,10 +72,7 @@ export function TrainingMetricsPanel({
 }: Props) {
   const normalized = normalizeQualityMetrics(metrics);
   const hasMetrics = normalized && METRIC_DEFS.some(({ key }) => normalized[key] != null);
-  const warning = metricsMeta?.high_score_warning
-    ?? (metricsMeta?.simulated
-      ? 'المقاييس محاكاة لأن التدريب الحقيقي على GPU غير متاح.'
-      : null);
+  const warning = metricsMeta?.high_score_warning ?? simulatedMetricsWarning(metricsMeta);
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">

@@ -250,6 +250,7 @@ async def training_environment(project_id: UUID):
         "project_id": str(project_id),
         "device": hw["best_device"],
         "cpu_fallback": settings.training_cpu_fallback,
+        "mock_on_failure": settings.training_mock_on_failure,
         "label": hw["best_device_label"],
         "hardware": hw,
     }

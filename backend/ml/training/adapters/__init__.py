@@ -62,7 +62,9 @@ class FasterRCNNAdapter:
         except TrainingCancelled:
             raise
         except Exception as exc:
-            return YOLOAdapter("yolo11n.pt")._mock_train(output_dir, config, metrics_callback, start, str(exc))
+            if getattr(settings, "training_mock_on_failure", False):
+                return YOLOAdapter("yolo11n.pt")._mock_train(output_dir, config, metrics_callback, start, str(exc))
+            raise
 
     def export_onnx(self, weights_path: str, output_path: str) -> str:
         Path(output_path).write_bytes(Path(weights_path).read_bytes())

@@ -367,6 +367,12 @@ def run_training_job(job_id: str):
 
             result = adapter.train(yaml_path, tmpdir, config, metrics_callback, cancel_check)
 
+            if result.get("metrics", {}).get("mock"):
+                err = (result.get("metrics") or {}).get("error") or "unknown training error"
+                raise RuntimeError(
+                    f"Real training failed — simulated metrics were not saved. Cause: {err}"
+                )
+
             if cancel_check():
                 raise TrainingCancelled("Training cancelled")
 

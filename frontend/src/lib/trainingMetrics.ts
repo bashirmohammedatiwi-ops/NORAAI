@@ -4,7 +4,18 @@ export interface TrainingMetricsMeta {
   source?: string;
   best_epoch?: number | null;
   simulated?: boolean;
+  mock_error?: string | null;
+  device?: string | null;
   high_score_warning?: string;
+}
+
+export function simulatedMetricsWarning(meta: TrainingMetricsMeta | null | undefined): string | null {
+  if (!meta?.simulated) return null;
+  const err = meta.mock_error?.trim();
+  if (err) {
+    return `فشل التدريب الحقيقي — هذه مقاييس محاكاة فقط. السبب: ${err}`;
+  }
+  return 'هذا الموديل من تدريب محاكى (فشل التدريب الحقيقي). أعد التدريب على CPU للحصول على مقاييس حقيقية.';
 }
 
 const RATIO_KEYS: (keyof QualityMetrics)[] = [
@@ -53,7 +64,9 @@ export function buildMetricsSubtitle(
   } else if (meta?.source === 'validation') {
     parts.push('Validation metrics');
   } else if (meta?.simulated) {
-    parts.push('Simulated (CPU fallback)');
+    parts.push('Simulated — training failed');
+  } else if (meta?.source === 'validation') {
+    parts.push(meta.device === 'cpu' ? 'Real CPU validation metrics' : 'Validation metrics');
   }
   if (message && !meta?.best_epoch) parts.push(message);
   return parts.join(' · ') || 'No training job selected';

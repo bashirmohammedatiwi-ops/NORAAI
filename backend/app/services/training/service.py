@@ -173,10 +173,13 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
             }
         latest_metrics = source_metrics
         best_epoch = (art.metrics or {}).get("best_epoch") if art and art.metrics else (best.epoch if best else latest.epoch if latest else None)
+        is_mock = bool((art.metrics or {}).get("mock")) if art and art.metrics else False
         metrics_meta = {
             "source": (art.metrics or {}).get("metrics_source", "validation") if art and art.metrics else "validation",
             "best_epoch": best_epoch,
-            "simulated": bool((art.metrics or {}).get("mock")) if art and art.metrics else False,
+            "simulated": is_mock,
+            "mock_error": (art.metrics or {}).get("error") if is_mock and art and art.metrics else None,
+            "device": (art.metrics or {}).get("device") if art and art.metrics else None,
         }
         if latest_metrics and all(
             (latest_metrics.get(k) or 0) >= 0.95 for k in ("precision", "recall", "map50", "map50_95") if latest_metrics.get(k) is not None

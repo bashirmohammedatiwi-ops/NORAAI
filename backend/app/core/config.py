@@ -64,7 +64,10 @@ class Settings(BaseSettings):
     yolo_import_max_bytes: int = 4 * 1024 * 1024 * 1024
 
     cuda_visible_devices: str = "0"
+    # Prefer CPU for training (VPS without NVIDIA). Real CPU training — not simulated metrics.
     training_cpu_fallback: bool = True
+    # Only for dev/demo: fake metrics when YOLO crashes. Keep false in production.
+    training_mock_on_failure: bool = False
     training_device: str = "auto"
     training_cpu_threads: int = 0
     training_auto_batch: bool = True

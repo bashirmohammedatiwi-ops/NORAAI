@@ -456,7 +456,7 @@ class YOLOAdapter:
                 "fine_tuned_from": "main_model" if fine_tuned else "pretrained",
             }
         except Exception as exc:
-            if settings.training_cpu_fallback:
+            if getattr(settings, "training_mock_on_failure", False):
                 return self._mock_train(output_dir, config, metrics_callback, start, str(exc))
             raise
 
