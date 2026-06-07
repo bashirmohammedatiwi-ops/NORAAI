@@ -212,13 +212,22 @@ export function TrainingProgressCard({
             )}
           </div>
 
-          {(detail?.loss != null || detail?.map50_95 != null) && (
+          {(detail?.loss != null || detail?.map50_95 != null || detail?.accuracyPending) && (
             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground pt-1">
               {detail.loss != null && (
                 <span>Loss: <strong className="font-mono text-foreground">{detail.loss.toFixed(4)}</strong></span>
               )}
               {detail.map50_95 != null && (
-                <span>{METRIC_DISPLAY.accuracy.label}: <strong className="text-foreground">{pct(detail.map50_95)}</strong></span>
+                <span>
+                  {METRIC_DISPLAY.accuracy.label}:{' '}
+                  <strong className="text-foreground">{pct(detail.map50_95)}</strong>
+                  {detail.accuracyIsBaseline && (
+                    <span className="text-amber-700 dark:text-amber-300"> (موديل مصدر)</span>
+                  )}
+                </span>
+              )}
+              {detail.accuracyPending && detail.map50_95 == null && (
+                <span>{METRIC_DISPLAY.accuracy.label}: <strong className="text-foreground">—</strong> (بعد التحقق)</span>
               )}
             </div>
           )}

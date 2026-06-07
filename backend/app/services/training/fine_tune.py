@@ -64,6 +64,10 @@ def apply_fine_tune_training_overrides(config: dict, *, from_main_model: bool = 
     large = bool(config.get("_large_dataset") or train_n >= 3000 or config.get("_multiclass_expansion"))
     prioritize = bool(config.get("_prioritize_accuracy"))
 
+    if config.get("fine_tune_from_active") or config.get("source_model_artifact_id"):
+        # Validate every epoch so accuracy is visible while continuing from a model.
+        config["_val_every"] = 1
+
     if config.get("fine_tune_from_active"):
         config["learning_rate"] = min(float(config.get("learning_rate", 0.01)), 0.0015)
         if large and not prioritize:
@@ -126,6 +130,18 @@ def _load_artifact_weights(
             continue
         if key in ("image_size", "epochs") and val is not None:
             config[key] = val
+
+    artifact_metrics = artifact.metrics or {}
+    baseline: dict[str, float] = {}
+    for key in ("map50_95", "map50", "precision", "recall", "f1"):
+        raw = artifact_metrics.get(key)
+        if raw is not None:
+            try:
+                baseline[key] = float(raw)
+            except (TypeError, ValueError):
+                pass
+    if baseline:
+        config["_source_baseline_metrics"] = baseline
 
     weights_dir = Path(work_dir) / "fine_tune_base"
     weights_dir.mkdir(parents=True, exist_ok=True)

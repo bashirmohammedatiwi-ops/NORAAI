@@ -318,13 +318,30 @@ def run_training_job(job_id: str):
                 )
             if config.get("_multiclass_expansion"):
                 setup_msg = f"{setup_msg} · multi-class retrain (416px speed mode)"
-            publish_metric(job_id, {
+            setup_payload: dict = {
                 "phase": "setup",
                 "message": setup_msg,
                 "fine_tune_source": fine_tune_source,
                 "progress": 5,
                 "status": "running",
-            })
+            }
+            baseline = config.get("_source_baseline_metrics") or {}
+            if baseline.get("map50_95") is not None:
+                model_num = config.get("_source_model_number")
+                prefix = f"Model #{model_num}" if model_num else "Source model"
+                setup_payload.update({
+                    "map50_95": float(baseline["map50_95"]),
+                    "map50": float(baseline["map50"]) if baseline.get("map50") is not None else None,
+                    "precision": float(baseline["precision"]) if baseline.get("precision") is not None else None,
+                    "recall": float(baseline["recall"]) if baseline.get("recall") is not None else None,
+                    "f1": float(baseline["f1"]) if baseline.get("f1") is not None else None,
+                    "metrics_source": "baseline",
+                    "message": (
+                        f"{setup_msg} · {prefix} baseline accuracy "
+                        f"{float(baseline['map50_95']):.1%}"
+                    ),
+                })
+            publish_metric(job_id, setup_payload)
             if fine_tune_warning and fine_tune_source != "main_model":
                 publish_metric(job_id, {
                     "phase": "setup",

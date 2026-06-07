@@ -130,6 +130,7 @@ class YOLOAdapter:
 
                 train_batch_size = int(train_kwargs.get("batch") or config.get("batch_size") or 16)
 
+                val_every = int(config.get("_val_every") or 1)
                 batch_state: dict[str, Any] = {
                     "last_ts": 0.0,
                     "epoch_start_ts": time.time(),
@@ -142,6 +143,8 @@ class YOLOAdapter:
                     "avg_anchor_ts": None,
                     "batch_intervals": [],
                     "epoch_pace_bpm": None,
+                    "validation_ran": True,
+                    "val_every": val_every,
                 }
                 _WARMUP_BATCHES = 5
 
@@ -151,21 +154,45 @@ class YOLOAdapter:
 
                 def emit_validation_metrics(trainer, *, save_epoch: bool) -> None:
                     epoch = int(getattr(trainer, "epoch", 0)) + 1
-                    nb = max(
-                        int(batch_state.get("yolo_nb") or 0),
-                        int(getattr(trainer, "nb", 1)),
-                        1,
-                    )
-                    metrics = getattr(trainer, "metrics", None) or {}
                     loss_items = getattr(trainer, "loss_items", None)
                     train_loss = float(sum(loss_items)) if loss_items is not None else None
-                    val_box = _metric_val(metrics, "val/box_loss")
-                    val_cls = _metric_val(metrics, "val/cls_loss")
-                    val_loss = (val_box + val_cls) if val_box or val_cls else train_loss
-                    precision = _metric_val(metrics, "metrics/precision(B)")
-                    recall = _metric_val(metrics, "metrics/recall(B)")
-                    map50 = _metric_val(metrics, "metrics/mAP50(B)")
-                    map50_95 = _metric_val(metrics, "metrics/mAP50-95(B)")
+                    validation_ran = bool(batch_state.get("validation_ran", True))
+
+                    if not validation_ran:
+                        metrics_callback({
+                            "epoch": epoch,
+                            "total_epochs": epochs,
+                            "phase": "train",
+                            "message": (
+                                f"Epoch {epoch}/{epochs} train complete · "
+                                f"validation runs every {batch_state.get('val_every', val_every)} epochs"
+                            ),
+                            "progress": min(100, 15 + int((epoch / max(epochs, 1)) * 85)),
+                            "epoch_progress": 100,
+                            "loss": train_loss,
+                            "device": str(device),
+                            "status": "running",
+                            "save_epoch_metric": False,
+                            "validation_skipped": True,
+                        })
+                        return
+
+                    parsed = _read_trainer_metrics(trainer)
+                    csv_path = Path(output_dir) / "train" / "results.csv"
+                    if parsed.get("map50_95") in (None, 0.0) and parsed.get("map50") in (None, 0.0):
+                        csv_row = _read_csv_metrics_for_epoch(csv_path, epoch)
+                        if csv_row:
+                            for key, val in csv_row.items():
+                                if val is not None and (parsed.get(key) in (None, 0.0)):
+                                    parsed[key] = val
+
+                    val_box = parsed.get("val_box")
+                    val_cls = parsed.get("val_cls")
+                    val_loss = (val_box + val_cls) if val_box is not None and val_cls is not None else train_loss
+                    precision = parsed.get("precision") or 0.0
+                    recall = parsed.get("recall") or 0.0
+                    map50 = parsed.get("map50") or 0.0
+                    map50_95 = parsed.get("map50_95") or 0.0
                     metrics_callback({
                         "epoch": epoch,
                         "total_epochs": epochs,
@@ -349,8 +376,6 @@ class YOLOAdapter:
                 def on_fit_epoch_end(trainer):
                     emit_validation_metrics(trainer, save_epoch=True)
 
-                val_every = int(config.get("_val_every") or 1)
-
                 def on_pretrain_routine_end(trainer):
                     loader = getattr(trainer, "train_loader", None)
                     if loader is None:
@@ -386,11 +411,10 @@ class YOLOAdapter:
                         batch_state["avg_anchor_batch"] = 0
                         batch_state["batch_intervals"] = []
                         batch_state["epoch_pace_bpm"] = None
-                    if val_every <= 1:
-                        return
                     epoch = epoch_idx + 1
                     total = int(getattr(trainer, "epochs", epochs) or epochs)
-                    run_val = epoch % val_every == 0 or epoch >= total
+                    run_val = val_every <= 1 or epoch % val_every == 0 or epoch >= total
+                    batch_state["validation_ran"] = run_val
                     if hasattr(trainer, "args"):
                         trainer.args.val = run_val
 
@@ -607,9 +631,61 @@ def _f1(p: float, r: float) -> float:
     return 2 * p * r / (p + r)
 
 
-def _metric_val(metrics: dict, key: str) -> float:
+def _metric_val(metrics: object | None, key: str) -> float | None:
+    if metrics is None:
+        return None
+    val = None
+    if isinstance(metrics, dict):
+        val = metrics.get(key)
+    elif hasattr(metrics, "results_dict"):
+        rd = getattr(metrics, "results_dict")
+        if isinstance(rd, dict):
+            val = rd.get(key)
+    if val is None and hasattr(metrics, "get"):
+        try:
+            val = metrics.get(key)  # type: ignore[union-attr]
+        except Exception:
+            val = None
+    if val is None:
+        return None
     try:
-        val = metrics.get(key, 0)
-        return float(val or 0)
+        return float(val)
     except (ValueError, TypeError):
-        return 0.0
+        return None
+
+
+def _read_trainer_metrics(trainer) -> dict[str, float | None]:
+    raw = getattr(trainer, "metrics", None)
+    val_box = _metric_val(raw, "val/box_loss")
+    val_cls = _metric_val(raw, "val/cls_loss")
+    return {
+        "val_box": val_box,
+        "val_cls": val_cls,
+        "precision": _metric_val(raw, "metrics/precision(B)"),
+        "recall": _metric_val(raw, "metrics/recall(B)"),
+        "map50": _metric_val(raw, "metrics/mAP50(B)"),
+        "map50_95": _metric_val(raw, "metrics/mAP50-95(B)"),
+    }
+
+
+def _read_csv_metrics_for_epoch(csv_path: Path, epoch: int) -> dict[str, float | None] | None:
+    if not csv_path.exists():
+        return None
+    import csv
+
+    row: dict | None = None
+    with open(csv_path, newline="") as f:
+        for i, r in enumerate(csv.DictReader(f), 1):
+            if i == epoch:
+                row = r
+                break
+    if not row:
+        return None
+    return {
+        "val_box": _float(row, "val/box_loss", 0) or None,
+        "val_cls": _float(row, "val/cls_loss", 0) or None,
+        "precision": _float(row, "metrics/precision(B)", 0) or None,
+        "recall": _float(row, "metrics/recall(B)", 0) or None,
+        "map50": _float(row, "metrics/mAP50(B)", 0) or None,
+        "map50_95": _float(row, "metrics/mAP50-95(B)", 0) or None,
+    }

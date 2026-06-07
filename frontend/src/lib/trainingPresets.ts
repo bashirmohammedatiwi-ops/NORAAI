@@ -27,8 +27,8 @@ export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string
     epochs: 40,
   },
   fine_tune: {
-    label: 'Fine-tune Main Model',
-    description: '30 epochs · 640px · low LR — continues from active model (best mAP gain)',
+    label: 'تقوية الموديل · Fine-tune',
+    description: '30 دورة · 640px · تعلم بطيء — يكمل من نفس الموديل الموحد ويرفع الدقة',
     epochs: 30,
   },
   best_accuracy: {

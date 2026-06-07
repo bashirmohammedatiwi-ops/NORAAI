@@ -108,6 +108,25 @@ export function useTrainingJob(
     return null;
   }, [liveMetrics]);
 
+  const lastAccuracyLive = useMemo(() => {
+    let baseline: (typeof liveMetrics)[number] | null = null;
+    let validation: (typeof liveMetrics)[number] | null = null;
+    for (const m of liveMetrics) {
+      if (m.validation_skipped) continue;
+      if (m.metrics_source === 'baseline' && m.map50_95 != null) {
+        baseline = m;
+      }
+      if (
+        m.map50_95 != null
+        && (m.phase === 'validation' || m.save_epoch_metric)
+        && m.metrics_source !== 'baseline'
+      ) {
+        validation = m;
+      }
+    }
+    return validation ?? baseline;
+  }, [liveMetrics]);
+
   const liveJob = useMemo(() => {
     const base = job ?? (baseline && jobId ? ({ ...baseline, id: jobId } as TrainingJobDetail) : null);
     if (!base) return null;
@@ -126,11 +145,20 @@ export function useTrainingJob(
     const total = Number(latestLive.total_epochs ?? base.total_epochs) || base.total_epochs;
     const progress = Number(latestLive.progress ?? base.progress);
     const duration = base.duration_seconds;
-    const validationLive = latestLive.phase === 'validation' || latestLive.save_epoch_metric
+    const validationLive = latestLive.phase === 'validation'
+      || (latestLive.save_epoch_metric && !latestLive.validation_skipped)
       ? latestLive
       : null;
 
     const isValidation = latestLive.phase === 'validation';
+    const accuracySource = lastAccuracyLive;
+    const showBaselineAccuracy = accuracySource?.metrics_source === 'baseline'
+      && !liveMetrics.some(
+        (m) => !m.validation_skipped
+          && m.save_epoch_metric
+          && m.metrics_source !== 'baseline'
+          && m.map50_95 != null,
+      );
     return {
       ...base,
       current_epoch: epoch,
@@ -158,18 +186,22 @@ export function useTrainingJob(
       exported_images: num(latestLive.exported_images, base.exported_images),
       labeled_train_images: num(latestLive.labeled_train_images, base.labeled_train_images),
       yolo_train_images: num(latestLive.yolo_train_images, base.yolo_train_images),
-      latest_metrics: validationLive
-        ? {
-            loss: num(validationLive.loss, base.latest_metrics?.loss),
-            precision: num(validationLive.precision, base.latest_metrics?.precision),
-            recall: num(validationLive.recall, base.latest_metrics?.recall),
-            f1: num(validationLive.f1, base.latest_metrics?.f1),
-            map50: num(validationLive.map50, base.latest_metrics?.map50),
-            map50_95: num(validationLive.map50_95, base.latest_metrics?.map50_95),
-          }
-        : base.latest_metrics,
+      latest_metrics: {
+        loss: num(
+          speedLive?.loss ?? validationLive?.loss,
+          base.latest_metrics?.loss,
+        ),
+        precision: num(accuracySource?.precision, base.latest_metrics?.precision),
+        recall: num(accuracySource?.recall, base.latest_metrics?.recall),
+        f1: num(accuracySource?.f1, base.latest_metrics?.f1),
+        map50: num(accuracySource?.map50, base.latest_metrics?.map50),
+        map50_95: num(accuracySource?.map50_95, base.latest_metrics?.map50_95),
+      },
+      accuracy_is_baseline: showBaselineAccuracy,
+      accuracy_pending: accuracySource?.map50_95 == null
+        && inTrainPhase(latestLive.phase),
     };
-  }, [job, baseline, jobId, liveMetrics, latestTrainLive]);
+  }, [job, baseline, jobId, liveMetrics, latestTrainLive, lastAccuracyLive]);
 
   const progressDetail: TrainingProgressDetail | undefined = useMemo(() => {
     if (!liveJob) return undefined;
@@ -199,6 +231,8 @@ export function useTrainingJob(
       map50: liveJob.latest_metrics?.map50,
       map50_95: liveJob.latest_metrics?.map50_95,
       precision: liveJob.latest_metrics?.precision,
+      accuracyIsBaseline: Boolean((liveJob as { accuracy_is_baseline?: boolean }).accuracy_is_baseline),
+      accuracyPending: Boolean((liveJob as { accuracy_pending?: boolean }).accuracy_pending),
     };
   }, [liveJob, liveMetrics, latestTrainLive]);
 
@@ -221,6 +255,10 @@ export function useTrainingJob(
 function num(value: unknown, fallback: number | null | undefined): number | null {
   if (typeof value === 'number' && !Number.isNaN(value)) return value;
   return fallback ?? null;
+}
+
+function inTrainPhase(phase: unknown): boolean {
+  return phase === 'train' || phase === 'validation';
 }
 
 function mergeMetrics(historical: TrainingMetricPoint[], live: TrainingMetricPoint[]): TrainingMetricPoint[] {

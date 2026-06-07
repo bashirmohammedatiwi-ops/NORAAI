@@ -85,17 +85,34 @@ export default function UnifiedModelPage() {
 
   useEffect(() => {
     if (!status) return;
+    if (status.model?.architecture) setArchitecture(status.model.architecture);
+    if (status.model?.id) {
+      setSourceMode('existing');
+      setSourceModelId(status.model.id);
+      setPreset('fine_tune');
+      setEpochs(CPU_PRESETS.fine_tune.epochs);
+      return;
+    }
     const rec = status.recommended_preset as CpuPreset | undefined;
     if (rec && rec in CPU_PRESETS) {
       setPreset(rec);
       setEpochs(CPU_PRESETS[rec].epochs);
     }
     if (status.can_fine_tune) setSourceMode('existing');
-    if (status.model?.architecture) setArchitecture(status.model.architecture);
-  }, [status?.recommended_preset, status?.can_fine_tune, status?.model?.architecture]);
+  }, [
+    status?.recommended_preset,
+    status?.can_fine_tune,
+    status?.model?.architecture,
+    status?.model?.id,
+  ]);
 
   const retrain = async () => {
     if (!projectId) return;
+    const strengthenId = sourceModelId || status?.model?.id;
+    if (!strengthenId && sourceMode === 'existing') {
+      window.alert('لا يوجد موديل موحد للتقوية. درّب موديلاً أولاً من Dataset Builder.');
+      return;
+    }
     setLoading(true);
     try {
       const query = buildRetrainQuery({
@@ -103,7 +120,7 @@ export default function UnifiedModelPage() {
         architecture,
         preset,
         fineTune: sourceMode === 'existing',
-        sourceModelArtifactId: sourceMode === 'existing' ? sourceModelId : undefined,
+        sourceModelArtifactId: sourceMode === 'existing' ? strengthenId : undefined,
       });
       await api.post(`/api/v1/training/project/${projectId}/retrain?${query}`);
       await refetch();
@@ -185,17 +202,21 @@ export default function UnifiedModelPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Project Model">
+      <PageHeader title="الموديل الموحد · Unified Model">
         <Link to={`/projects/${projectId}/data`}>
-          <Button variant="outline"><Database className="h-4 w-4" /> Add data</Button>
+          <Button variant="outline"><Database className="h-4 w-4" /> إضافة بيانات</Button>
         </Link>
-        <Button onClick={retrain} disabled={loading || training?.is_running} variant="success">
+        <Button
+          onClick={retrain}
+          disabled={loading || training?.is_running || (!model && sourceMode === 'existing')}
+          variant="success"
+        >
           {loading || training?.is_running ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <RefreshCw className="h-4 w-4" />
           )}
-          {training?.is_running ? 'Training...' : 'Retrain Model'}
+          {training?.is_running ? 'جاري التقوية...' : model ? 'تقوية الموديل' : 'تدريب موديل جديد'}
         </Button>
       </PageHeader>
 
@@ -310,43 +331,96 @@ export default function UnifiedModelPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Retrain settings</CardTitle>
+            <CardTitle className="text-base">
+              {model ? 'تقوية الموديل الموحد' : 'إعدادات التدريب'}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Badge variant="secondary" className="gap-1 w-fit"><Cpu className="h-3 w-3" /> CPU Training</Badge>
+            <Badge variant="secondary" className="gap-1 w-fit"><Cpu className="h-3 w-3" /> تدريب CPU</Badge>
+
+            {model ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 dark:bg-emerald-950/20 px-3 py-3 text-sm space-y-1">
+                <p className="font-medium text-emerald-900 dark:text-emerald-100">
+                  سيستمر التدريب من نفس الموديل الموحد الحالي
+                </p>
+                <p className="text-xs text-emerald-800 dark:text-emerald-200">
+                  {model.name} · {model.architecture}
+                  {model.metrics?.map50_95 != null && (
+                    <> · الدقة الحالية {(model.metrics.map50_95 * 100).toFixed(1)}%</>
+                  )}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  لن يبدأ من الصفر — يُحمَّل نفس الأوزان ثم يُكمَل التدريب لرفع الأداء.
+                </p>
+              </div>
+            ) : (
+              <TrainSourceModelPicker
+                projectId={projectId!}
+                mode={sourceMode}
+                onModeChange={setSourceMode}
+                selectedModelId={sourceModelId}
+                onSelectedModelIdChange={setSourceModelId}
+                disabled={loading || training?.is_running}
+              />
+            )}
+
             <Select
-              label="CPU preset"
+              label="وضع التدريب"
               value={preset}
               onChange={(e) => onPresetChange(e.target.value as CpuPreset)}
             >
-              {(Object.entries(CPU_PRESETS) as [CpuPreset, typeof CPU_PRESETS.fast_cpu][]).map(([key, p]) => (
-                <option key={key} value={key}>{p.label}</option>
-              ))}
+              {model ? (
+                <>
+                  <option value="fine_tune">{CPU_PRESETS.fine_tune.label}</option>
+                  <option value="turbo_accuracy">{CPU_PRESETS.turbo_accuracy.label}</option>
+                  <option value="hostinger_production">{CPU_PRESETS.hostinger_production.label}</option>
+                  <option value="ultimate_accuracy">{CPU_PRESETS.ultimate_accuracy.label}</option>
+                </>
+              ) : (
+                (Object.entries(CPU_PRESETS) as [CpuPreset, typeof CPU_PRESETS.fast_cpu][]).map(([key, p]) => (
+                  <option key={key} value={key}>{p.label}</option>
+                ))
+              )}
             </Select>
-            <Select label="Architecture" value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
+            {CPU_PRESETS[preset]?.description && (
+              <p className="text-[11px] text-muted-foreground -mt-2">{CPU_PRESETS[preset].description}</p>
+            )}
+            <Select label="Architecture" value={architecture} onChange={(e) => setArchitecture(e.target.value)} disabled={!!model}>
               <option value="yolo11">YOLO11</option>
               <option value="yolov10">YOLOv10</option>
               <option value="rt_detr">RT-DETR</option>
             </Select>
             <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1.5">Epochs</label>
+              <label className="text-xs font-medium text-muted-foreground block mb-1.5">Epochs · الدورات</label>
               <Input type="number" min={5} max={200} value={epochs} onChange={(e) => setEpochs(+e.target.value)} />
             </div>
-            <TrainSourceModelPicker
-              projectId={projectId!}
-              mode={sourceMode}
-              onModeChange={setSourceMode}
-              selectedModelId={sourceModelId}
-              onSelectedModelIdChange={setSourceModelId}
-              disabled={loading || training?.is_running}
-            />
+
+            {models.length > 1 && model && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  تغيير الموديل المصدر ({models.length} موديلات)
+                </summary>
+                <div className="mt-2">
+                  <TrainSourceModelPicker
+                    projectId={projectId!}
+                    mode={sourceMode}
+                    onModeChange={setSourceMode}
+                    selectedModelId={sourceModelId || model.id}
+                    onSelectedModelIdChange={setSourceModelId}
+                    disabled={loading || training?.is_running}
+                    compact
+                  />
+                </div>
+              </details>
+            )}
+
             <Button
               className="w-full"
               onClick={retrain}
-              disabled={loading || training?.is_running || (sourceMode === 'existing' && !sourceModelId)}
+              disabled={loading || training?.is_running || (sourceMode === 'existing' && !sourceModelId && !model)}
             >
               {preset === 'fast_cpu' ? <Zap className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              {preset === 'fast_cpu' ? 'Fast CPU Retrain' : 'Retrain on latest data'}
+              {model ? 'تقوية الموديل الموحد' : 'بدء التدريب'}
             </Button>
             {training?.is_running && training.job_id && (
               <Link to={`/projects/${projectId}/training`} className="block text-center text-sm text-primary underline">
