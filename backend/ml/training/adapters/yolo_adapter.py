@@ -119,8 +119,22 @@ class YOLOAdapter:
             from ultralytics import YOLO
 
             weights_source = config.get("_fine_tune_weights_path") or self.model_name
+            continuing = bool(config.get("_fine_tune_weights_path"))
             model = YOLO(weights_source)
-            fine_tuned = bool(config.get("_fine_tune_source") == "main_model")
+            fine_tuned = continuing
+            if metrics_callback and continuing:
+                mb = config.get("_fine_tune_weights_mb")
+                src = config.get("_fine_tune_source") or "existing"
+                metrics_callback({
+                    "phase": "setup",
+                    "message": (
+                        f"YOLO loaded existing weights ({src})"
+                        + (f" · {mb} MB" if mb else "")
+                        + f" — not starting from {self.model_name}"
+                    ),
+                    "status": "running",
+                    "fine_tune_source": src,
+                })
 
             if metrics_callback:
                 from app.services.training.progress import (

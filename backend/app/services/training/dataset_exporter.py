@@ -18,6 +18,19 @@ from app.services.training.class_ordering import (
 from app.services.training.dataset_validator import stratified_val_ids
 
 
+def _write_data_yaml(output_dir: str, class_names: list[str]) -> str:
+    """Write data.yaml with paths relative to the yaml file (safe across workspace/cache restore)."""
+    base = Path(output_dir).resolve()
+    nc = max(len(class_names), 1)
+    names = class_names if class_names else ["object"]
+    yaml_path = base / "data.yaml"
+    yaml_path.write_text(
+        f"path: {base}\ntrain: images/train\nval: images/val\nnc: {nc}\nnames: {names}\n",
+        encoding="utf-8",
+    )
+    return str(yaml_path)
+
+
 def export_yolo_dataset_sync(
     session: Session,
     dataset_version_id: uuid.UUID,
@@ -118,7 +131,7 @@ def export_yolo_dataset_sync(
             for p in (base / "labels" / "val").glob("*.txt")
             if p.read_text(encoding="utf-8").strip()
         )
-        yaml_path = str(base / "data.yaml")
+        yaml_path = _write_data_yaml(output_dir, class_names)
         export_meta = {
             **manifest,
             "exported_images": train_on_disk + val_on_disk,
@@ -235,11 +248,7 @@ def export_yolo_dataset_sync(
         if p.read_text(encoding="utf-8").strip()
     )
 
-    nc = max(len(class_names), 1)
-    names = class_names if class_names else ["object"]
-    yaml_content = f"path: {output_dir}\ntrain: images/train\nval: images/val\nnc: {nc}\nnames: {names}\n"
-    yaml_path = str(base / "data.yaml")
-    Path(yaml_path).write_text(yaml_content)
+    yaml_path = _write_data_yaml(output_dir, class_names)
 
     export_meta = {
         **manifest,

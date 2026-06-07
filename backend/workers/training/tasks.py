@@ -271,6 +271,11 @@ def run_training_job(job_id: str):
 
             config["_training_class_count"] = len(export_meta.get("names") or class_names or [])
 
+            from app.services.training.fine_tune import (
+                apply_fine_tune_training_overrides,
+                wants_continue_training,
+            )
+
             fine_tune_path, fine_tune_source, fine_tune_warning = resolve_fine_tune_weights_path(
                 session,
                 job.project_id,
@@ -278,11 +283,17 @@ def run_training_job(job_id: str):
                 config,
                 work_dir=tmpdir,
             )
+            if wants_continue_training(config) and not fine_tune_path:
+                raise RuntimeError(
+                    fine_tune_warning
+                    or "تعذّر تحميل أوزان الموديل الموجود — لن يبدأ التدريب من الصفر تلقائياً. "
+                    "تحقق من الموديل الرئيسي أو اختر «من الصفر» صراحة."
+                )
             if fine_tune_path:
                 config["_fine_tune_weights_path"] = fine_tune_path
                 config["_fine_tune_source"] = fine_tune_source
-                from app.services.training.fine_tune import apply_fine_tune_training_overrides
-
+                weight_mb = Path(fine_tune_path).stat().st_size / (1024 * 1024)
+                config["_fine_tune_weights_mb"] = round(weight_mb, 2)
                 apply_fine_tune_training_overrides(config, from_main_model=True)
             from app.services.training.cpu_tuning import apply_large_dataset_overlays, speed_boost_summary
 
@@ -299,13 +310,20 @@ def run_training_job(job_id: str):
                 export_note = f"Dataset: {train_n} train · {val_n} val"
             if fine_tune_source == "selected_model":
                 model_num = config.get("_source_model_number")
-                setup_msg = f"Fine-tuning from Model #{model_num}" if model_num else "Fine-tuning from selected model"
+                mb = config.get("_fine_tune_weights_mb")
+                size_note = f" · {mb} MB weights loaded" if mb else ""
+                setup_msg = (
+                    f"متابعة من Model #{model_num}{size_note}"
+                    if model_num
+                    else f"متابعة من الموديل المختار{size_note}"
+                )
             elif fine_tune_source == "main_model":
-                setup_msg = "Fine-tuning from Main Model"
+                mb = config.get("_fine_tune_weights_mb")
+                setup_msg = f"متابعة من الموديل الموحد الرئيسي" + (f" · {mb} MB" if mb else "")
             else:
                 setup_msg = (
                     fine_tune_warning
-                    or f"CPU tune: {config.get('cpu_threads')} threads · batch {config.get('batch_size')}"
+                    or f"تدريب من أوزان YOLO الجاهزة · CPU {config.get('cpu_threads')} threads · batch {config.get('batch_size')}"
                 )
             if export_note:
                 setup_msg = f"{export_note} · {setup_msg}"

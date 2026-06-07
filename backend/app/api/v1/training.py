@@ -99,6 +99,11 @@ async def create_training_job(
         parsed = [UUID(str(cid)) for cid in raw_class_ids]
         config["class_ids"] = await _normalize_training_class_ids(db, project_id, parsed)
 
+    if config.get("training_from_scratch"):
+        config["fine_tune_from_active"] = False
+        config["continuous"] = False
+        config.pop("source_model_artifact_id", None)
+
     source_model_id = config.get("source_model_artifact_id")
     if source_model_id:
         try:
@@ -116,6 +121,24 @@ async def create_training_job(
         config["_source_model_number"] = numbers.get(artifact_uuid)
         config["fine_tune_from_active"] = True
         config["continuous"] = True
+        config.pop("training_from_scratch", None)
+    elif config.get("fine_tune_from_active"):
+        from app.services.driver.project_classes import is_production_model
+        from app.services.models.active_model import get_active_model
+
+        active = await get_active_model(db, project_id)
+        if active and is_production_model(active):
+            from app.services.models.registry import assign_model_numbers
+
+            result = await db.execute(select(ModelArtifact).where(ModelArtifact.project_id == project_id))
+            numbers = assign_model_numbers(list(result.scalars().all()))
+            config["source_model_artifact_id"] = str(active.id)
+            config["_source_model_number"] = numbers.get(active.id)
+        elif not config.get("training_from_scratch"):
+            raise HTTPException(
+                status_code=400,
+                detail="لا يوجد موديل مدرب للمتابعة. اختر «من الصفر» أو درّب موديلاً أولاً.",
+            )
 
     job = TrainingJob(
         project_id=project_id,
@@ -356,10 +379,29 @@ async def retrain_project_model(
         raise HTTPException(status_code=400, detail="Dataset has no version")
 
     config = build_retrain_config(epochs, preset, fine_tune_from_active=fine_tune)
+
+    from app.services.driver.project_classes import is_production_model
+    from app.services.models.active_model import get_active_model
+
+    if fine_tune and not source_model_artifact_id:
+        active = await get_active_model(db, project_id)
+        if active and is_production_model(active):
+            source_model_artifact_id = active.id
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="لا يوجد موديل مدرب للمتابعة. درّب موديلاً أولاً أو عطّل fine_tune للبدء من الصفر.",
+            )
+
     if source_model_artifact_id:
         artifact = await db.get(ModelArtifact, source_model_artifact_id)
         if not artifact or artifact.project_id != project_id:
             raise HTTPException(status_code=400, detail="Selected model not found in this project")
+        if not is_production_model(artifact):
+            raise HTTPException(
+                status_code=400,
+                detail="الموديل المختار لا يحتوي أوزاناً حقيقية (تدريب محاكى). أعد التدريب من الصفر.",
+            )
         from app.services.models.registry import assign_model_numbers
 
         result = await db.execute(select(ModelArtifact).where(ModelArtifact.project_id == project_id))
@@ -368,6 +410,7 @@ async def retrain_project_model(
         config["_source_model_number"] = numbers.get(source_model_artifact_id)
         config["fine_tune_from_active"] = True
         config["continuous"] = True
+        config.pop("training_from_scratch", None)
     normalized_class_ids = await _normalize_training_class_ids(db, project_id, class_ids)
     if normalized_class_ids:
         config["class_ids"] = normalized_class_ids

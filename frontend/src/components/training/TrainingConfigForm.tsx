@@ -210,6 +210,7 @@ export function TrainingConfigForm({ projectId, onStarted }: Props) {
           device: 'auto',
           fine_tune_from_active: sourceMode === 'existing',
           continuous: sourceMode === 'existing',
+          training_from_scratch: sourceMode === 'scratch',
           source_model_artifact_id: sourceMode === 'existing' && sourceModelId ? sourceModelId : null,
           class_ids: selectedClassIds,
         },

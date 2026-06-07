@@ -16,8 +16,18 @@ from app.services.models.active_model import get_active_model_sync
 YOLO_FINE_TUNE_ARCHITECTURES = frozenset({"yolo11", "yolov10", "rt_detr"})
 
 
+def wants_continue_training(config: dict) -> bool:
+    """True when the user asked to continue from an existing trained model."""
+    if config.get("training_from_scratch"):
+        return False
+    return bool(config.get("fine_tune_from_active") or config.get("source_model_artifact_id"))
+
+
 def should_fine_tune(config: dict) -> bool:
-    return bool(config.get("fine_tune_from_active") or config.get("continuous"))
+    return wants_continue_training(config)
+
+
+_MIN_WEIGHTS_BYTES = 100_000
 
 
 def inherit_config_from_artifact(config: dict, artifact: ModelArtifact) -> dict:
@@ -64,11 +74,12 @@ def apply_fine_tune_training_overrides(config: dict, *, from_main_model: bool = 
     large = bool(config.get("_large_dataset") or train_n >= 3000 or config.get("_multiclass_expansion"))
     prioritize = bool(config.get("_prioritize_accuracy"))
 
-    if config.get("fine_tune_from_active") or config.get("source_model_artifact_id"):
+    continuing = wants_continue_training(config)
+    if continuing:
         # Validate every epoch so accuracy is visible while continuing from a model.
         config["_val_every"] = 1
 
-    if config.get("fine_tune_from_active"):
+    if continuing:
         config["learning_rate"] = min(float(config.get("learning_rate", 0.01)), 0.0015)
         if large and not prioritize:
             config["warmup_epochs"] = min(int(config.get("warmup_epochs", 0)), 1)
@@ -122,6 +133,12 @@ def _load_artifact_weights(
 
     if not weights_bytes or weights_bytes == b"mock_weights":
         return None, "base", f"{label} weights invalid — using pretrained base"
+    if len(weights_bytes) < _MIN_WEIGHTS_BYTES:
+        return (
+            None,
+            "base",
+            f"{label} weights too small ({len(weights_bytes)} bytes) — not a real trained model",
+        )
 
     inherited = inherit_config_from_artifact(config, artifact)
     for key, val in inherited.items():

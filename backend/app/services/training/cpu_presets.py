@@ -218,11 +218,16 @@ def build_retrain_config(
         base["epochs"] = epochs
     base["_preset"] = preset
     base["_prioritize_accuracy"] = preset in QUALITY_PRESETS
-    base["continuous"] = True
     if fine_tune_from_active is not None:
         base["fine_tune_from_active"] = fine_tune_from_active
+        base["continuous"] = fine_tune_from_active
+        if not fine_tune_from_active:
+            base["training_from_scratch"] = True
     elif "fine_tune_from_active" not in base:
         base["fine_tune_from_active"] = True
+        base["continuous"] = True
+    else:
+        base["continuous"] = bool(base.get("fine_tune_from_active"))
     from app.services.training.fine_tune import apply_fine_tune_training_overrides
 
     return tune_training_config(apply_fine_tune_training_overrides(base))

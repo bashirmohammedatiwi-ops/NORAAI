@@ -81,7 +81,7 @@ export function buildRetrainQuery(params: {
     q.set('source_model_artifact_id', params.sourceModelArtifactId);
     q.set('fine_tune', 'true');
   } else {
-    q.set('fine_tune', String(params.fineTune ?? true));
+    q.set('fine_tune', String(params.fineTune !== false));
   }
   for (const id of params.classIds ?? []) {
     q.append('class_ids', id);

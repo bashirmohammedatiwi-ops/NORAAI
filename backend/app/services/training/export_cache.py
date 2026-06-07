@@ -94,7 +94,32 @@ def try_restore_export(output_dir: str, fingerprint: str) -> bool:
             shutil.copytree(item, dest, dirs_exist_ok=True)
         else:
             shutil.copy2(item, dest)
+    _refresh_data_yaml_path(output_dir)
+    for split in ("train", "val"):
+        img_dir = base / "images" / split
+        if not img_dir.is_dir() or not any(img_dir.iterdir()):
+            shutil.rmtree(base, ignore_errors=True)
+            return False
     return True
+
+
+def _refresh_data_yaml_path(output_dir: str) -> None:
+    """Point data.yaml at the current workspace (cache copies retain stale absolute paths)."""
+    yaml_path = Path(output_dir) / "data.yaml"
+    if not yaml_path.is_file():
+        return
+    root = Path(output_dir).resolve()
+    lines: list[str] = []
+    path_updated = False
+    for line in yaml_path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("path:"):
+            lines.append(f"path: {root}")
+            path_updated = True
+        else:
+            lines.append(line)
+    if not path_updated:
+        lines.insert(0, f"path: {root}")
+    yaml_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _evict_old_entries(root: Path, keep: int = 2) -> None:
