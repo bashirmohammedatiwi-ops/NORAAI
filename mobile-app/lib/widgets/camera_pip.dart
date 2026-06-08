@@ -2,6 +2,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../models/detection.dart';
+import 'camera_preview_fit.dart';
 import 'detection_overlay.dart';
 
 class CameraPip extends StatelessWidget {
@@ -50,7 +51,7 @@ class CameraPip extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 if (controller.value.isInitialized)
-                  CameraPreview(controller)
+                  CameraPreviewFit(controller: controller)
                 else
                   const ColoredBox(
                     color: Color(0xFF1E293B),

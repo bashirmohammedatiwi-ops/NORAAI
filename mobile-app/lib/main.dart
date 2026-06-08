@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'models/driver_config.dart';
-import 'screens/drive_screen.dart';
+import 'screens/app_shell.dart';
 import 'screens/setup_screen.dart';
 import 'services/config_storage.dart';
 
@@ -75,7 +75,7 @@ class _NoraiDriveAppState extends State<NoraiDriveApp> {
           ? SetupScreen(
               onReady: (c) => setState(() => _config = c),
             )
-          : DriveScreen(
+          : AppShell(
               config: _config!,
               onLogout: () => setState(() => _config = null),
             ),

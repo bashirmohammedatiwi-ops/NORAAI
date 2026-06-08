@@ -1,5 +1,10 @@
+import 'package:latlong2/latlong.dart';
+
 /// Default production server (VPS gateway — UI + API on port 8080).
 const String kDefaultServerUrl = 'http://187.127.88.146:8080';
+
+/// Map fallback while GPS warms up (Riyadh).
+const LatLng kDefaultMapCenter = LatLng(24.7136, 46.6753);
 
 /// Normalize user input; VPS runs on :8080 (not port 80).
 String normalizeServerUrl(String raw) {

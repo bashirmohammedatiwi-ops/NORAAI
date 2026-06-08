@@ -13,24 +13,28 @@ class DriveMapView extends StatelessWidget {
   const DriveMapView({
     super.key,
     required this.mapController,
-    required this.position,
+    required this.center,
     required this.nearbyEvents,
     required this.classMeta,
+    this.position,
+    this.hasGpsFix = true,
     this.onMapMoved,
   });
 
   final MapController mapController;
-  final Position position;
+  final LatLng center;
+  final Position? position;
+  final bool hasGpsFix;
   final List<NearbyEvent> nearbyEvents;
   final Map<String, EventMeta> classMeta;
   final VoidCallback? onMapMoved;
 
   @override
   Widget build(BuildContext context) {
-    final lat = position.latitude;
-    final lon = position.longitude;
-    final heading = position.heading >= 0 ? position.heading : 0.0;
-    final accuracy = position.accuracy;
+    final lat = center.latitude;
+    final lon = center.longitude;
+    final heading = position != null && position!.heading >= 0 ? position!.heading : 0.0;
+    final accuracy = position?.accuracy ?? 0;
 
     final wedgePoints =
         headingWedge(lat, lon, heading).map((p) => LatLng(p[0], p[1])).toList();
@@ -42,8 +46,8 @@ class DriveMapView extends StatelessWidget {
     return FlutterMap(
       mapController: mapController,
       options: MapOptions(
-        initialCenter: LatLng(lat, lon),
-        initialZoom: zoomForAccuracy(accuracy),
+        initialCenter: center,
+        initialZoom: hasGpsFix ? zoomForAccuracy(accuracy > 0 ? accuracy : 80) : 12,
         onPositionChanged: (pos, hasGesture) {
           if (hasGesture) onMapMoved?.call();
         },
@@ -55,8 +59,9 @@ class DriveMapView extends StatelessWidget {
               'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
           subdomains: const ['a', 'b', 'c', 'd'],
           userAgentPackageName: 'com.norai.norai_drive',
+          retinaMode: RetinaMode.isHighDensity(context),
         ),
-        if (accuracy > 0)
+        if (hasGpsFix && accuracy > 0)
           CircleLayer(
             circles: [
               CircleMarker(
@@ -122,20 +127,29 @@ class DriveMapView extends StatelessWidget {
               point: LatLng(lat, lon),
               width: 48,
               height: 48,
-              child: Transform.rotate(
-                angle: heading * math.pi / 180,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0D9488),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: const [
-                      BoxShadow(color: Color(0x660D9488), blurRadius: 12),
-                    ],
-                  ),
-                  child: const Icon(Icons.navigation, color: Colors.white, size: 24),
-                ),
-              ),
+              child: hasGpsFix
+                  ? Transform.rotate(
+                      angle: heading * math.pi / 180,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D9488),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x660D9488), blurRadius: 12),
+                          ],
+                        ),
+                        child: const Icon(Icons.navigation, color: Colors.white, size: 24),
+                      ),
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF64748B),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: const Icon(Icons.location_searching, color: Colors.white, size: 24),
+                    ),
             ),
           ],
         ),

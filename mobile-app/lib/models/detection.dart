@@ -72,6 +72,7 @@ class ServerConfig {
     this.projectClasses = const [],
     this.alertTypes = const [],
     this.modelClasses = const [],
+    this.classes = const [],
   });
 
   final bool modelReady;
@@ -93,6 +94,7 @@ class ServerConfig {
   final List<Map<String, dynamic>> projectClasses;
   final List<Map<String, dynamic>> alertTypes;
   final List<String> modelClasses;
+  final List<String> classes;
 
   factory ServerConfig.fromJson(Map<String, dynamic> json) => ServerConfig(
         modelReady: json['model_ready'] as bool? ?? false,
@@ -123,6 +125,10 @@ class ServerConfig {
                 .toList() ??
             [],
         modelClasses: (json['model_classes'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [],
+        classes: (json['classes'] as List<dynamic>?)
                 ?.map((e) => e.toString())
                 .toList() ??
             [],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../config/app_config.dart';
 import '../models/driver_config.dart';
+import '../services/api_exception.dart';
 import '../services/api_service.dart';
 import '../services/config_storage.dart';
 
@@ -23,6 +24,7 @@ class _SetupScreenState extends State<SetupScreen> {
   final _speedLimit = TextEditingController(text: '80');
   bool _loading = false;
   String? _error;
+  String? _status;
 
   static const _tags = ['حفرة', 'حادث', 'طريق مغلق', 'مخالفة سرعة', 'خريطة حية', 'AI'];
 
@@ -41,7 +43,9 @@ class _SetupScreenState extends State<SetupScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _status = 'جاري فحص السيرفر...';
     });
+
     final config = DriverConfig(
       serverUrl: normalizeServerUrl(_serverUrl.text),
       projectId: _projectId.text.trim(),
@@ -50,18 +54,44 @@ class _SetupScreenState extends State<SetupScreen> {
       apiKey: _apiKey.text.trim(),
       speedLimit: double.tryParse(_speedLimit.text.trim()) ?? 80,
     );
+
+    final api = ApiService(config);
     try {
-      await ApiService(config).fetchConfig();
+      final healthy = await api.pingHealth();
+      if (!healthy) {
+        throw ApiException(
+          'health failed',
+          userMessage: 'السيرفر لا يستجيب — تأكد من $kDefaultServerUrl والمنفذ 8080',
+        );
+      }
+
+      if (mounted) setState(() => _status = 'جاري التحقق من بيانات الجهاز...');
+      final cfg = await api.fetchConfig();
+
       await ConfigStorage.save(config);
       if (!mounted) return;
       widget.onReady(config);
+
+      if (!cfg.modelReady && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(cfg.message ?? 'متصل — لكن الموديل غير جاهز بعد'),
+            backgroundColor: const Color(0xFFF59E0B),
+          ),
+        );
+      }
+    } on ApiException catch (e) {
+      setState(() => _error = e.displayMessage);
     } catch (e) {
-      final msg = e.toString();
-      setState(() => _error = msg.contains('SocketException') || msg.contains('Failed host lookup')
-          ? 'تعذّر الاتصال بالسيرفر — تأكد من الرابط $kDefaultServerUrl والإنترنت'
-          : msg);
+      setState(() => _error = ApiException.fromError(e).displayMessage);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      api.dispose();
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _status = null;
+        });
+      }
     }
   }
 
@@ -126,9 +156,48 @@ class _SetupScreenState extends State<SetupScreen> {
                       _field('Vehicle ID', _vehicleId),
                       _field('API Key', _apiKey, obscure: true),
                       _field('حد السرعة الاحتياطي (كم/س)', _speedLimit),
+                      if (_status != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0D9488)),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _status!,
+                                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       if (_error != null) ...[
                         const SizedBox(height: 8),
-                        Text(_error!, style: const TextStyle(color: Color(0xFFF87171), fontSize: 12)),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0x33EF4444),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0x66EF4444)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.error_outline, color: Color(0xFFF87171), size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style: const TextStyle(color: Color(0xFFF87171), fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                       const SizedBox(height: 16),
                       FilledButton(
