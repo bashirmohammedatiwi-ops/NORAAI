@@ -308,6 +308,37 @@ export default function UnifiedModelPage() {
                     </div>
                   </div>
                 )}
+                {Array.isArray(model.metrics?.training_sessions) && model.metrics.training_sessions.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      جلسات التدريب · Training sessions ({model.metrics.training_sessions.length})
+                    </p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {[...model.metrics.training_sessions].reverse().map((s: Record<string, unknown>) => (
+                        <div
+                          key={String(s.session ?? s.job_id)}
+                          className="rounded-lg border border-border/60 bg-secondary/30 px-3 py-2 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-medium">جلسة {String(s.session ?? '—')}</span>
+                            {s.timestamp && (
+                              <span className="text-muted-foreground">
+                                {new Date(String(s.timestamp)).toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-2 text-muted-foreground">
+                            {s.epochs != null && <span>{String(s.epochs)} epochs</span>}
+                            {typeof (s.metrics as Record<string, unknown>)?.map50_95 === 'number' && (
+                              <span>mAP {(Number((s.metrics as Record<string, unknown>).map50_95) * 100).toFixed(1)}%</span>
+                            )}
+                            {s.fine_tune_source && <span>من {String(s.fine_tune_source)}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               <div className="rounded-xl border border-dashed border-border py-10 text-center text-muted-foreground">
@@ -350,7 +381,7 @@ export default function UnifiedModelPage() {
                   )}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  لن يبدأ من الصفر — يُحمَّل نفس الأوزان ثم يُكمَل التدريب لرفع الأداء.
+                  لن يبدأ من الصفر — يُحمَّل نفس الأوزان، ثم يُحدَّث نفس الملف (مع نسخة احتياطية) دون إنشاء موديل جديد.
                 </p>
               </div>
             ) : (

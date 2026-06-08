@@ -7,13 +7,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
-from app.core.minio_client import upload_bytes
 from app.services.training.progress import publish_training_progress
 from app.models import (
     ClassLabel,
     HyperparameterTrial,
-    ModelArtifact,
-    ModelLifecycle,
     TrainingJob,
     TrainingMetric,
     TrainingStatus,
@@ -422,23 +419,14 @@ def run_training_job(job_id: str):
 
             weights_path = result["weights_path"]
             weights_bytes = Path(weights_path).read_bytes() if Path(weights_path).exists() else b"mock"
-            minio_key = f"projects/{job.project_id}/models/{job.id}/best.pt"
-            upload_bytes(minio_key, weights_bytes, "application/octet-stream")
-            try:
-                from app.services.inference.model_cache import invalidate_weights
 
-                invalidate_weights(minio_key)
-            except Exception:
-                pass
-
-            onnx_key: str | None = None
+            onnx_bytes: bytes | None = None
             skip_onnx = settings.training_skip_onnx_export or str(config.get("device", "cpu")) == "cpu"
             if not skip_onnx:
                 onnx_path = os.path.join(tmpdir, "model.onnx")
                 adapter.export_onnx(weights_path, onnx_path)
                 if os.path.exists(onnx_path):
-                    onnx_key = f"projects/{job.project_id}/models/{job.id}/model.onnx"
-                    upload_bytes(onnx_key, Path(onnx_path).read_bytes(), "application/octet-stream")
+                    onnx_bytes = Path(onnx_path).read_bytes()
 
             classes_used = class_names
             if job.dataset_version_id is None:
@@ -469,29 +457,32 @@ def run_training_job(job_id: str):
             training_metrics["partial_training"] = partial_training
             if partial_training:
                 training_metrics["partial_class_note"] = f"Main Model updated for: {partial_label}"
+            training_metrics["duration_seconds"] = result.get("duration_seconds")
 
-            artifact = ModelArtifact(
-                project_id=job.project_id,
-                training_job_id=job.id,
-                name="Main Model",
-                architecture=job.architecture.value,
-                lifecycle=ModelLifecycle.REGISTERED,
-                minio_weights_key=minio_key,
-                minio_onnx_key=onnx_key,
-                dataset_version_id=job.dataset_version_id,
+            from app.services.training.incremental_model import persist_trained_model
+
+            artifact = persist_trained_model(
+                session,
+                job=job,
+                config=config,
+                weights_bytes=weights_bytes,
+                training_metrics=training_metrics,
                 classes_used=classes_used,
-                metrics=training_metrics,
-                gpu_used=str(config.get("device", "cpu")),
-                training_duration_seconds=result.get("duration_seconds"),
-                model_size_mb=len(weights_bytes) / (1024 * 1024),
+                onnx_bytes=onnx_bytes,
             )
-            session.add(artifact)
-            session.flush()
-
-            from app.services.models.active_model import ensure_live_deployment_sync, promote_as_active_model_sync
-
-            promote_as_active_model_sync(session, job.project_id, artifact.id)
-            ensure_live_deployment_sync(session, job.project_id, artifact.id)
+            in_place = bool((artifact.metrics or {}).get("in_place_update"))
+            finalize_msg = (
+                f"تم تحديث نفس الموديل الموحد (جلسة {(artifact.metrics or {}).get('training_sessions_meta', {}).get('current_session', '?')})"
+                if in_place
+                else "تم حفظ موديل جديد"
+            )
+            publish_metric(job_id, {
+                "phase": "finalize",
+                "message": finalize_msg,
+                "status": "running",
+                "artifact_id": str(artifact.id),
+                "in_place_update": in_place,
+            })
             if partial_training:
                 publish_metric(job_id, {
                     "phase": "finalize",

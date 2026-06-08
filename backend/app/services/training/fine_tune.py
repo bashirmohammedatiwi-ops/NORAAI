@@ -164,6 +164,7 @@ def _load_artifact_weights(
     weights_dir.mkdir(parents=True, exist_ok=True)
     weights_path = str(weights_dir / "source_model.pt")
     Path(weights_path).write_bytes(weights_bytes)
+    config["_continue_artifact_id"] = str(artifact.id)
     return weights_path, source_tag, None
 
 
