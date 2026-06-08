@@ -105,6 +105,24 @@ export default function UnifiedModelPage() {
 
   useEffect(() => { loadModels(); }, [loadModels]);
 
+  const applyPresetSettings = useCallback((presetKey: CpuPreset) => {
+    const details = cpuPresetOptions.find((p) => p.value === presetKey);
+    if (!details) {
+      setEpochs(CPU_PRESETS[presetKey]?.epochs ?? 20);
+      return;
+    }
+    const values = applyCpuPresetValues(details);
+    setEpochs(values.epochs);
+    setBatchSize(values.batchSize);
+    setLearningRate(values.learningRate);
+    setOptimizer(values.optimizer);
+    setScheduler(values.scheduler);
+    setAugmentation(values.augmentation);
+    setImageSize(values.imageSize);
+    setValSplit(values.valSplit);
+    setPatience(values.patience);
+  }, [cpuPresetOptions]);
+
   useEffect(() => {
     api.get<{ cpu_presets: CpuPresetDetails[] }>('/api/v1/training/options')
       .then((o) => setCpuPresetOptions(o.cpu_presets ?? []))
@@ -134,24 +152,6 @@ export default function UnifiedModelPage() {
       return projectClasses.map((c) => c.id);
     });
   }, [projectClasses, status?.model?.classes_used]);
-
-  const applyPresetSettings = useCallback((presetKey: CpuPreset) => {
-    const details = cpuPresetOptions.find((p) => p.value === presetKey);
-    if (!details) {
-      setEpochs(CPU_PRESETS[presetKey]?.epochs ?? 20);
-      return;
-    }
-    const values = applyCpuPresetValues(details);
-    setEpochs(values.epochs);
-    setBatchSize(values.batchSize);
-    setLearningRate(values.learningRate);
-    setOptimizer(values.optimizer);
-    setScheduler(values.scheduler);
-    setAugmentation(values.augmentation);
-    setImageSize(values.imageSize);
-    setValSplit(values.valSplit);
-    setPatience(values.patience);
-  }, [cpuPresetOptions]);
 
   useEffect(() => {
     if (!status) return;
@@ -403,9 +403,9 @@ export default function UnifiedModelPage() {
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-medium">جلسة {String(s.session ?? '—')}</span>
-                            {s.timestamp && (
+                            {typeof s.timestamp === 'string' && s.timestamp.length > 0 && (
                               <span className="text-muted-foreground">
-                                {new Date(String(s.timestamp)).toLocaleString()}
+                                {new Date(s.timestamp).toLocaleString()}
                               </span>
                             )}
                           </div>
@@ -414,7 +414,9 @@ export default function UnifiedModelPage() {
                             {typeof (s.metrics as Record<string, unknown>)?.map50_95 === 'number' && (
                               <span>mAP {(Number((s.metrics as Record<string, unknown>).map50_95) * 100).toFixed(1)}%</span>
                             )}
-                            {s.fine_tune_source && <span>من {String(s.fine_tune_source)}</span>}
+                            {typeof s.fine_tune_source === 'string' && s.fine_tune_source.length > 0 && (
+                              <span>من {s.fine_tune_source}</span>
+                            )}
                           </div>
                         </div>
                       ))}
