@@ -32,6 +32,19 @@
 	<string>الموقع مطلوب لعرض الخريطة وقياس السرعة ومخالفات الطريق.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>الموقع مطلوب لمراقبة السرعة والتنبيهات أثناء القيادة.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>187.127.88.146</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

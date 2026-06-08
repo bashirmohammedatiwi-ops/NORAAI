@@ -61,8 +61,17 @@ class ServerConfig {
     required this.speedViolation,
     this.modelVersion,
     this.modelSha256,
+    this.modelName,
+    this.message,
+    this.roadSpeedEnabled = false,
     this.captureMaxWidth = 640,
     this.jpegQuality = 0.72,
+    this.scanIntervalMs = 2000,
+    this.scanIntervalFastMs = 1200,
+    this.speedFastKmh = 40,
+    this.projectClasses = const [],
+    this.alertTypes = const [],
+    this.modelClasses = const [],
   });
 
   final bool modelReady;
@@ -73,8 +82,17 @@ class ServerConfig {
   final SpeedViolationRules speedViolation;
   final String? modelVersion;
   final String? modelSha256;
+  final String? modelName;
+  final String? message;
+  final bool roadSpeedEnabled;
   final int captureMaxWidth;
   final double jpegQuality;
+  final int scanIntervalMs;
+  final int scanIntervalFastMs;
+  final double speedFastKmh;
+  final List<Map<String, dynamic>> projectClasses;
+  final List<Map<String, dynamic>> alertTypes;
+  final List<String> modelClasses;
 
   factory ServerConfig.fromJson(Map<String, dynamic> json) => ServerConfig(
         modelReady: json['model_ready'] as bool? ?? false,
@@ -87,8 +105,27 @@ class ServerConfig {
         ),
         modelVersion: json['model_version'] as String?,
         modelSha256: json['model_sha256'] as String?,
+        modelName: json['model_name'] as String?,
+        message: json['message'] as String?,
+        roadSpeedEnabled: json['road_speed_enabled'] as bool? ?? false,
         captureMaxWidth: (json['capture_max_width'] as num?)?.toInt() ?? 640,
         jpegQuality: (json['jpeg_quality'] as num?)?.toDouble() ?? 0.72,
+        scanIntervalMs: (json['scan_interval_ms'] as num?)?.toInt() ?? 2000,
+        scanIntervalFastMs:
+            (json['scan_interval_fast_ms'] as num?)?.toInt() ?? 1200,
+        speedFastKmh: (json['speed_fast_kmh'] as num?)?.toDouble() ?? 40,
+        projectClasses: (json['project_classes'] as List<dynamic>?)
+                ?.map((e) => Map<String, dynamic>.from(e as Map))
+                .toList() ??
+            [],
+        alertTypes: (json['alert_types'] as List<dynamic>?)
+                ?.map((e) => Map<String, dynamic>.from(e as Map))
+                .toList() ??
+            [],
+        modelClasses: (json['model_classes'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [],
       );
 }
 

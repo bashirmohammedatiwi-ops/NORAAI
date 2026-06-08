@@ -71,7 +71,7 @@ export default function MobileCommandPage() {
   const [devices, setDevices] = useState<MobileDevice[]>([]);
   const [violations, setViolations] = useState<Violation[]>([]);
   const [selectedModelId, setSelectedModelId] = useState('');
-  const [promoteActive, setPromoteActive] = useState(false);
+  const [promoteActive, setPromoteActive] = useState(true);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);

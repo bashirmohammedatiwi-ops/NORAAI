@@ -1,17 +1,18 @@
-# NURAI Drive Mobile (Flutter)
+# NURAI Drive Mobile (Flutter) v2
 
-تطبيق هاتف السائق — خريطة، كاميرا، قياس سرعة، مخالفات، ومزامنة موديل ONNX من لوحة التحكم.
+تطبيق السائق المتقدم — خريطة حية، كاميرا AI، تنبيهات، مخالفات سرعة، وأحداث قريبة.
 
 ## المتطلبات
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) 3.11+
-- جهاز Android/iOS أو محاكي
+- Flutter SDK 3.11+
+- جهاز Android/iOS مع GPS وكاميرا خلفية
 
-## الإعداد
+## الإعداد السريع
 
-1. من لوحة التحكم: **Fleet** → سجّل جهازاً وانسخ API Key و Project ID
-2. من **Mobile App** → اختر الموديل → **رفع ومزامنة للتطبيق**
-3. شغّل التطبيق:
+1. لوحة التحكم: [http://187.127.88.146:8080](http://187.127.88.146:8080)
+2. **Fleet** → سجّل جهازاً وانسخ البيانات
+3. **Mobile App** → زامِن الموديل
+4. شغّل التطبيق:
 
 ```bash
 cd mobile-app
@@ -19,41 +20,61 @@ flutter pub get
 flutter run
 ```
 
-للتشغيل على جهاز محدد:
+## الميزات (v2)
 
-```bash
-flutter devices
-flutter run -d <device_id>
-```
+### الخريطة
+- بلاط Carto Voyager عالي الجودة
+- متابعة تلقائية للموقع + زر إعادة التمركز
+- سهم اتجاه القيادة + مثلث الرؤية
+- دائرة دقة GPS
+- علامات الأحداث القريبة (حفرة، حادث، طريق مغلق...)
+- خطوط متقطعة لأقرب 3 مخاطر
 
-## الميزات
+### السرعة
+- عداد سرعة دائري متحرك (Gauge)
+- حد الطريق من Google/OSM أو يدوي
+- مخالفات سرعة تلقائية مع اهتزاز
+- شارة G (طريق) / LIM (يدوي)
 
-- خريطة OpenStreetMap + موقع GPS مستمر
-- عداد سرعة + حد الطريق من السيرفر
-- تسجيل مخالفة سرعة تلقائياً (`POST /driver/violations`)
-- مزامنة إعدادات التطبيق من لوحة **Mobile Command**
-- كاميرا خلفية + اكتشاف عبر السيرفر مع مربعات ملونة
-- تحميل ONNX محلياً من `/driver/model/download` (جاهز للاستدلال المحلي لاحقاً)
-- اضغط على الكاميرا لتكبيرها
+### الذكاء الاصطناعي
+- كاميرا PiP قابلة للتكبير
+- مربعات اكتشاف ملونة على الكاميرا
+- مسح تكيفي حسب السرعة وكمون السيرفر
+- تسخين الموديل عند الاتصال
+- تحميل ONNX محلي (جاهز للاستدلال لاحقاً)
+
+### التنبيهات
+- لوحة تنبيهات منزلقة (مباشر + قريب)
+- سجل آخر 10 تنبيهات AI
+- قائمة الأحداث القريبة مع المسافة
+- بانر تنبيه فوري + اهتزاز
+
+### أخرى
+- شريط علوي: حالة الاتصال، عدد الأحداث، التنبيهات
+- شريط سفلي: الموقع، الوقت، أقرب خطر
+- تحديد المكان بالعربية (Nominatim)
+- مزامنة إعدادات عن بُعد من لوحة Mobile Command
 
 ## API
 
 | Endpoint | الاستخدام |
 |----------|-----------|
-| `GET /driver/config` | إعدادات + إصدار الموديل |
-| `GET /driver/model/manifest` | معلومات ONNX |
-| `GET /driver/model/download` | ملف الموديل |
-| `POST /driver/detect` | اكتشاف من إطار الكاميرا |
-| `POST /driver/violations` | مخالفة سرعة |
+| `GET /driver/config` | إعدادات الجهاز والموديل |
+| `POST /driver/warmup` | تسخين الموديل |
+| `POST /driver/detect` | اكتشاف من الكاميرا |
+| `GET /driver/events/nearby` | أحداث قريبة على الخريطة |
+| `GET /driver/speed-limit` | حد سرعة الطريق |
+| `POST /driver/violations` | تسجيل مخالفة سرعة |
 | `POST /driver/telemetry` | نبض الجهاز |
 
 ## البنية
 
 ```
 lib/
-  main.dart              # نقطة الدخول
-  models/                # DriverConfig, ServerConfig, DetectionBox
-  services/              # API, مزامنة الموديل, GPS/سرعة
-  screens/               # إعداد الاتصال + شاشة القيادة
-  widgets/               # طبقة مربعات الاكتشاف
+  config/          # السيرفر الافتراضي
+  models/          # Config, Detection, Events, RoadSpeed
+  services/        # API, GPS, Speed, Model sync, Scheduler
+  screens/         # Setup + Drive
+  utils/           # Map math, Event metadata
+  widgets/         # Map, Gauge, Alerts, Camera, Dash
 ```

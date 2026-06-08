@@ -28,27 +28,34 @@ def mobile_manifest_key(project_id: uuid.UUID, artifact_id: uuid.UUID) -> str:
 
 
 async def resolve_driver_artifact(db: AsyncSession, project: Project) -> ModelArtifact | None:
-    artifact_id = project.driver_model_artifact_id or project.active_model_artifact_id
-    if not artifact_id:
-        return None
-    artifact = await db.get(ModelArtifact, artifact_id)
-    if not artifact or artifact.project_id != project.id:
-        return None
-    if not is_production_model(artifact):
-        return None
-    return artifact
+    """Mobile-deployed model first, then auto-resolved active model."""
+    from app.services.models.active_model import get_active_model
+
+    if project.driver_model_artifact_id:
+        artifact = await db.get(ModelArtifact, project.driver_model_artifact_id)
+        if (
+            artifact
+            and artifact.project_id == project.id
+            and is_production_model(artifact)
+        ):
+            return artifact
+
+    return await get_active_model(db, project.id)
 
 
 def resolve_driver_artifact_sync(session: Session, project: Project) -> ModelArtifact | None:
-    artifact_id = project.driver_model_artifact_id or project.active_model_artifact_id
-    if not artifact_id:
-        return None
-    artifact = session.get(ModelArtifact, artifact_id)
-    if not artifact or artifact.project_id != project.id:
-        return None
-    if not is_production_model(artifact):
-        return None
-    return artifact
+    from app.services.models.active_model import get_active_model_sync
+
+    if project.driver_model_artifact_id:
+        artifact = session.get(ModelArtifact, project.driver_model_artifact_id)
+        if (
+            artifact
+            and artifact.project_id == project.id
+            and is_production_model(artifact)
+        ):
+            return artifact
+
+    return get_active_model_sync(session, project.id)
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -139,8 +146,7 @@ async def sync_driver_model(
     )
 
     project.driver_model_artifact_id = artifact.id
-    if promote_active:
-        await promote_as_active_model(db, project.id, artifact.id)
+    await promote_as_active_model(db, project.id, artifact.id)
 
     mobile_cfg = get_mobile_config(project)
     mobile_cfg["deployment"] = {

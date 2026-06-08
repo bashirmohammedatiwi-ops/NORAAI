@@ -82,7 +82,10 @@ def _config_message(project_classes, artifact, model_ready: bool) -> str | None:
     if not project_classes:
         return "Add detection classes in the dashboard first."
     if not artifact:
-        return "No active model. Train and deploy a model from the dashboard."
+        return (
+            "No trained model found. Open Models in the dashboard, train the unified model, "
+            "then use Mobile App → Sync model."
+        )
     if not model_ready:
         return "Model weights are not ready. Complete training on the dashboard."
     allowed = allowed_detection_classes(project_classes, artifact)
@@ -96,9 +99,11 @@ async def driver_config(device: FleetDevice = Depends(get_fleet_device), db: Asy
     from app.models import Project
 
     project = await db.get(Project, device.project_id)
-    artifact = await resolve_driver_artifact(db, project) if project else None
-    if not artifact:
-        artifact = await get_active_model(db, device.project_id)
+    artifact = (
+        await resolve_driver_artifact(db, project)
+        if project
+        else await get_active_model(db, device.project_id)
+    )
     project_classes = await get_project_classes(db, device.project_id)
     model_ready = is_production_model(artifact)
     allowed = allowed_detection_classes(project_classes, artifact) if model_ready else []

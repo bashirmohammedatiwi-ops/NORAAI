@@ -32,5 +32,16 @@
 	<string>الموقع مطلوب لعرض الخريطة وقياس السرعة.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>الكاميرا مطلوبة لاكتشاف أحداث الطريق.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>187.127.88.146</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
 </dict>
 </plist>

@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/detection.dart';
 import '../models/driver_config.dart';
+import '../models/nearby_event.dart';
+import '../models/road_speed.dart';
 
 class ApiService {
   ApiService(this.config);
@@ -15,6 +17,33 @@ class ApiService {
   String get _base => config.serverUrl.replaceAll(RegExp(r'/$'), '');
 
   Map<String, String> get _headers => {'X-Device-Key': config.apiKey};
+
+  Future<void> warmupModel() async {
+    await http.post(
+      Uri.parse('$_base/api/v1/driver/warmup'),
+      headers: _headers,
+    );
+  }
+
+  Future<List<NearbyEvent>> fetchNearby(
+    double lat,
+    double lon, {
+    double radiusKm = 15,
+  }) async {
+    final uri = Uri.parse('$_base/api/v1/driver/events/nearby').replace(
+      queryParameters: {
+        'latitude': lat.toString(),
+        'longitude': lon.toString(),
+        'radius_km': radiusKm.toString(),
+      },
+    );
+    final res = await http.get(uri, headers: _headers);
+    if (res.statusCode != 200) return [];
+    final list = jsonDecode(res.body) as List<dynamic>;
+    return list
+        .map((e) => NearbyEvent.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
 
   Future<ServerConfig> fetchConfig() async {
     final res = await http.get(
@@ -82,8 +111,13 @@ class ApiService {
     );
   }
 
-  Future<({List<DetectionBox> detections, int eventsCreated, List<dynamic> alerts})>
-      detectFrame({
+  Future<
+      ({
+        List<DetectionBox> detections,
+        int eventsCreated,
+        List<dynamic> alerts,
+        int? latencyMs,
+      })> detectFrame({
     required String imagePath,
     required double latitude,
     required double longitude,
@@ -113,6 +147,7 @@ class ApiService {
       detections: detections,
       eventsCreated: json['events_created'] as int? ?? 0,
       alerts: json['alerts'] as List<dynamic>? ?? [],
+      latencyMs: (json['latency_ms'] as num?)?.toInt(),
     );
   }
 
@@ -141,7 +176,7 @@ class ApiService {
     return json['created'] == true;
   }
 
-  Future<({double limit, String? roadName})> fetchSpeedLimit(
+  Future<RoadSpeedResult> fetchSpeedLimit(
     double lat,
     double lon,
     double fallback,
@@ -154,11 +189,9 @@ class ApiService {
       },
     );
     final res = await http.get(uri, headers: _headers);
-    if (res.statusCode != 200) return (limit: fallback, roadName: null);
-    final json = jsonDecode(res.body) as Map<String, dynamic>;
-    return (
-      limit: (json['speed_limit_kmh'] as num?)?.toDouble() ?? fallback,
-      roadName: json['road_name'] as String?,
+    if (res.statusCode != 200) return RoadSpeedResult.fallback(fallback);
+    return RoadSpeedResult.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
     );
   }
 

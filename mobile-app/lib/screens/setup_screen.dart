@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/app_config.dart';
 import '../models/driver_config.dart';
 import '../services/api_service.dart';
 import '../services/config_storage.dart';
@@ -14,13 +15,16 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  final _serverUrl = TextEditingController(text: 'https://');
+  final _serverUrl = TextEditingController(text: kDefaultServerUrl);
   final _projectId = TextEditingController();
   final _deviceId = TextEditingController();
   final _vehicleId = TextEditingController();
   final _apiKey = TextEditingController();
+  final _speedLimit = TextEditingController(text: '80');
   bool _loading = false;
   String? _error;
+
+  static const _tags = ['حفرة', 'حادث', 'طريق مغلق', 'مخالفة سرعة', 'خريطة حية', 'AI'];
 
   @override
   void dispose() {
@@ -29,6 +33,7 @@ class _SetupScreenState extends State<SetupScreen> {
     _deviceId.dispose();
     _vehicleId.dispose();
     _apiKey.dispose();
+    _speedLimit.dispose();
     super.dispose();
   }
 
@@ -38,11 +43,12 @@ class _SetupScreenState extends State<SetupScreen> {
       _error = null;
     });
     final config = DriverConfig(
-      serverUrl: _serverUrl.text.trim(),
+      serverUrl: normalizeServerUrl(_serverUrl.text),
       projectId: _projectId.text.trim(),
       deviceId: _deviceId.text.trim(),
       vehicleId: _vehicleId.text.trim(),
       apiKey: _apiKey.text.trim(),
+      speedLimit: double.tryParse(_speedLimit.text.trim()) ?? 80,
     );
     try {
       await ApiService(config).fetchConfig();
@@ -50,7 +56,10 @@ class _SetupScreenState extends State<SetupScreen> {
       if (!mounted) return;
       widget.onReady(config);
     } catch (e) {
-      setState(() => _error = e.toString());
+      final msg = e.toString();
+      setState(() => _error = msg.contains('SocketException') || msg.contains('Failed host lookup')
+          ? 'تعذّر الاتصال بالسيرفر — تأكد من الرابط $kDefaultServerUrl والإنترنت'
+          : msg);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -88,12 +97,35 @@ class _SetupScreenState extends State<SetupScreen> {
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Color(0xFF94A3B8)),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        alignment: WrapAlignment.center,
+                        children: _tags
+                            .map((t) => Chip(
+                                  label: Text(t, style: const TextStyle(fontSize: 10)),
+                                  backgroundColor: const Color(0xFF0F172A),
+                                  side: const BorderSide(color: Color(0xFF334155)),
+                                  labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.compact,
+                                ))
+                            .toList(),
+                      ),
+                      const SizedBox(height: 16),
                       _field('رابط السيرفر', _serverUrl),
+                      const Text(
+                        'السيرفر الافتراضي: $kDefaultServerUrl',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                      ),
+                      const SizedBox(height: 8),
                       _field('Project ID', _projectId),
                       _field('Device ID', _deviceId),
                       _field('Vehicle ID', _vehicleId),
                       _field('API Key', _apiKey, obscure: true),
+                      _field('حد السرعة الاحتياطي (كم/س)', _speedLimit),
                       if (_error != null) ...[
                         const SizedBox(height: 8),
                         Text(_error!, style: const TextStyle(color: Color(0xFFF87171), fontSize: 12)),

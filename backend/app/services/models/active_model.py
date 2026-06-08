@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.models import Deployment, DeploymentStatus, DeploymentTarget, ModelArtifact, ModelLifecycle, Project
+from app.services.driver.project_classes import is_production_model
 
 
 MAIN_MODEL_NAME = "Main Model"
@@ -32,43 +33,106 @@ def _recommended_training_preset(artifact: ModelArtifact | None) -> str:
     return recommend_preset(has_model, can_fine)
 
 
+def _pick_usable_artifact(candidates: list[ModelArtifact]) -> ModelArtifact | None:
+    for artifact in candidates:
+        if is_production_model(artifact):
+            return artifact
+    return None
+
+
 async def get_active_model(db: AsyncSession, project_id: uuid.UUID) -> ModelArtifact | None:
+    """Return the best trained model for a project, auto-activating when needed."""
     project = await db.get(Project, project_id)
-    if not project or not project.active_model_artifact_id:
-        result = await db.execute(
-            select(ModelArtifact)
-            .where(
-                ModelArtifact.project_id == project_id,
-                ModelArtifact.lifecycle == ModelLifecycle.PRODUCTION,
-            )
-            .order_by(ModelArtifact.created_at.desc())
-            .limit(1)
+    if not project:
+        return None
+
+    if project.active_model_artifact_id:
+        pinned = await db.get(ModelArtifact, project.active_model_artifact_id)
+        if (
+            pinned
+            and pinned.project_id == project_id
+            and is_production_model(pinned)
+        ):
+            return pinned
+
+    result = await db.execute(
+        select(ModelArtifact)
+        .where(
+            ModelArtifact.project_id == project_id,
+            ModelArtifact.lifecycle == ModelLifecycle.PRODUCTION,
         )
-        artifact = result.scalar_one_or_none()
-        if artifact and project:
+        .order_by(ModelArtifact.created_at.desc())
+        .limit(10)
+    )
+    artifact = _pick_usable_artifact(list(result.scalars().all()))
+    if artifact:
+        if project.active_model_artifact_id != artifact.id:
             project.active_model_artifact_id = artifact.id
+            await db.flush()
         return artifact
 
-    return await db.get(ModelArtifact, project.active_model_artifact_id)
+    result = await db.execute(
+        select(ModelArtifact)
+        .where(
+            ModelArtifact.project_id == project_id,
+            ModelArtifact.minio_weights_key.isnot(None),
+        )
+        .order_by(ModelArtifact.created_at.desc())
+        .limit(20)
+    )
+    artifact = _pick_usable_artifact(list(result.scalars().all()))
+    if artifact:
+        return await promote_as_active_model(db, project_id, artifact.id)
+
+    return None
 
 
 def get_active_model_sync(session: Session, project_id: uuid.UUID) -> ModelArtifact | None:
     project = session.get(Project, project_id)
-    if not project or not project.active_model_artifact_id:
-        artifact = (
-            session.query(ModelArtifact)
-            .filter(
-                ModelArtifact.project_id == project_id,
-                ModelArtifact.lifecycle == ModelLifecycle.PRODUCTION,
-            )
-            .order_by(ModelArtifact.created_at.desc())
-            .first()
+    if not project:
+        return None
+
+    if project.active_model_artifact_id:
+        pinned = session.get(ModelArtifact, project.active_model_artifact_id)
+        if (
+            pinned
+            and pinned.project_id == project_id
+            and is_production_model(pinned)
+        ):
+            return pinned
+
+    candidates = (
+        session.query(ModelArtifact)
+        .filter(
+            ModelArtifact.project_id == project_id,
+            ModelArtifact.lifecycle == ModelLifecycle.PRODUCTION,
         )
-        if artifact and project:
+        .order_by(ModelArtifact.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    artifact = _pick_usable_artifact(candidates)
+    if artifact:
+        if project.active_model_artifact_id != artifact.id:
             project.active_model_artifact_id = artifact.id
             session.flush()
         return artifact
-    return session.get(ModelArtifact, project.active_model_artifact_id)
+
+    candidates = (
+        session.query(ModelArtifact)
+        .filter(
+            ModelArtifact.project_id == project_id,
+            ModelArtifact.minio_weights_key.isnot(None),
+        )
+        .order_by(ModelArtifact.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    artifact = _pick_usable_artifact(candidates)
+    if artifact:
+        return promote_as_active_model_sync(session, project_id, artifact.id)
+
+    return None
 
 
 async def promote_as_active_model(db: AsyncSession, project_id: uuid.UUID, artifact_id: uuid.UUID) -> ModelArtifact:
@@ -193,21 +257,7 @@ async def get_active_model_status(db: AsyncSession, project_id: uuid.UUID) -> di
     if not project:
         return {}
 
-    if project.active_model_artifact_id:
-        artifact = await db.get(ModelArtifact, project.active_model_artifact_id)
-    else:
-        result = await db.execute(
-            select(ModelArtifact)
-            .where(
-                ModelArtifact.project_id == project_id,
-                ModelArtifact.lifecycle == ModelLifecycle.PRODUCTION,
-            )
-            .order_by(ModelArtifact.created_at.desc())
-            .limit(1)
-        )
-        artifact = result.scalar_one_or_none()
-        if artifact:
-            project.active_model_artifact_id = artifact.id
+    artifact = await get_active_model(db, project_id)
 
     running_job = await db.execute(
         select(TrainingJob)
