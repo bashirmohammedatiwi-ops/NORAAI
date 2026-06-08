@@ -1,0 +1,35 @@
+# Incremental YOLO11 training — same model file updated across sessions
+# Edit paths for your machine, then run: python train_pipeline.py --data path/to/data.yaml
+
+model_path: models/model.pt
+base_weights: yolo11n.pt
+backup_dir: models/backups
+metadata_path: models/model_meta.json
+
+# Cumulative class names (updated automatically after each session)
+classes:
+  - pothole
+  - road_damage
+
+# Ultralytics training defaults
+imgsz: 640
+batch: 8
+device: cpu
+patience: 15
+workers: 0
+
+# First session (train from pretrained base weights)
+first_session:
+  lr0: 0.01
+  freeze_layers: 0
+
+# Fine-tune sessions (load model_path and update in place)
+fine_tune:
+  lr0: 0.0001
+  freeze_layers: 10
+  lrf: 0.01
+  warmup_epochs: 3
+  close_mosaic: 5
+
+# Training session history (appended by train_pipeline.py)
+sessions: []

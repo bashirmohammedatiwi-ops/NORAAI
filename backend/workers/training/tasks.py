@@ -298,6 +298,8 @@ def run_training_job(job_id: str):
             from app.services.training.cpu_tuning import apply_large_dataset_overlays, speed_boost_summary
 
             apply_large_dataset_overlays(config)
+            if wants_continue_training(config) or config.get("_fine_tune_weights_path"):
+                config["_val_every"] = 1
             boost_msg = speed_boost_summary(config)
             if boost_msg:
                 config["_speed_boost_note"] = boost_msg

@@ -102,6 +102,23 @@ Start training from the VPS UI (`http://VPS:8080`); the local worker picks up th
 
 FastAPI · PostgreSQL/PostGIS · Redis · Celery · MinIO · PyTorch/Ultralytics · React/TypeScript · Docker
 
+## Incremental YOLO11 Training (standalone)
+
+For **continual learning** on a single `model.pt` file (potholes → accidents → more data) outside the web UI:
+
+```bash
+cd scripts/incremental_training
+pip install ultralytics pyyaml
+
+# Session 1: potholes from yolo11n.pt
+python train_pipeline.py --data /path/to/potholes/data.yaml --epochs 50
+
+# Session 2: add accidents — same model.pt updated in place (backup saved first)
+python train_pipeline.py --data /path/to/accidents/data.yaml --epochs 30
+```
+
+See [scripts/incremental_training/README.md](scripts/incremental_training/README.md) for `train_config.yaml`, session history, and fine-tune settings (`lr0=0.0001`, `freeze=10`).
+
 ## Structure
 
 ```

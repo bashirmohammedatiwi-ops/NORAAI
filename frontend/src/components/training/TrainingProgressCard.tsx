@@ -221,8 +221,10 @@ export function TrainingProgressCard({
                 <span>
                   {METRIC_DISPLAY.accuracy.label}:{' '}
                   <strong className="text-foreground">{pct(detail.map50_95)}</strong>
-                  {detail.accuracyIsBaseline && (
+                  {detail.accuracyIsBaseline ? (
                     <span className="text-amber-700 dark:text-amber-300"> (موديل مصدر)</span>
+                  ) : (
+                    <span className="text-muted-foreground"> (بعد التحقق)</span>
                   )}
                 </span>
               )}

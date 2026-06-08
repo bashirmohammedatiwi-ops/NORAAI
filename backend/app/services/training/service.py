@@ -189,14 +189,21 @@ async def get_job_detail(db: AsyncSession, job_id: uuid.UUID) -> dict | None:
                 "ولا تعني بالضرورة أن النموذج سيعمل بنفس الأداء على صور جديدة."
             )
     elif job.status in (TrainingStatus.RUNNING, TrainingStatus.PENDING):
+        epoch_metrics = best_db_metrics or db_metrics
         latest_metrics = {
-            "loss": live_fields.get("loss") if live_fields.get("loss") is not None else db_metrics.get("loss") if db_metrics else None,
-            "precision": live_fields.get("precision") if live_fields.get("precision") is not None else db_metrics.get("precision") if db_metrics else None,
-            "recall": live_fields.get("recall") if live_fields.get("recall") is not None else db_metrics.get("recall") if db_metrics else None,
-            "f1": live_fields.get("f1") if live_fields.get("f1") is not None else db_metrics.get("f1") if db_metrics else None,
-            "map50": live_fields.get("map50") if live_fields.get("map50") is not None else db_metrics.get("map50") if db_metrics else None,
-            "map50_95": live_fields.get("map50_95") if live_fields.get("map50_95") is not None else db_metrics.get("map50_95") if db_metrics else None,
+            "loss": live_fields.get("loss") if live_fields.get("loss") is not None else (db_metrics.get("loss") if db_metrics else None),
+            "precision": (epoch_metrics or {}).get("precision") if epoch_metrics else live_fields.get("precision"),
+            "recall": (epoch_metrics or {}).get("recall") if epoch_metrics else live_fields.get("recall"),
+            "f1": (epoch_metrics or {}).get("f1") if epoch_metrics else live_fields.get("f1"),
+            "map50": (epoch_metrics or {}).get("map50") if epoch_metrics else live_fields.get("map50"),
+            "map50_95": (epoch_metrics or {}).get("map50_95") if epoch_metrics else live_fields.get("map50_95"),
         }
+        if live_fields.get("map50_95") is not None:
+            latest_metrics["map50_95"] = live_fields.get("map50_95")
+            latest_metrics["map50"] = live_fields.get("map50") or latest_metrics.get("map50")
+            latest_metrics["precision"] = live_fields.get("precision") or latest_metrics.get("precision")
+            latest_metrics["recall"] = live_fields.get("recall") or latest_metrics.get("recall")
+            latest_metrics["f1"] = live_fields.get("f1") or latest_metrics.get("f1")
 
     return {
         "id": str(job.id),

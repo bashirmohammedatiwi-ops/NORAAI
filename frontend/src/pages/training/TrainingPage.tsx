@@ -156,7 +156,19 @@ export default function TrainingPage() {
   };
 
   const selectedClass = classes.find((c) => c.id === selectedClassId);
-  const displayMetrics = normalizeQualityMetrics(job?.latest_metrics ?? job?.artifact?.metrics ?? null);
+  const latestChartPoint = chartMetrics.length ? chartMetrics[chartMetrics.length - 1] : null;
+  const displayMetrics = normalizeQualityMetrics(
+    job?.status === 'running' && latestChartPoint && latestChartPoint.map50_95 != null
+      ? {
+          loss: latestChartPoint.loss ?? job?.latest_metrics?.loss ?? null,
+          precision: latestChartPoint.precision ?? null,
+          recall: latestChartPoint.recall ?? null,
+          f1: latestChartPoint.f1 ?? null,
+          map50: latestChartPoint.map50 ?? null,
+          map50_95: latestChartPoint.map50_95 ?? null,
+        }
+      : job?.latest_metrics ?? job?.artifact?.metrics ?? null,
+  );
   const metricsSubtitle = buildMetricsSubtitle(job?.name, job?.architecture, job?.metrics_meta, job?.message);
   const runningJob = jobs.find((j) => j.status === 'running' || j.status === 'pending');
   const showProgress = job && (job.status === 'running' || job.status === 'pending');

@@ -80,7 +80,7 @@ export function useTrainingJob(
     baseline && jobId ? ({ ...baseline, id: jobId } as TrainingJobDetail) : null,
   );
   const [historicalMetrics, setHistoricalMetrics] = useState<TrainingMetricPoint[]>([]);
-  const { metrics: liveMetrics, connected } = useTrainingMetrics(jobId);
+  const { metrics: liveMetrics, epochMetrics: liveEpochMetrics, connected } = useTrainingMetrics(jobId);
 
   const refresh = useCallback(async () => {
     if (!jobId || !pollRest) return;
@@ -99,7 +99,12 @@ export function useTrainingJob(
     return () => clearInterval(interval);
   }, [jobId, refresh, pollRest]);
 
-  const chartMetrics = mergeMetrics(historicalMetrics, liveMetrics as unknown as TrainingMetricPoint[]);
+  const chartMetrics = mergeMetrics(
+    historicalMetrics,
+    liveEpochMetrics.length
+      ? (liveEpochMetrics as unknown as TrainingMetricPoint[])
+      : (liveMetrics as unknown as TrainingMetricPoint[]),
+  );
 
   const latestTrainLive = useMemo(() => {
     for (let i = liveMetrics.length - 1; i >= 0; i -= 1) {
@@ -109,6 +114,12 @@ export function useTrainingJob(
   }, [liveMetrics]);
 
   const lastAccuracyLive = useMemo(() => {
+    if (liveEpochMetrics.length) {
+      return liveEpochMetrics[liveEpochMetrics.length - 1];
+    }
+    if (historicalMetrics.length) {
+      return historicalMetrics[historicalMetrics.length - 1];
+    }
     let baseline: (typeof liveMetrics)[number] | null = null;
     let validation: (typeof liveMetrics)[number] | null = null;
     for (const m of liveMetrics) {
@@ -125,7 +136,7 @@ export function useTrainingJob(
       }
     }
     return validation ?? baseline;
-  }, [liveMetrics]);
+  }, [liveMetrics, liveEpochMetrics, historicalMetrics]);
 
   const liveJob = useMemo(() => {
     const base = job ?? (baseline && jobId ? ({ ...baseline, id: jobId } as TrainingJobDetail) : null);

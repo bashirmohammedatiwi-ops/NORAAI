@@ -304,9 +304,13 @@ def _apply_large_dataset_speed(config: dict, train_n: int) -> dict:
 
 def apply_large_dataset_overlays(config: dict) -> dict:
     """After export — tune large CPU datasets for production, quality, or speed."""
+    from app.services.training.fine_tune import wants_continue_training
+
     train_n = int(config.get("_train_images") or config.get("_labeled_train_images") or 0)
     if train_n < 2500:
         resolve_training_cache(config, train_n, int(config.get("_val_images") or 0))
+        if wants_continue_training(config):
+            config["_val_every"] = 1
         return config
     preset = str(config.get("_preset") or "")
     if hostinger_mode_enabled() and preset in PRODUCTION_PRESETS:
