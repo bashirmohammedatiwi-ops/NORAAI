@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +13,15 @@ from app.models import ClassLabel, HyperparameterTrial, ModelArchitecture, Model
 from app.services.datasets.dataset_images import ensure_default_dataset, get_dataset_summary
 from app.services.models.active_model import get_active_model_status
 from app.services.models.deletion import delete_all_project_models, delete_model_artifact
-from app.schemas import DeleteResultResponse, ModelArtifactResponse, ModelCompareRequest, PasswordConfirmRequest, TrainingJobCreate, TrainingJobResponse
+from app.schemas import (
+    DeleteResultResponse,
+    ModelArtifactResponse,
+    ModelCompareRequest,
+    PasswordConfirmRequest,
+    RetrainConfigOverrides,
+    TrainingJobCreate,
+    TrainingJobResponse,
+)
 from app.services.evaluation.compare import compare_models
 from app.services.training.cpu_presets import DEFAULT_CPU_PRESET, build_retrain_config
 from app.services.training.cancellation import request_training_cancel
@@ -54,6 +62,21 @@ async def _normalize_training_class_ids(
     if len(ordered) != len({str(cid) for cid in class_ids}):
         raise HTTPException(status_code=400, detail="بعض الفئات المختارة غير موجودة أو مؤرشفة")
     return ordered
+
+
+def _apply_retrain_overrides(config: dict, overrides: RetrainConfigOverrides | None) -> dict:
+    if not overrides:
+        return config
+    data = overrides.model_dump(exclude_none=True)
+    if not data:
+        return config
+    if "image_size" in data:
+        config["_image_size_locked"] = True
+    config.update(data)
+    from app.services.training.cpu_tuning import tune_training_config
+    from app.services.training.fine_tune import apply_fine_tune_training_overrides
+
+    return tune_training_config(apply_fine_tune_training_overrides(config))
 
 
 @router.get("/training/options")
@@ -361,6 +384,7 @@ async def retrain_project_model(
         None, description="Specific trained model to continue from (#1, #2, …)"
     ),
     class_ids: list[UUID] | None = Query(None, description="Train only on these class IDs"),
+    overrides: RetrainConfigOverrides | None = Body(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -414,6 +438,8 @@ async def retrain_project_model(
     normalized_class_ids = await _normalize_training_class_ids(db, project_id, class_ids)
     if normalized_class_ids:
         config["class_ids"] = normalized_class_ids
+
+    config = _apply_retrain_overrides(config, overrides)
 
     job = TrainingJob(
         project_id=project_id,

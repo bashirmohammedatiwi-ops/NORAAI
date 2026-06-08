@@ -65,6 +65,47 @@ export const CPU_PRESETS: Record<CpuPreset, { label: string; description: string
 
 export const DEFAULT_CPU_PRESET: CpuPreset = 'turbo_accuracy';
 
+export interface RetrainOverrides {
+  batch_size?: number | string;
+  learning_rate?: number;
+  image_size?: number;
+  augmentation?: string;
+  patience?: number;
+  val_split?: number;
+  optimizer?: string;
+  scheduler?: string;
+}
+
+export interface CpuPresetDetails {
+  value: string;
+  label: string;
+  description?: string;
+  epochs?: number;
+  batch_size?: number | string;
+  learning_rate?: number;
+  optimizer?: string;
+  scheduler?: string;
+  augmentation?: string;
+  image_size?: number;
+  mixed_precision?: boolean;
+  val_split?: number;
+  patience?: number;
+}
+
+export function applyCpuPresetValues(preset: CpuPresetDetails) {
+  return {
+    epochs: preset.epochs ?? 20,
+    batchSize: typeof preset.batch_size === 'number' ? preset.batch_size : 8,
+    learningRate: preset.learning_rate ?? 0.01,
+    optimizer: preset.optimizer ?? 'AdamW',
+    scheduler: preset.scheduler ?? 'cosine',
+    augmentation: preset.augmentation ?? 'medium',
+    imageSize: preset.image_size ?? 640,
+    valSplit: preset.val_split ?? 0.15,
+    patience: preset.patience ?? 10,
+  };
+}
+
 export function buildRetrainQuery(params: {
   epochs?: number;
   architecture?: string;

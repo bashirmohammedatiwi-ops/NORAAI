@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { METRIC_DISPLAY } from '@/lib/trainingMetrics';
+import { useProjectClasses } from '@/hooks/useDatasets';
 import { useActiveModel, useInvalidateProjects } from '@/hooks/useProjects';
 import { useTrainingJob } from '@/hooks/useTrainingJob';
+import { TrainingClassPicker } from '@/components/training/TrainingClassPicker';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { TrainingProgressCard } from '@/components/training/TrainingProgressCard';
@@ -16,7 +18,15 @@ import { Input } from '@/components/ui/input';
 import {
   Brain, RefreshCw, Link2, Map, Truck, PenTool, Activity, Database, Play, Loader2, Trash2, Cpu, AlertTriangle, Zap,
 } from 'lucide-react';
-import { buildRetrainQuery, CPU_PRESETS, DEFAULT_CPU_PRESET, type CpuPreset } from '@/lib/trainingPresets';
+import {
+  applyCpuPresetValues,
+  buildRetrainQuery,
+  CPU_PRESETS,
+  DEFAULT_CPU_PRESET,
+  type CpuPreset,
+  type CpuPresetDetails,
+  type RetrainOverrides,
+} from '@/lib/trainingPresets';
 import { cancelTrainingJob } from '@/lib/cancelTraining';
 import { TrainSourceModelPicker, type TrainSourceMode } from '@/components/training/TrainSourceModelPicker';
 
@@ -60,12 +70,24 @@ interface ModelArtifact {
 export default function UnifiedModelPage() {
   const { id: projectId } = useParams();
   const { data: status, refetch } = useActiveModel(projectId, { refetchInterval: 5000 });
+  const { data: projectClasses = [] } = useProjectClasses(projectId);
   const { invalidateProject } = useInvalidateProjects();
   const runningJobId = status?.training.is_running ? status.training.job_id : null;
   const { job: runningJob, progressDetail, activityLog } = useTrainingJob(runningJobId);
 
   const [epochs, setEpochs] = useState(CPU_PRESETS[DEFAULT_CPU_PRESET].epochs);
   const [preset, setPreset] = useState<CpuPreset>(DEFAULT_CPU_PRESET);
+  const [cpuPresetOptions, setCpuPresetOptions] = useState<CpuPresetDetails[]>([]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [batchSize, setBatchSize] = useState(8);
+  const [learningRate, setLearningRate] = useState(0.001);
+  const [imageSize, setImageSize] = useState(640);
+  const [augmentation, setAugmentation] = useState('light');
+  const [patience, setPatience] = useState(15);
+  const [valSplit, setValSplit] = useState(0.15);
+  const [optimizer, setOptimizer] = useState('AdamW');
+  const [scheduler, setScheduler] = useState('cosine');
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
   const [sourceMode, setSourceMode] = useState<TrainSourceMode>('existing');
   const [sourceModelId, setSourceModelId] = useState('');
   const [architecture, setArchitecture] = useState('yolo11');
@@ -84,19 +106,65 @@ export default function UnifiedModelPage() {
   useEffect(() => { loadModels(); }, [loadModels]);
 
   useEffect(() => {
+    api.get<{ cpu_presets: CpuPresetDetails[] }>('/api/v1/training/options')
+      .then((o) => setCpuPresetOptions(o.cpu_presets ?? []))
+      .catch(() => setCpuPresetOptions([]));
+  }, []);
+
+  useEffect(() => {
+    if (!cpuPresetOptions.length) return;
+    applyPresetSettings(preset);
+  }, [cpuPresetOptions, preset, applyPresetSettings]);
+
+  useEffect(() => {
+    if (!projectClasses.length) {
+      setSelectedClassIds([]);
+      return;
+    }
+    setSelectedClassIds((prev) => {
+      const valid = prev.filter((id) => projectClasses.some((c) => c.id === id));
+      if (valid.length) return valid;
+      const modelClassNames = normalizeClassesUsed(status?.model?.classes_used);
+      if (modelClassNames.length) {
+        const fromModel = projectClasses
+          .filter((c) => modelClassNames.includes(c.name))
+          .map((c) => c.id);
+        if (fromModel.length) return fromModel;
+      }
+      return projectClasses.map((c) => c.id);
+    });
+  }, [projectClasses, status?.model?.classes_used]);
+
+  const applyPresetSettings = useCallback((presetKey: CpuPreset) => {
+    const details = cpuPresetOptions.find((p) => p.value === presetKey);
+    if (!details) {
+      setEpochs(CPU_PRESETS[presetKey]?.epochs ?? 20);
+      return;
+    }
+    const values = applyCpuPresetValues(details);
+    setEpochs(values.epochs);
+    setBatchSize(values.batchSize);
+    setLearningRate(values.learningRate);
+    setOptimizer(values.optimizer);
+    setScheduler(values.scheduler);
+    setAugmentation(values.augmentation);
+    setImageSize(values.imageSize);
+    setValSplit(values.valSplit);
+    setPatience(values.patience);
+  }, [cpuPresetOptions]);
+
+  useEffect(() => {
     if (!status) return;
     if (status.model?.architecture) setArchitecture(status.model.architecture);
     if (status.model?.id) {
       setSourceMode('existing');
       setSourceModelId(status.model.id);
       setPreset('fine_tune');
-      setEpochs(CPU_PRESETS.fine_tune.epochs);
       return;
     }
     const rec = status.recommended_preset as CpuPreset | undefined;
     if (rec && rec in CPU_PRESETS) {
       setPreset(rec);
-      setEpochs(CPU_PRESETS[rec].epochs);
     }
     if (status.can_fine_tune) setSourceMode('existing');
   }, [
@@ -108,6 +176,10 @@ export default function UnifiedModelPage() {
 
   const retrain = async () => {
     if (!projectId) return;
+    if (selectedClassIds.length < 1) {
+      window.alert('اختر فئة واحدة على الأقل للتقوية');
+      return;
+    }
     const strengthenId = sourceModelId || status?.model?.id;
     if (!strengthenId && sourceMode === 'existing') {
       window.alert('لا يوجد موديل موحد للتقوية. درّب موديلاً أولاً من Dataset Builder.');
@@ -121,8 +193,19 @@ export default function UnifiedModelPage() {
         preset,
         fineTune: sourceMode === 'existing',
         sourceModelArtifactId: sourceMode === 'existing' ? strengthenId : undefined,
+        classIds: selectedClassIds,
       });
-      await api.post(`/api/v1/training/project/${projectId}/retrain?${query}`);
+      const overrides: RetrainOverrides = {
+        batch_size: batchSize,
+        learning_rate: learningRate,
+        image_size: imageSize,
+        augmentation,
+        patience,
+        val_split: valSplit,
+        optimizer,
+        scheduler,
+      };
+      await api.post(`/api/v1/training/project/${projectId}/retrain?${query}`, overrides);
       await refetch();
       invalidateProject(projectId);
     } catch (e) {
@@ -134,7 +217,6 @@ export default function UnifiedModelPage() {
 
   const onPresetChange = (value: CpuPreset) => {
     setPreset(value);
-    setEpochs(CPU_PRESETS[value].epochs);
   };
 
   const handleDelete = async (password: string) => {
@@ -426,6 +508,76 @@ export default function UnifiedModelPage() {
               <Input type="number" min={5} max={200} value={epochs} onChange={(e) => setEpochs(+e.target.value)} />
             </div>
 
+            <TrainingClassPicker
+              classes={projectClasses}
+              selectedIds={selectedClassIds}
+              onChange={setSelectedClassIds}
+              disabled={loading || training?.is_running}
+              compact
+            />
+
+            <div className="border-t border-border pt-3">
+              <button
+                type="button"
+                className="text-xs text-primary underline"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+              >
+                {showAdvanced ? 'إخفاء الإعدادات المتقدمة' : 'إعدادات التدريب المتقدمة'}
+              </button>
+              {showAdvanced && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Batch Size</label>
+                    <Input type="number" min={1} max={64} value={batchSize} onChange={(e) => setBatchSize(+e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Image Size</label>
+                    <Input type="number" step={32} min={320} max={1280} value={imageSize} onChange={(e) => setImageSize(+e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Learning Rate</label>
+                    <Input type="number" step={0.0001} min={0.0001} max={0.1} value={learningRate} onChange={(e) => setLearningRate(+e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Patience</label>
+                    <Input type="number" min={1} max={100} value={patience} onChange={(e) => setPatience(+e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Val Split</label>
+                    <Input type="number" step={0.01} min={0.05} max={0.4} value={valSplit} onChange={(e) => setValSplit(+e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Augmentation</label>
+                    <Select value={augmentation} onChange={(e) => setAugmentation(e.target.value)}>
+                      <option value="none">None</option>
+                      <option value="light">Light</option>
+                      <option value="medium">Medium</option>
+                      <option value="heavy">Heavy</option>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Optimizer</label>
+                    <Select value={optimizer} onChange={(e) => setOptimizer(e.target.value)}>
+                      <option value="AdamW">AdamW</option>
+                      <option value="Adam">Adam</option>
+                      <option value="SGD">SGD</option>
+                      <option value="RMSProp">RMSProp</option>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Scheduler</label>
+                    <Select value={scheduler} onChange={(e) => setScheduler(e.target.value)}>
+                      <option value="cosine">Cosine</option>
+                      <option value="linear">Linear</option>
+                      <option value="step">Step</option>
+                      <option value="onecycle">OneCycle</option>
+                      <option value="none">None</option>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {models.length > 1 && model && (
               <details className="text-xs">
                 <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
@@ -448,7 +600,7 @@ export default function UnifiedModelPage() {
             <Button
               className="w-full"
               onClick={retrain}
-              disabled={loading || training?.is_running || (sourceMode === 'existing' && !sourceModelId && !model)}
+              disabled={loading || training?.is_running || selectedClassIds.length < 1 || (sourceMode === 'existing' && !sourceModelId && !model)}
             >
               {preset === 'fast_cpu' ? <Zap className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               {model ? 'تقوية الموديل الموحد' : 'بدء التدريب'}

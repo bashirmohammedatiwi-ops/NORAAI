@@ -337,6 +337,19 @@ class AutoLabelRequest(BaseModel):
     model_artifact_id: UUID | None = None
 
 
+class RetrainConfigOverrides(BaseModel):
+    """Optional hyperparameter overrides when retraining / strengthening the Main Model."""
+
+    batch_size: int | str | None = None
+    learning_rate: float | None = Field(None, gt=0, le=1.0)
+    image_size: int | None = Field(None, ge=320, le=1280)
+    augmentation: str | None = Field(None, pattern="^(none|light|medium|heavy)$")
+    patience: int | None = Field(None, ge=1, le=100)
+    val_split: float | None = Field(None, gt=0, lt=0.5)
+    optimizer: str | None = None
+    scheduler: str | None = None
+
+
 class TrainingJobCreate(BaseModel):
     name: str
     architecture: str = "yolo11"
