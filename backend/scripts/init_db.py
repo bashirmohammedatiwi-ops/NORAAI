@@ -51,6 +51,18 @@ async def init_db():
                 "REFERENCES model_artifacts(id)"
             )
         )
+        await conn.execute(
+            text(
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS driver_model_artifact_id UUID "
+                "REFERENCES model_artifacts(id)"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS mobile_config JSONB "
+                "NOT NULL DEFAULT '{}'::jsonb"
+            )
+        )
         for index_sql in PERFORMANCE_INDEXES:
             await conn.execute(text(index_sql))
 

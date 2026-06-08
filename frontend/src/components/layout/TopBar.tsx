@@ -11,6 +11,7 @@ const routeTitles: Record<string, string> = {
   '/ingestion': 'Ingestion',
   '/road-intelligence': 'Road Intelligence',
   '/fleet': 'Fleet',
+  '/mobile-app': 'Mobile App',
   '/reports': 'Reports',
   '/settings': 'Settings',
 };

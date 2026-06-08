@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, FolderKanban, Sparkles, Database, Map, Truck, FileText, Settings, X, ScanSearch,
+  LayoutDashboard, FolderKanban, Sparkles, Database, Map, Truck, FileText, Settings, X, ScanSearch, Smartphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -19,6 +19,7 @@ const navGroups = [
       { to: '/ingestion', icon: Database, label: 'Ingestion' },
       { to: '/road-intelligence', icon: Map, label: 'Road Intel' },
       { to: '/fleet', icon: Truck, label: 'Fleet' },
+      { to: '/mobile-app', icon: Smartphone, label: 'Mobile App' },
       { to: '/reports', icon: FileText, label: 'Reports' },
     ],
   },

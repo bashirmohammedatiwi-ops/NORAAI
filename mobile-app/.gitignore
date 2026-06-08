@@ -1,0 +1,33 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+coverage/
+
+# Android
+**/android/**/local.properties
+*.jks
+*.keystore
+
+# iOS/macOS
+**/Pods/
+**/.symlinks/
+**/xcuserdata/
+
+# IDE
+.idea/
+*.iml
+
+# Secrets
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Legacy
+node_modules/
+dist/
+web-build/
+*.orig.*

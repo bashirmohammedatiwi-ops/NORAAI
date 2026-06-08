@@ -63,18 +63,33 @@ export default function FleetPage() {
     <div className="space-y-6">
       <PageHeader title="Fleet & Driver App" />
 
-      <Card className="border-primary/20">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Smartphone className="h-5 w-5 text-primary" /> Driver Desktop App
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-2">
-          <p>Install and run from project folder:</p>
-          <code className="block bg-secondary/50 rounded-lg px-3 py-2 text-xs">cd driver-app && npm install && npm run dev</code>
-          <p>Detects: pothole, accident, road closed, speed violation (GPS).</p>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="border-primary/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Smartphone className="h-5 w-5 text-primary" /> Mobile Driver App (Flutter)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <p>تطبيق الهاتف — خريطة، كاميرا، اكتشاف، مخالفات سرعة:</p>
+            <code className="block bg-secondary/50 rounded-lg px-3 py-2 text-xs">cd mobile-app && flutter pub get && flutter run</code>
+            <p>سجّل الجهاز أدناه، ثم من <strong>Mobile App</strong> زامِن الموديل.</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-primary/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Truck className="h-5 w-5 text-primary" /> Driver Desktop App
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <p>Install and run from project folder:</p>
+            <code className="block bg-secondary/50 rounded-lg px-3 py-2 text-xs">cd driver-app && npm install && npm run dev</code>
+            <p>Detects: pothole, accident, road closed, speed violation (GPS).</p>
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader><CardTitle className="text-base">Register device</CardTitle></CardHeader>

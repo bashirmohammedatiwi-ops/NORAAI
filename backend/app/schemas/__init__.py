@@ -465,6 +465,9 @@ class TelemetryRequest(BaseModel):
     gps_status: str = "ok"
     camera_status: str = "ok"
     speed: float | None = None
+    app_version: str | None = None
+    model_version: str | None = None
+    model_sha256: str | None = None
 
 
 class RoadEventCreate(BaseModel):
@@ -497,12 +500,109 @@ class DriverProjectClass(BaseModel):
     color: str
 
 
+class SpeedViolationConfig(BaseModel):
+    enabled: bool = True
+    tolerance_kmh: float = Field(default=5, ge=0, le=30)
+    grace_seconds: float = Field(default=3, ge=0, le=60)
+    cooldown_seconds: int = Field(default=60, ge=5, le=3600)
+    fallback_limit_kmh: float = Field(default=80, ge=10, le=200)
+
+
+class MobileCameraConfig(BaseModel):
+    max_width: int = Field(default=640, ge=320, le=1280)
+    jpeg_quality: float = Field(default=0.72, ge=0.3, le=1.0)
+
+
+class MobileAppConfig(BaseModel):
+    inference_mode: str = Field(default="local", pattern="^(local|server)$")
+    detection_enabled: bool = True
+    min_confidence: float = Field(default=0.45, ge=0.1, le=1.0)
+    scan_fps: int = Field(default=12, ge=1, le=30)
+    speed_violation: SpeedViolationConfig = Field(default_factory=SpeedViolationConfig)
+    camera: MobileCameraConfig = Field(default_factory=MobileCameraConfig)
+
+
+class MobileAppConfigPatch(BaseModel):
+    inference_mode: str | None = Field(default=None, pattern="^(local|server)$")
+    detection_enabled: bool | None = None
+    min_confidence: float | None = Field(default=None, ge=0.1, le=1.0)
+    scan_fps: int | None = Field(default=None, ge=1, le=30)
+    speed_violation: SpeedViolationConfig | None = None
+    camera: MobileCameraConfig | None = None
+
+
+class DriverModelManifest(BaseModel):
+    artifact_id: UUID
+    model_name: str
+    architecture: str
+    version: str
+    sha256: str
+    format: str = "onnx"
+    image_size: int
+    nc: int
+    classes: list[str]
+    model_size_mb: float | None = None
+    updated_at: str
+    download_url: str | None = None
+
+
+class SyncDriverModelRequest(BaseModel):
+    model_artifact_id: UUID
+    promote_as_active: bool = False
+
+
+class SyncDriverModelResponse(BaseModel):
+    status: str
+    manifest: DriverModelManifest
+
+
+class MobileDeviceStatus(BaseModel):
+    id: UUID
+    device_id: str
+    vehicle_id: str
+    gps_status: str
+    camera_status: str
+    is_online: bool
+    latitude: float | None
+    longitude: float | None
+    last_communication: datetime | None
+    app_version: str | None = None
+    model_version: str | None = None
+    model_sha256: str | None = None
+    last_sync_at: str | None = None
+
+
+class MobileCommandStatus(BaseModel):
+    project_id: UUID
+    driver_model_artifact_id: UUID | None
+    active_model_artifact_id: UUID | None
+    model_ready: bool
+    deployment: dict | None = None
+    mobile_config: dict
+    devices_online: int
+    devices_total: int
+    violations_today: int
+    events_today: int
+
+
+class DriverSpeedViolationRequest(BaseModel):
+    latitude: float
+    longitude: float
+    speed: float
+    speed_limit: float
+    road_name: str | None = None
+    duration_seconds: float | None = None
+
+
 class DriverConfigResponse(BaseModel):
     project_id: UUID
     device_id: str
     vehicle_id: str
     model_ready: bool
     model_name: str | None
+    model_artifact_id: UUID | None = None
+    model_version: str | None = None
+    model_sha256: str | None = None
     model_classes: list[str] = []
     project_classes: list[DriverProjectClass] = []
     classes: list[str]
@@ -510,6 +610,10 @@ class DriverConfigResponse(BaseModel):
     speed_limit_kmh: float = 80
     road_speed_enabled: bool = False
     detection_enabled: bool = False
+    inference_mode: str = "local"
+    min_confidence: float = 0.45
+    scan_fps: int = 12
+    speed_violation: SpeedViolationConfig = Field(default_factory=SpeedViolationConfig)
     message: str | None = None
     scan_interval_ms: int = 2000
     scan_interval_fast_ms: int = 1200

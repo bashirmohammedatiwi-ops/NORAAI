@@ -20,6 +20,7 @@ import MonitoringPage from '@/pages/monitoring/MonitoringPage';
 import IngestionPage from '@/pages/ingestion/IngestionPage';
 import RoadIntelligencePage from '@/pages/road-intelligence/RoadIntelligencePage';
 import FleetPage from '@/pages/fleet/FleetPage';
+import MobileCommandPage from '@/pages/mobile/MobileCommandPage';
 import ReportsPage from '@/pages/reports/ReportsPage';
 import SettingsPage from '@/pages/settings/SettingsPage';
 import ManualTestPage from '@/pages/ManualTestPage';
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="ingestion" element={<IngestionPage />} />
             <Route path="road-intelligence" element={<RoadIntelligencePage />} />
             <Route path="fleet" element={<FleetPage />} />
+            <Route path="mobile-app" element={<MobileCommandPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="test" element={<ManualTestPage />} />
             <Route path="settings" element={<SettingsPage />} />

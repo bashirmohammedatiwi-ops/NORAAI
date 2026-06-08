@@ -16,10 +16,20 @@ from app.models.fleet_models import RoadEventType
 from app.schemas import (
     DriverConfigResponse,
     DriverDetectResponse,
+    DriverModelManifest,
     DriverNearbyEvent,
     DriverProjectClass,
     DriverSpeedLimitResponse,
+    DriverSpeedViolationRequest,
+    SpeedViolationConfig,
     TelemetryRequest,
+)
+from app.services.mobile.config import get_mobile_config
+from app.services.mobile.driver_deploy import (
+    build_model_manifest,
+    ensure_mobile_onnx_bytes,
+    mobile_onnx_key,
+    resolve_driver_artifact,
 )
 from app.core.config import get_settings
 from app.services.driver.detection import (
@@ -63,6 +73,7 @@ async def _publish_events(project_id: UUID, events: list[RoadEvent]) -> None:
                 "confidence": event.confidence,
             })
             await redis.publish(f"road:{project_id}", payload)
+            await redis.publish(f"mobile:{project_id}", payload)
     except Exception:
         pass
 
@@ -82,11 +93,33 @@ def _config_message(project_classes, artifact, model_ready: bool) -> str | None:
 
 @router.get("/config", response_model=DriverConfigResponse)
 async def driver_config(device: FleetDevice = Depends(get_fleet_device), db: AsyncSession = Depends(get_db)):
-    artifact = await get_active_model(db, device.project_id)
+    from app.models import Project
+
+    project = await db.get(Project, device.project_id)
+    artifact = await resolve_driver_artifact(db, project) if project else None
+    if not artifact:
+        artifact = await get_active_model(db, device.project_id)
     project_classes = await get_project_classes(db, device.project_id)
     model_ready = is_production_model(artifact)
     allowed = allowed_detection_classes(project_classes, artifact) if model_ready else []
     message = _config_message(project_classes, artifact, model_ready)
+
+    mobile_cfg = get_mobile_config(project)
+    speed_cfg = mobile_cfg.get("speed_violation") or {}
+    camera_cfg = mobile_cfg.get("camera") or {}
+    deployment = mobile_cfg.get("deployment") if isinstance(mobile_cfg.get("deployment"), dict) else {}
+
+    model_version = deployment.get("model_version")
+    model_sha256 = deployment.get("sha256")
+    if model_ready and artifact and not model_version:
+        try:
+            _, model_sha256 = ensure_mobile_onnx_bytes(artifact)
+            model_version = model_sha256[:16] if model_sha256 else None
+        except Exception:
+            pass
+
+    inference_mode = str(mobile_cfg.get("inference_mode") or "local")
+    detection_on = bool(mobile_cfg.get("detection_enabled", True)) and model_ready and bool(allowed)
 
     settings = get_settings()
     return DriverConfigResponse(
@@ -95,21 +128,34 @@ async def driver_config(device: FleetDevice = Depends(get_fleet_device), db: Asy
         vehicle_id=device.vehicle_id,
         model_ready=model_ready,
         model_name=artifact.name if artifact else None,
+        model_artifact_id=artifact.id if artifact else None,
+        model_version=model_version,
+        model_sha256=model_sha256,
         model_classes=model_class_names(artifact) if artifact else [],
         project_classes=[
             DriverProjectClass(id=c.id, name=c.name, color=c.color) for c in project_classes
         ],
         classes=allowed if allowed else [c.name for c in project_classes],
         alert_types=build_alert_types(project_classes),
-        speed_limit_kmh=80,
+        speed_limit_kmh=float(speed_cfg.get("fallback_limit_kmh") or 80),
         road_speed_enabled=True,
-        detection_enabled=model_ready and bool(allowed),
+        detection_enabled=detection_on,
+        inference_mode=inference_mode,
+        min_confidence=float(mobile_cfg.get("min_confidence") or 0.45),
+        scan_fps=int(mobile_cfg.get("scan_fps") or 12),
+        speed_violation=SpeedViolationConfig(
+            enabled=bool(speed_cfg.get("enabled", True)),
+            tolerance_kmh=float(speed_cfg.get("tolerance_kmh", 5)),
+            grace_seconds=float(speed_cfg.get("grace_seconds", 3)),
+            cooldown_seconds=int(speed_cfg.get("cooldown_seconds", 60)),
+            fallback_limit_kmh=float(speed_cfg.get("fallback_limit_kmh", 80)),
+        ),
         message=message,
         scan_interval_ms=settings.driver_scan_interval_ms,
         scan_interval_fast_ms=settings.driver_scan_interval_fast_ms,
         speed_fast_kmh=settings.driver_speed_fast_kmh,
-        capture_max_width=settings.driver_capture_max_width,
-        jpeg_quality=settings.driver_jpeg_quality,
+        capture_max_width=int(camera_cfg.get("max_width") or settings.driver_capture_max_width),
+        jpeg_quality=float(camera_cfg.get("jpeg_quality") or settings.driver_jpeg_quality),
     )
 
 
@@ -151,6 +197,16 @@ async def driver_telemetry(
     device.is_online = True
     device.last_communication = datetime.now(timezone.utc)
 
+    meta = dict(device.extra_metadata or {})
+    if data.app_version:
+        meta["app_version"] = data.app_version
+    if data.model_version:
+        meta["model_version"] = data.model_version
+    if data.model_sha256:
+        meta["model_sha256"] = data.model_sha256
+    meta["last_sync_at"] = datetime.now(timezone.utc).isoformat()
+    device.extra_metadata = meta
+
     db.add(
         DeviceTelemetry(
             device_id=device.id,
@@ -166,6 +222,107 @@ async def driver_telemetry(
     redis = await get_redis()
     await redis.setex(f"fleet:online:{device.device_id}", 60, "1")
     return {"status": "ok", "device_id": device.device_id}
+
+
+@router.get("/model/manifest", response_model=DriverModelManifest)
+async def driver_model_manifest(
+    device: FleetDevice = Depends(get_fleet_device),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models import Project
+
+    project = await db.get(Project, device.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    artifact = await resolve_driver_artifact(db, project)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="No model deployed for mobile app")
+    try:
+        _, sha256 = ensure_mobile_onnx_bytes(artifact)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    manifest = build_model_manifest(artifact, sha256)
+    return DriverModelManifest(
+        artifact_id=artifact.id,
+        model_name=manifest["model_name"],
+        architecture=manifest["architecture"],
+        version=manifest["version"],
+        sha256=manifest["sha256"],
+        format=manifest["format"],
+        image_size=manifest["image_size"],
+        nc=manifest["nc"],
+        classes=manifest["classes"],
+        model_size_mb=manifest.get("model_size_mb"),
+        updated_at=manifest["updated_at"],
+        download_url="/api/v1/driver/model/download",
+    )
+
+
+@router.get("/model/download")
+async def driver_model_download(
+    device: FleetDevice = Depends(get_fleet_device),
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import Response
+    from app.models import Project
+
+    project = await db.get(Project, device.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    artifact = await resolve_driver_artifact(db, project)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="No model deployed for mobile app")
+    try:
+        data, _ = ensure_mobile_onnx_bytes(artifact)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="model_{artifact.id}.onnx"',
+            "X-Model-Version": mobile_onnx_key(artifact.project_id, artifact.id),
+        },
+    )
+
+
+@router.post("/violations")
+async def report_speed_violation(
+    data: DriverSpeedViolationRequest,
+    device: FleetDevice = Depends(get_fleet_device),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.driver.event_dedup import should_create_event
+
+    allowed = await should_create_event(
+        device.project_id,
+        RoadEventType.TRAFFIC_VIOLATION.value,
+        data.latitude,
+        data.longitude,
+        device_id=device.id,
+    )
+    if not allowed:
+        return {"created": False, "reason": "cooldown"}
+
+    event = RoadEvent(
+        project_id=device.project_id,
+        device_id=device.id,
+        event_type=RoadEventType.TRAFFIC_VIOLATION,
+        latitude=data.latitude,
+        longitude=data.longitude,
+        confidence=1.0,
+        extra_metadata={
+            "speed": data.speed,
+            "speed_limit": data.speed_limit,
+            "road_name": data.road_name,
+            "duration_seconds": data.duration_seconds,
+            "source": "mobile_gps",
+        },
+    )
+    db.add(event)
+    await db.flush()
+    await _publish_events(device.project_id, [event])
+    return {"created": True, "event_id": str(event.id)}
 
 
 @router.post("/detect", response_model=DriverDetectResponse)
