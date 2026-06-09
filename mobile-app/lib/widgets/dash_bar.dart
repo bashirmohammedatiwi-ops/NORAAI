@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../models/nearby_event.dart';
 import '../models/road_speed.dart';
+import '../services/following_distance_estimator.dart';
+import '../theme/app_colors.dart';
 import '../utils/event_meta.dart';
 import '../utils/map_geo.dart';
+import 'headway_gauge.dart';
+import 'nurai_background.dart';
 import 'speed_gauge.dart';
+import 'vibration_meter.dart';
 
 class DashBar extends StatelessWidget {
   const DashBar({
@@ -17,6 +22,13 @@ class DashBar extends StatelessWidget {
     required this.classMeta,
     this.latencyMs,
     this.scanning = false,
+    this.compact = false,
+    this.accuracyM,
+    this.vibrationLevel,
+    this.vibrationIntensity,
+    this.vibrationLabel,
+    this.vibrationAvailable = true,
+    this.followingDistance,
   });
 
   final double? speed;
@@ -27,30 +39,28 @@ class DashBar extends StatelessWidget {
   final Map<String, EventMeta> classMeta;
   final int? latencyMs;
   final bool scanning;
+  final bool compact;
+  final double? accuracyM;
+  final int? vibrationLevel;
+  final double? vibrationIntensity;
+  final String? vibrationLabel;
+  final bool vibrationAvailable;
+  final FollowingDistanceState? followingDistance;
 
   @override
   Widget build(BuildContext context) {
     final hazard = nearestEvent;
     EventMeta? hazardMeta;
-    if (hazard != null) {
-      hazardMeta = getEventMeta(hazard.eventType, classMeta);
-    }
+    if (hazard != null) hazardMeta = getEventMeta(hazard.eventType, classMeta);
 
     final now = TimeOfDay.now();
-    final time =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final time = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xF00F172A),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF334155)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x66000000), blurRadius: 16, offset: Offset(0, -4)),
-        ],
-      ),
+    return GlassCard(
+      margin: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+      padding: EdgeInsets.all(compact ? 12 : 16),
+      borderRadius: compact ? 18 : 22,
+      borderColor: AppColors.accent.withValues(alpha: 0.2),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -62,8 +72,25 @@ class DashBar extends StatelessWidget {
                 limit: roadSpeed.limit,
                 fromRoad: roadSpeed.fromRoad,
                 limitLabel: roadSpeed.roadName,
+                compact: compact,
+                accuracyM: accuracyM,
               ),
-              const SizedBox(width: 8),
+              if (!compact) ...[
+                _divider(),
+                if (vibrationLevel != null)
+                  VibrationMeter(
+                    level: vibrationLevel!,
+                    intensityMs2: vibrationIntensity,
+                    label: vibrationLabel,
+                    available: vibrationAvailable,
+                    compact: true,
+                  ),
+                if (followingDistance != null) ...[
+                  _divider(),
+                  HeadwayGauge(state: followingDistance!, compact: true),
+                ],
+              ],
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -73,30 +100,35 @@ class DashBar extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                         fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'الحد ${roadSpeed.limit.round()} كم/س · ${roadSpeed.sourceLabelAr}'
-                      '${roadSpeed.roadName != null ? ' · ${roadSpeed.roadName}' : ''}',
-                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _miniChip(Icons.speed_rounded, '${roadSpeed.limit.round()} كم/س', AppColors.accent),
+                        const SizedBox(width: 6),
+                        _miniChip(
+                          roadSpeed.fromRoad ? Icons.gps_fixed : Icons.info_outline,
+                          roadSpeed.fromRoad ? 'GPS' : 'LIM',
+                          roadSpeed.fromRoad ? AppColors.success : AppColors.warning,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      modelStatus,
-                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 10),
-                    ),
+                    const SizedBox(height: 6),
+                    Text(modelStatus, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
                     if (latencyMs != null || scanning)
-                      Text(
-                        scanning
-                            ? 'AI · جاري المسح...'
-                            : 'AI · ${latencyMs}ms',
-                        style: TextStyle(
-                          color: scanning ? const Color(0xFF2DD4BF) : const Color(0xFF64748B),
-                          fontSize: 10,
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          scanning ? '● AI جاري المسح' : 'AI ${latencyMs}ms',
+                          style: TextStyle(
+                            color: scanning ? AppColors.accentBright : AppColors.textMuted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                   ],
@@ -105,63 +137,76 @@ class DashBar extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(time, style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 12)),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: roadSpeed.fromRoad
-                          ? const Color(0x3322C55E)
-                          : const Color(0x33EAB308),
-                      borderRadius: BorderRadius.circular(6),
+                  Text(time, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+                  if (compact && vibrationLevel != null) ...[
+                    const SizedBox(height: 6),
+                    VibrationMeter(
+                      level: vibrationLevel!,
+                      available: vibrationAvailable,
+                      compact: true,
                     ),
-                    child: Text(
-                      roadSpeed.fromRoad ? 'G' : 'LIM',
-                      style: TextStyle(
-                        color: roadSpeed.fromRoad
-                            ? const Color(0xFF22C55E)
-                            : const Color(0xFFEAB308),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                  ],
                 ],
               ),
             ],
           ),
           if (hazard != null && hazardMeta != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: hazardMeta.color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: hazardMeta.color.withValues(alpha: 0.4)),
+                gradient: LinearGradient(
+                  colors: [
+                    hazardMeta.color.withValues(alpha: 0.2),
+                    hazardMeta.color.withValues(alpha: 0.06),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: hazardMeta.color.withValues(alpha: 0.35)),
               ),
               child: Row(
                 children: [
-                  Text(hazardMeta.icon, style: const TextStyle(fontSize: 16)),
-                  const SizedBox(width: 8),
+                  Text(hazardMeta.icon, style: const TextStyle(fontSize: 18)),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'أقرب خطر: ${hazardMeta.labelAr}',
-                      style: TextStyle(
-                        color: hazardMeta.color,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      hazardMeta.labelAr,
+                      style: TextStyle(color: hazardMeta.color, fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                   ),
-                  Text(
-                    formatDistanceKm(hazard.distanceKm),
-                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                  ),
+                  Text(formatDistanceKm(hazard.distanceKm), style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                 ],
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _divider() {
+    return Container(
+      width: 1,
+      height: 52,
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      color: AppColors.borderLight.withValues(alpha: 0.5),
+    );
+  }
+
+  Widget _miniChip(IconData icon, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(text, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w600)),
         ],
       ),
     );

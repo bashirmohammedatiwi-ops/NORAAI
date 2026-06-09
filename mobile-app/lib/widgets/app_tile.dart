@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_colors.dart';
+
 class AppTile extends StatelessWidget {
   const AppTile({
     super.key,
@@ -7,77 +9,117 @@ class AppTile extends StatelessWidget {
     required this.label,
     required this.subtitle,
     required this.color,
-    required this.onTap,
+    this.onTap,
     this.badge,
+    this.disabled = false,
+    this.large = false,
   });
 
   final IconData icon;
   final String label;
   final String subtitle;
   final Color color;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool disabled;
   final String? badge;
+  final bool large;
 
   @override
   Widget build(BuildContext context) {
+    final inactive = disabled || onTap == null;
+
     return Material(
-      color: const Color(0xFF1E293B),
-      borderRadius: BorderRadius.circular(18),
+      color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.all(16),
+        onTap: inactive ? null : onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: color.withValues(alpha: 0.35)),
+            borderRadius: BorderRadius.circular(22),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: inactive
+                  ? [AppColors.bgCard.withValues(alpha: 0.5), AppColors.bgElevated]
+                  : [
+                      color.withValues(alpha: 0.14),
+                      AppColors.bgCard,
+                    ],
+            ),
+            border: Border.all(
+              color: inactive ? AppColors.border : color.withValues(alpha: 0.35),
+            ),
+            boxShadow: inactive
+                ? null
+                : [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.12),
+                      blurRadius: 20,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, color: color, size: 24),
-                  ),
-                  const Spacer(),
-                  if (badge != null)
+          child: Padding(
+            padding: EdgeInsets.all(large ? 20 : 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      width: large ? 52 : 44,
+                      height: large ? 52 : 44,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEF4444),
-                        borderRadius: BorderRadius.circular(10),
+                        gradient: LinearGradient(
+                          colors: [
+                            color.withValues(alpha: inactive ? 0.15 : 0.35),
+                            color.withValues(alpha: inactive ? 0.08 : 0.15),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      child: Text(
-                        badge!,
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      child: Icon(
+                        icon,
+                        color: inactive ? color.withValues(alpha: 0.4) : color,
+                        size: large ? 28 : 24,
                       ),
                     ),
-                ],
-              ),
-              const Spacer(),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                    const Spacer(),
+                    if (badge != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.danger,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(color: AppColors.danger.withValues(alpha: 0.4), blurRadius: 8),
+                          ],
+                        ),
+                        child: Text(
+                          badge!,
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-              ),
-            ],
+                const Spacer(),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: inactive ? AppColors.textMuted : AppColors.textPrimary,
+                    fontSize: large ? 18 : 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, height: 1.3),
+                ),
+              ],
+            ),
           ),
         ),
       ),

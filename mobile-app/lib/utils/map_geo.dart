@@ -66,3 +66,26 @@ double zoomForAccuracy(double? accuracyMeters) {
   if (accuracyMeters < 120) return 14;
   return 13;
 }
+
+/// Driving zoom: wider at highway speed, closer when slow / accurate fix.
+double zoomForDriving({required double speedKmh, required double accuracyM}) {
+  var zoom = 16.0;
+  if (speedKmh >= 100) {
+    zoom = 14.2;
+  } else if (speedKmh >= 70) {
+    zoom = 14.8;
+  } else if (speedKmh >= 40) {
+    zoom = 15.4;
+  } else if (speedKmh >= 15) {
+    zoom = 16.0;
+  } else {
+    zoom = 16.8;
+  }
+
+  if (accuracyM > 0) {
+    if (accuracyM < 8) zoom += 0.4;
+    if (accuracyM > 25) zoom -= 0.5;
+    if (accuracyM > 50) zoom -= 0.8;
+  }
+  return zoom.clamp(13.5, 18.0);
+}

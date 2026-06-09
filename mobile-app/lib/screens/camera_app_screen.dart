@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../controllers/drive_session.dart';
+import '../theme/app_colors.dart';
 import '../utils/platform_support.dart';
-import '../widgets/camera_preview_fit.dart';
-import '../widgets/detection_overlay.dart';
+import '../utils/responsive.dart';
+import '../widgets/camera_stack.dart';
+import '../widgets/metrics_strip.dart';
 
 class CameraAppScreen extends StatefulWidget {
   const CameraAppScreen({super.key});
@@ -17,7 +20,7 @@ class _CameraAppScreenState extends State<CameraAppScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      DriveSessionScope.of(context).requestCamera(force: true);
+      DriveSessionScope.of(context).requestCamera();
     });
   }
 
@@ -29,134 +32,148 @@ class _CameraAppScreenState extends State<CameraAppScreen> {
         final s = DriveSessionScope.of(context);
         final cam = s.camera;
         final cfg = s.serverCfg;
-        final minConf = cfg?.minConfidence ?? 0.45;
+        final minConf = s.displayMinConfidence;
         final ready = cam != null && cam.value.isInitialized;
+        final landscape = isLandscape(context);
 
         return Scaffold(
           backgroundColor: Colors.black,
-          body: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (ready)
-                CameraPreviewFit(controller: cam)
-              else
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (s.cameraStarting)
-                          const CircularProgressIndicator(color: Color(0xFF0D9488))
-                        else
-                          Icon(
-                            s.cameraError != null ? Icons.videocam_off : Icons.videocam_outlined,
-                            color: const Color(0xFF64748B),
-                            size: 48,
-                          ),
-                        const SizedBox(height: 12),
-                        Text(
-                          s.cameraError ??
-                              (s.cameraStarting ? 'جاري تشغيل الكاميرا...' : 'اضغط لبدء الكاميرا'),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                        if (s.cameraError != null || !s.cameraStarting) ...[
-                          const SizedBox(height: 16),
-                          FilledButton.icon(
-                            onPressed: s.cameraStarting ? null : () => s.requestCamera(force: true),
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('إعادة المحاولة'),
-                            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0D9488)),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              if (ready)
-                DetectionOverlay(
-                  detections: s.detections,
-                  minConfidence: minConf,
-                  scanning: s.scanning,
-                ),
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 8,
-                left: 12,
-                right: 12,
-                child: Row(
+          body: landscape && ready
+              ? Row(
                   children: [
-                    _chip(s.scanning ? 'AI · جاري المسح' : 'AI · جاهز', const Color(0xFF0D9488)),
-                    const SizedBox(width: 6),
-                    if (s.lastLatencyMs != null)
-                      _chip('${s.lastLatencyMs}ms', const Color(0xFF334155)),
-                    const Spacer(),
-                    _chip('${s.detections.length} اكتشاف', const Color(0xFF8B5CF6)),
+                    Expanded(
+                      flex: 3,
+                      child: CameraStack(
+                        controller: cam,
+                        detections: s.detections,
+                        minConfidence: minConf,
+                        scanning: s.scanning,
+                        headwayDistanceM: s.followingDistance.distanceM,
+                        leadVehicleClass: s.followingDistance.leadClass,
+                        localInference: s.usesLocalInference,
+                      ),
+                    ),
+                    Expanded(child: _sidePanel(s, cfg, minConf)),
+                  ],
+                )
+              : Column(
+                  children: [
+                    Expanded(
+                      child: ready
+                          ? CameraStack(
+                              controller: cam,
+                              detections: s.detections,
+                              minConfidence: minConf,
+                              scanning: s.scanning,
+                              headwayDistanceM: s.followingDistance.distanceM,
+                              leadVehicleClass: s.followingDistance.leadClass,
+                              localInference: s.usesLocalInference,
+                            )
+                          : Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (s.cameraStarting)
+                                      const CircularProgressIndicator(color: AppColors.accent)
+                                    else
+                                      Icon(
+                                        s.cameraError != null ? Icons.videocam_off : Icons.videocam_outlined,
+                                        color: AppColors.textMuted,
+                                        size: 48,
+                                      ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      s.cameraError ??
+                                          (s.cameraStarting ? 'جاري تشغيل الكاميرا...' : 'اضغط لبدء الكاميرا'),
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(color: Colors.white70),
+                                    ),
+                                    if (s.cameraError != null || !s.cameraStarting) ...[
+                                      const SizedBox(height: 16),
+                                      FilledButton.icon(
+                                        onPressed: s.cameraStarting ? null : () => s.requestCamera(force: true),
+                                        icon: const Icon(Icons.refresh),
+                                        label: const Text('إعادة المحاولة'),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                    ),
+                    MetricsStrip(
+                      speed: s.speedKmh,
+                      roadSpeed: s.roadSpeed.cached,
+                      placeName: s.modelStatus,
+                      scanning: s.scanning,
+                      latencyMs: s.lastLatencyMs,
+                      extra: _cameraControls(s, ready, cfg, minConf),
+                    ),
                   ],
                 ),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: MediaQuery.of(context).padding.bottom + 72,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xCC0F172A),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFF334155)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          s.modelStatus,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          cfg?.detectionEnabled == true
-                              ? 'وضع الاكتشاف: ${inferenceModeLabel(cfg?.inferenceMode)} · حد الثقة ${(minConf * 100).round()}%'
-                              : 'الاكتشاف معطّل — زامِن الموديل من لوحة التحكم',
-                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                        ),
-                        if (s.detections.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: s.detections.take(5).map((d) {
-                              return Chip(
-                                label: Text(
-                                  '${d.className} ${(d.confidence * 100).round()}%',
-                                  style: const TextStyle(fontSize: 10),
-                                ),
-                                backgroundColor: const Color(0xFF1E293B),
-                                side: const BorderSide(color: Color(0xFF0D9488)),
-                                visualDensity: VisualDensity.compact,
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
         );
       },
     );
   }
 
-  Widget _chip(String text, Color bg) {
+  Widget _cameraControls(DriveSession s, bool ready, dynamic cfg, double minConf) {
+    return Row(
+      children: [
+        if (ready && !kIsWeb)
+          IconButton(
+            onPressed: s.toggleTorch,
+            icon: Icon(
+              s.torchOn ? Icons.flashlight_on : Icons.flashlight_off,
+              color: s.torchOn ? AppColors.warning : AppColors.textSecondary,
+            ),
+          ),
+        Expanded(
+          child: Text(
+            cfg?.detectionEnabled == true
+                ? '${s.detections.length} اكتشاف · حد ${(minConf * 100).round()}%'
+                : 'الاكتشاف معطّل',
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+          ),
+        ),
+        if (s.followingDistance.hasLeadVehicle)
+          Text(
+            '~${s.followingDistance.distanceM?.round() ?? "—"}م',
+            style: const TextStyle(color: AppColors.accentBright, fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+      ],
+    );
+  }
+
+  Widget _sidePanel(DriveSession s, dynamic cfg, double minConf) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
-      child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+      color: AppColors.bgDeep,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(s.modelStatus, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Text(
+            cfg?.detectionEnabled == true
+                ? 'وضع: ${inferenceModeLabel(cfg?.inferenceMode)} · ${s.detections.length} اكتشاف'
+                : 'الاكتشاف معطّل',
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+          if (s.detectError != null) ...[
+            const SizedBox(height: 8),
+            Text(s.detectError!, style: const TextStyle(color: AppColors.warning, fontSize: 11)),
+          ],
+          const Spacer(),
+          if (!kIsWeb)
+            FilledButton.icon(
+              onPressed: s.toggleTorch,
+              icon: Icon(s.torchOn ? Icons.flashlight_on : Icons.flashlight_off),
+              label: Text(s.torchOn ? 'إطفاء الفلاش' : 'تشغيل الفلاش'),
+            ),
+        ],
+      ),
     );
   }
 }

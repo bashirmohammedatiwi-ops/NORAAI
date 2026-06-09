@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/drive_session.dart';
-import '../widgets/dash_bar.dart';
+import '../theme/app_colors.dart';
 import '../widgets/drive_map_view.dart';
+import '../widgets/gps_status_banner.dart';
+import '../widgets/map_hud.dart';
+import '../widgets/metrics_strip.dart';
+import '../widgets/waze_map_controls.dart';
 
 class MapsAppScreen extends StatelessWidget {
   const MapsAppScreen({super.key});
@@ -13,107 +17,96 @@ class MapsAppScreen extends StatelessWidget {
       listenable: DriveSessionScope.of(context),
       builder: (context, _) {
         final s = DriveSessionScope.of(context);
-        final bottomPad = MediaQuery.of(context).padding.bottom + 72;
+        final speed = s.speedKmh;
+        final limit = s.roadSpeed.cached.limit;
+        final overLimit = speed != null && limit > 0 && speed > limit;
 
         return Scaffold(
-          backgroundColor: const Color(0xFF0F172A),
-          body: Stack(
+          backgroundColor: const Color(0xFFF1F5F9),
+          body: Column(
             children: [
-              DriveMapView(
-                mapController: s.mapController,
-                center: s.mapCenter,
-                position: s.position,
-                hasGpsFix: s.hasGpsFix,
-                nearbyEvents: s.nearbyEvents,
-                classMeta: s.classMeta,
-                onMapMoved: s.onMapMoved,
-              ),
-              if (s.gpsSearching || s.gpsError != null)
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 8,
-                  left: 16,
-                  right: 16,
-                  child: Material(
-                    color: s.gpsError != null ? const Color(0xE6DC2626) : const Color(0xE60F172A),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Row(
-                        children: [
-                          if (s.gpsSearching && s.gpsError == null)
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0D9488)),
-                            ),
-                          if (s.gpsError != null)
-                            const Icon(Icons.location_off, color: Colors.white, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              s.gpsError ?? 'جاري تحديد الموقع الدقيق...',
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
-                            ),
-                          ),
-                          if (s.gpsError != null)
-                            TextButton(
-                              onPressed: s.retryGps,
-                              child: const Text('إعادة', style: TextStyle(color: Colors.white, fontSize: 11)),
-                            ),
-                        ],
+              Expanded(
+                child: Stack(
+                  children: [
+                    DriveMapView(
+                      mapController: s.mapController,
+                      center: s.mapCenter,
+                      position: s.position,
+                      hasGpsFix: s.hasGpsFix,
+                      displayHeading: s.displayHeading,
+                      headingUp: s.mapHeadingUp,
+                      followMap: s.followMap,
+                      mapZoom: s.mapZoom,
+                      mapStyle: s.mapStyle,
+                      trail: s.positionTrail,
+                      speedLimit: limit,
+                      speedKmh: speed,
+                      nearbyEvents: s.nearbyEvents,
+                      classMeta: s.classMeta,
+                      onMapMoved: s.onMapMoved,
+                    ),
+                    GpsStatusBanner(
+                      searching: s.gpsSearching,
+                      error: s.gpsError,
+                      onRetry: s.retryGps,
+                    ),
+                    Positioned(
+                      left: 14,
+                      bottom: 18,
+                      child: MapHud(
+                        speedKmh: speed?.round(),
+                        speedLimit: limit,
+                        heading: s.displayHeading,
+                        accuracyM: s.position?.accuracy,
+                        placeName: s.placeName ?? s.roadSpeed.cached.roadName,
+                        overLimit: overLimit,
+                        vibrationLevel: s.vibrationLevel,
+                        vibrationLabel: s.vibrationLabel,
+                        vibrationAvailable: s.vibrationSensorAvailable,
                       ),
                     ),
-                  ),
-                ),
-              Positioned(
-                top: MediaQuery.of(context).padding.top + (s.gpsSearching || s.gpsError != null ? 56 : 8),
-                right: 12,
-                child: Row(
-                  children: [
-                    _fab(Icons.my_location, s.hasGpsFix ? s.locateNow : s.retryGps),
-                    const SizedBox(width: 8),
-                    _fab(
-                      s.followMap ? Icons.navigation : Icons.location_searching,
-                      s.toggleFollow,
-                      active: s.followMap,
+                    Positioned(
+                      left: 14,
+                      top: MediaQuery.of(context).padding.top + 72,
+                      child: WazeSpeedLimitBadge(limit: limit, overLimit: overLimit),
                     ),
+                    Positioned(
+                      right: 12,
+                      bottom: 18,
+                      child: WazeMapControls(
+                        onZoomIn: s.zoomMapIn,
+                        onZoomOut: s.zoomMapOut,
+                        onLocate: s.hasGpsFix ? s.locateNow : s.retryGps,
+                        onToggleFollow: s.toggleFollow,
+                        onToggleHeading: s.toggleMapHeadingUp,
+                        onCycleStyle: s.cycleMapStyle,
+                        followActive: s.followMap,
+                        headingUp: s.mapHeadingUp,
+                        mapStyle: s.mapStyle,
+                        hasGps: s.hasGpsFix,
+                      ),
+                    ),
+                    if (s.bannerText != null)
+                      Positioned(
+                        top: MediaQuery.of(context).padding.top + 8,
+                        left: 12,
+                        right: 12,
+                        child: _AlertBanner(text: s.bannerText!),
+                      ),
                   ],
                 ),
               ),
-              if (s.bannerText != null)
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 56,
-                  left: 24,
-                  right: 24,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xE6EF4444),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      s.bannerText!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: bottomPad + 56,
-                child: DashBar(
-                  speed: s.speedKmh,
-                  roadSpeed: s.roadSpeed.cached,
-                  placeName: s.placeName ?? s.roadSpeed.cached.roadName,
-                  modelStatus: s.hasGpsFix
-                      ? (s.modelStatus)
-                      : (s.gpsError ?? 'جاري تحديد الموقع...'),
-                  nearestEvent: s.nearestEvent,
-                  classMeta: s.classMeta,
-                  latencyMs: s.lastLatencyMs,
-                  scanning: s.scanning,
-                ),
+              MetricsStrip(
+                speed: speed,
+                roadSpeed: s.roadSpeed.cached,
+                placeName: s.placeName ?? s.roadSpeed.cached.roadName,
+                heading: s.displayHeading,
+                nearestEvent: s.nearestEvent,
+                classMeta: s.classMeta,
+                scanning: s.scanning,
+                latencyMs: s.lastLatencyMs,
+                vibrationLevel: s.vibrationLevel,
+                vibrationAvailable: s.vibrationSensorAvailable,
               ),
             ],
           ),
@@ -121,18 +114,28 @@ class MapsAppScreen extends StatelessWidget {
       },
     );
   }
+}
 
-  Widget _fab(IconData icon, VoidCallback onTap, {bool active = false}) {
-    return Material(
-      color: active ? const Color(0xFF0D9488) : const Color(0xE60F172A),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(icon, color: Colors.white, size: 22),
-        ),
+class _AlertBanner extends StatelessWidget {
+  const _AlertBanner({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.danger,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(color: AppColors.danger.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
       ),
     );
   }

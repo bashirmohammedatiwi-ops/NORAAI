@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/nearby_event.dart';
+import '../theme/app_colors.dart';
 import '../utils/event_meta.dart';
 import '../utils/map_geo.dart';
 
@@ -24,10 +25,10 @@ class AlertSheet extends StatelessWidget {
       maxChildSize: 0.85,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Color(0xF01E293B),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            border: Border(top: BorderSide(color: Color(0xFF334155))),
+          decoration: BoxDecoration(
+            color: AppColors.bgCard.withValues(alpha: 0.95),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            border: Border(top: BorderSide(color: AppColors.borderLight.withValues(alpha: 0.5))),
           ),
           child: ListView(
             controller: scrollController,
@@ -39,7 +40,7 @@ class AlertSheet extends StatelessWidget {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF475569),
+                    color: AppColors.textMuted,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -47,7 +48,7 @@ class AlertSheet extends StatelessWidget {
               const Text(
                 'التنبيهات',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
@@ -94,7 +95,7 @@ class AlertSheet extends StatelessWidget {
       child: Text(
         text,
         style: const TextStyle(
-          color: Color(0xFF94A3B8),
+          color: AppColors.textSecondary,
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
@@ -105,7 +106,7 @@ class AlertSheet extends StatelessWidget {
   Widget _empty(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Text(text, style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+      child: Text(text, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
     );
   }
 
@@ -119,8 +120,8 @@ class AlertSheet extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.bgDeep,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Row(
@@ -134,14 +135,14 @@ class AlertSheet extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
                 ),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
                 ),
               ],
             ),

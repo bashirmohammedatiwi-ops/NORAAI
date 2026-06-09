@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../controllers/drive_session.dart';
+import '../theme/app_colors.dart';
 
 class ConnectionBanner extends StatelessWidget {
   const ConnectionBanner({super.key});
@@ -13,21 +14,49 @@ class ConnectionBanner extends StatelessWidget {
       builder: (context, _) {
         final s = DriveSessionScope.of(context);
 
+        if (s.modelSyncError != null && s.online) {
+          return _box(
+            color: AppColors.warning.withValues(alpha: 0.12),
+            border: AppColors.warning.withValues(alpha: 0.35),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(s.modelSyncError!, style: const TextStyle(color: Color(0xFFFDE68A), fontSize: 11)),
+                ),
+                TextButton(
+                  onPressed: s.syncModelNow,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.textPrimary,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('إعادة', style: TextStyle(fontSize: 11)),
+                ),
+              ],
+            ),
+          );
+        }
+
         if (s.syncPhase == SyncPhase.syncingModel && s.modelSyncProgress > 0) {
           return _box(
-            color: const Color(0xFF0D9488),
+            color: AppColors.accent.withValues(alpha: 0.15),
+            border: AppColors.accent.withValues(alpha: 0.35),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'تحميل الموديل ${(s.modelSyncProgress * 100).round()}%',
-                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                  style: const TextStyle(color: AppColors.accentBright, fontSize: 11, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 LinearProgressIndicator(
                   value: s.modelSyncProgress,
-                  backgroundColor: const Color(0x33000000),
-                  color: Colors.white,
+                  backgroundColor: AppColors.bgDeep.withValues(alpha: 0.5),
+                  color: AppColors.accentBright,
+                  borderRadius: BorderRadius.circular(4),
                 ),
               ],
             ),
@@ -36,16 +65,13 @@ class ConnectionBanner extends StatelessWidget {
 
         if (s.syncPhase == SyncPhase.syncingConfig || s.syncingModel) {
           return _box(
-            color: const Color(0xFF0D9488),
+            color: AppColors.accent.withValues(alpha: 0.15),
+            border: AppColors.accent.withValues(alpha: 0.35),
             child: const Row(
               children: [
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                ),
+                SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentBright)),
                 SizedBox(width: 8),
-                Text('جاري المزامنة مع السيرفر...', style: TextStyle(color: Colors.white, fontSize: 11)),
+                Text('جاري المزامنة مع السيرفر...', style: TextStyle(color: AppColors.accentBright, fontSize: 11)),
               ],
             ),
           );
@@ -53,17 +79,12 @@ class ConnectionBanner extends StatelessWidget {
 
         if (!s.online && s.connectionError != null) {
           return _box(
-            color: const Color(0xE6DC2626),
+            color: AppColors.danger.withValues(alpha: 0.85),
             child: Row(
               children: [
-                const Icon(Icons.cloud_off, color: Colors.white, size: 16),
+                const Icon(Icons.cloud_off_rounded, color: Colors.white, size: 16),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    s.connectionError!,
-                    style: const TextStyle(color: Colors.white, fontSize: 11),
-                  ),
-                ),
+                Expanded(child: Text(s.connectionError!, style: const TextStyle(color: Colors.white, fontSize: 11))),
                 TextButton(
                   onPressed: s.syncAll,
                   style: TextButton.styleFrom(
@@ -79,18 +100,20 @@ class ConnectionBanner extends StatelessWidget {
           );
         }
 
-        if (kIsWeb && s.online) {
+        if (s.online && s.serverCfg?.modelReady == true) {
           return _box(
-            color: const Color(0x332563EB),
-            border: const Color(0x663B82F6),
-            child: const Row(
+            color: AppColors.info.withValues(alpha: 0.1),
+            border: AppColors.info.withValues(alpha: 0.35),
+            child: Row(
               children: [
-                Icon(Icons.language, color: Color(0xFF93C5FD), size: 16),
-                SizedBox(width: 8),
+                Icon(kIsWeb ? Icons.language_rounded : Icons.cloud_rounded, color: AppColors.info, size: 16),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'وضع المتصفح — الاكتشاف عبر السيرفر (بدون تحميل ONNX)',
-                    style: TextStyle(color: Color(0xFFBFDBFE), fontSize: 11),
+                    kIsWeb
+                        ? 'وضع المتصفح — الاكتشاف عبر السيرفر'
+                        : 'متصل — الاكتشاف عبر السيرفر (${s.serverCfg?.modelName ?? "AI"})',
+                    style: const TextStyle(color: Color(0xFFBFDBFE), fontSize: 11),
                   ),
                 ),
               ],
@@ -100,11 +123,11 @@ class ConnectionBanner extends StatelessWidget {
 
         if (s.online && s.lastSyncText != null) {
           return _box(
-            color: const Color(0x3322C55E),
-            border: const Color(0x6622C55E),
+            color: AppColors.success.withValues(alpha: 0.1),
+            border: AppColors.success.withValues(alpha: 0.35),
             child: Row(
               children: [
-                const Icon(Icons.cloud_done, color: Color(0xFF22C55E), size: 16),
+                const Icon(Icons.cloud_done_rounded, color: AppColors.success, size: 16),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -113,10 +136,7 @@ class ConnectionBanner extends StatelessWidget {
                   ),
                 ),
                 if (s.serverCfg?.modelReady != true)
-                  const Text(
-                    'الموديل غير جاهز',
-                    style: TextStyle(color: Color(0xFFFDE68A), fontSize: 10),
-                  ),
+                  const Text('الموديل غير جاهز', style: TextStyle(color: Color(0xFFFDE68A), fontSize: 10)),
               ],
             ),
           );
@@ -131,10 +151,10 @@ class ConnectionBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         border: border != null ? Border.all(color: border) : null,
       ),
       child: child,

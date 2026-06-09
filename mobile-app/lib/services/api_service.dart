@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,31 +11,42 @@ import '../models/nearby_event.dart';
 import '../models/road_speed.dart';
 import 'api_exception.dart';
 
-const _defaultTimeout = Duration(seconds: 25);
-const _downloadTimeout = Duration(minutes: 5);
+const _defaultTimeout = Duration(seconds: 35);
+const _detectTimeout = Duration(seconds: 22);
+const _downloadTimeout = Duration(minutes: 45);
+const _downloadIdleTimeout = Duration(seconds: 90);
 
 class ApiService {
   ApiService(this.config);
 
   final DriverConfig config;
   final http.Client _client = http.Client();
+  final http.Client _downloadClient = http.Client();
 
   String get baseUrl => config.serverUrl.replaceAll(RegExp(r'/$'), '');
 
   Map<String, String> get _headers => {'X-Device-Key': config.apiKey};
 
-  void dispose() => _client.close();
+  void dispose() {
+    _client.close();
+    _downloadClient.close();
+  }
 
   /// Ping gateway health (no auth required).
-  Future<bool> pingHealth() async {
-    try {
-      final res = await _client
-          .get(Uri.parse('$baseUrl/health/ready'))
-          .timeout(const Duration(seconds: 12));
-      return res.statusCode == 200;
-    } catch (_) {
-      return false;
+  Future<bool> pingHealth({int attempts = 3}) async {
+    for (var i = 0; i < attempts; i++) {
+      try {
+        final res = await _client
+            .get(Uri.parse('$baseUrl/health/ready'))
+            .timeout(const Duration(seconds: 15));
+        if (res.statusCode == 200) return true;
+      } catch (_) {
+        if (i < attempts - 1) {
+          await Future<void>.delayed(Duration(milliseconds: 600 * (i + 1)));
+        }
+      }
     }
+    return false;
   }
 
   /// Validate device credentials.
@@ -78,28 +90,78 @@ class ApiService {
 
   Future<String> downloadModel(
     String destPath, {
+    int? expectedBytes,
     void Function(int received, int? total)? onProgress,
   }) async {
     final request = http.Request('GET', Uri.parse('$baseUrl/api/v1/driver/model/download'));
     request.headers.addAll(_headers);
-    final streamed = await _client.send(request).timeout(_downloadTimeout);
+    request.headers['Accept'] = 'application/octet-stream';
+
+    final streamed = await _downloadClient.send(request).timeout(_downloadTimeout);
     if (streamed.statusCode != 200) {
       final body = await streamed.stream.bytesToString();
       throw ApiException.fromResponse(streamed.statusCode, body);
     }
 
-    final total = streamed.contentLength;
+    final contentLength = streamed.contentLength;
+    final progressTotal = (contentLength != null && contentLength > 0)
+        ? contentLength
+        : expectedBytes;
+
     var received = 0;
     final file = File(destPath);
-    final sink = file.openWrite();
-    await for (final chunk in streamed.stream) {
-      received += chunk.length;
-      sink.add(chunk);
-      onProgress?.call(received, (total != null && total > 0) ? total : null);
+    if (!await file.parent.exists()) {
+      await file.parent.create(recursive: true);
     }
-    await sink.flush();
+    final sink = file.openWrite();
+    try {
+      final byteStream = streamed.stream.timeout(
+        _downloadIdleTimeout,
+        onTimeout: (EventSink<List<int>> sink) {
+          sink.close();
+          throw ApiException(
+            'download stalled',
+            userMessage: 'توقف التحميل — تحقق من الشبكة وأعد المحاولة',
+          );
+        },
+      );
+
+      await for (final chunk in byteStream) {
+        received += chunk.length;
+        sink.add(chunk);
+        onProgress?.call(received, progressTotal);
+      }
+      await sink.flush();
+    } catch (e) {
+      try {
+        await sink.close();
+      } catch (_) {}
+      if (await file.exists()) await file.delete();
+      rethrow;
+    }
     await sink.close();
+
+    if (received == 0) {
+      if (await file.exists()) await file.delete();
+      throw ApiException('empty download', userMessage: 'الملف المحمّل فارغ — أعد المحاولة');
+    }
+    if (contentLength != null &&
+        contentLength > 0 &&
+        received < contentLength * 0.95) {
+      if (await file.exists()) await file.delete();
+      throw ApiException(
+        'incomplete download',
+        userMessage:
+            'تحميل غير مكتمل — أعد المحاولة (${_fmtBytes(received)} / ${_fmtBytes(contentLength)})',
+      );
+    }
     return destPath;
+  }
+
+  static String _fmtBytes(int n) {
+    if (n >= 1024 * 1024) return '${(n / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (n >= 1024) return '${(n / 1024).toStringAsFixed(0)} KB';
+    return '$n B';
   }
 
   Future<void> sendTelemetry({
@@ -166,6 +228,7 @@ class ApiService {
     required double longitude,
     required double? speed,
     required double speedLimit,
+    double? minConfidence,
   }) async {
     return _detectMultipart(
       file: http.MultipartFile.fromBytes('file', bytes, filename: filename),
@@ -173,6 +236,7 @@ class ApiService {
       longitude: longitude,
       speed: speed,
       speedLimit: speedLimit,
+      minConfidence: minConfidence,
     );
   }
 
@@ -188,6 +252,7 @@ class ApiService {
     required double longitude,
     required double? speed,
     required double speedLimit,
+    double? minConfidence,
   }) async {
     final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/driver/detect'));
     req.headers.addAll(_headers);
@@ -196,8 +261,11 @@ class ApiService {
     req.fields['longitude'] = longitude.toString();
     req.fields['speed_limit'] = speedLimit.toString();
     if (speed != null) req.fields['speed'] = speed.toString();
+    if (minConfidence != null) {
+      req.fields['min_confidence'] = minConfidence.toString();
+    }
 
-    final streamed = await _client.send(req).timeout(_defaultTimeout);
+    final streamed = await _client.send(req).timeout(_detectTimeout);
     final body = await streamed.stream.bytesToString();
     if (streamed.statusCode != 200) {
       throw ApiException.fromResponse(streamed.statusCode, body);
@@ -311,10 +379,57 @@ class ApiService {
     throw ApiException.fromError(lastError ?? 'unknown');
   }
 
-  static Future<String> modelFilePath() async {
+  static Future<Directory> modelDirectory() async {
     final dir = await getApplicationDocumentsDirectory();
     final modelDir = Directory('${dir.path}/norai-model');
     if (!await modelDir.exists()) await modelDir.create(recursive: true);
+    return modelDir;
+  }
+
+  static Future<String> modelManifestPath() async {
+    final modelDir = await modelDirectory();
+    return '${modelDir.path}/manifest.json';
+  }
+
+  static Future<String> modelFilePath() async {
+    final modelDir = await modelDirectory();
     return '${modelDir.path}/model.onnx';
+  }
+
+  Future<({
+    List<DetectionBox> detections,
+    int eventsCreated,
+    List<dynamic> alerts,
+  })> reportLocalDetections({
+    required double latitude,
+    required double longitude,
+    required List<DetectionBox> detections,
+    double? minConfidence,
+  }) async {
+    final res = await _post(
+      '/api/v1/driver/detections/report',
+      body: {
+        'latitude': latitude,
+        'longitude': longitude,
+        'min_confidence': ?minConfidence,
+        'detections': detections
+            .map(
+              (d) => {
+                'class_name': d.className,
+                'confidence': d.confidence,
+                'bbox': d.bbox,
+                'event_type': ?d.eventType,
+              },
+            )
+            .toList(),
+      },
+    );
+    final json = jsonDecode(res.body) as Map<String, dynamic>;
+    final raw = (json['detections'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    return (
+      detections: raw.map(DetectionBox.fromJson).toList(),
+      eventsCreated: json['events_created'] as int? ?? 0,
+      alerts: json['alerts'] as List<dynamic>? ?? [],
+    );
   }
 }

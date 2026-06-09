@@ -50,11 +50,11 @@ class Settings(BaseSettings):
     driver_inference_simple: bool = True
 
     # Driver app capture tuning (returned via /driver/config)
-    driver_scan_interval_ms: int = 900
-    driver_scan_interval_fast_ms: int = 550
+    driver_scan_interval_ms: int = 750
+    driver_scan_interval_fast_ms: int = 450
     driver_speed_fast_kmh: float = 35.0
-    driver_capture_max_width: int = 512
-    driver_jpeg_quality: float = 0.62
+    driver_capture_max_width: int = 768
+    driver_jpeg_quality: float = 0.78
 
     # Duplicate event suppression (periodic camera frames)
     event_dedup_cooldown_seconds: int = 90

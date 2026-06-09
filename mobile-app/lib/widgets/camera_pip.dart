@@ -2,8 +2,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../models/detection.dart';
-import 'camera_preview_fit.dart';
-import 'detection_overlay.dart';
+import 'camera_stack.dart';
 
 class CameraPip extends StatelessWidget {
   const CameraPip({
@@ -16,6 +15,9 @@ class CameraPip extends StatelessWidget {
     required this.onToggle,
     this.cameraOk = true,
     this.bottomOffset = 24,
+    this.fullWidth = false,
+    this.headwayDistanceM,
+    this.leadVehicleClass,
   });
 
   final CameraController controller;
@@ -26,66 +28,90 @@ class CameraPip extends StatelessWidget {
   final VoidCallback onToggle;
   final bool cameraOk;
   final double bottomOffset;
+  final bool fullWidth;
+  final double? headwayDistanceM;
+  final String? leadVehicleClass;
 
   @override
   Widget build(BuildContext context) {
+    if (fullWidth) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: _buildContent(),
+      );
+    }
+
     return Positioned(
       right: expanded ? 12 : 12,
       bottom: expanded ? bottomOffset + 120 : bottomOffset,
       left: expanded ? 12 : null,
-      width: expanded ? null : 148,
-      height: expanded ? 260 : 196,
+      width: expanded ? null : 160,
+      height: expanded ? 280 : 210,
       child: GestureDetector(
         onTap: onToggle,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: cameraOk ? const Color(0xFF2DD4BF) : const Color(0xFFEF4444),
-                width: 2,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (controller.value.isInitialized)
-                  CameraPreviewFit(controller: controller)
-                else
-                  const ColoredBox(
-                    color: Color(0xFF1E293B),
-                    child: Center(
-                      child: Icon(Icons.videocam_off, color: Color(0xFF64748B)),
-                    ),
-                  ),
-                DetectionOverlay(
-                  detections: detections,
-                  minConfidence: minConfidence,
-                  scanning: scanning,
-                ),
-                Positioned(
-                  top: 8,
-                  left: 8,
-                  child: _badge(scanning ? 'AI · جاري' : 'AI', const Color(0xE60D9488)),
-                ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: _badge(
-                    cameraOk ? 'LIVE' : 'NO CAM',
-                    cameraOk ? const Color(0xE622C55E) : const Color(0xE6EF4444),
-                  ),
-                ),
-                if (!expanded)
-                  const Positioned(
-                    bottom: 6,
-                    right: 6,
-                    child: Icon(Icons.open_in_full, color: Colors.white70, size: 14),
-                  ),
-              ],
-            ),
+        child: _buildContent(),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: cameraOk ? const Color(0xFF2DD4BF) : const Color(0xFFEF4444),
+          width: 2.5,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: (cameraOk ? const Color(0xFF2DD4BF) : const Color(0xFFEF4444)).withValues(alpha: 0.25),
+            blurRadius: 16,
+            spreadRadius: 1,
           ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (controller.value.isInitialized)
+              CameraStack(
+                controller: controller,
+                detections: detections,
+                minConfidence: minConfidence,
+                scanning: scanning,
+                fit: BoxFit.cover,
+                headwayDistanceM: headwayDistanceM,
+                leadVehicleClass: leadVehicleClass,
+              )
+            else
+              const ColoredBox(
+                color: Color(0xFF1E293B),
+                child: Center(
+                  child: Icon(Icons.videocam_off, color: Color(0xFF64748B)),
+                ),
+              ),
+            Positioned(
+              top: 8,
+              left: 8,
+              child: _badge(scanning ? 'AI · جاري' : 'AI', const Color(0xE60D9488)),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: _badge(
+                cameraOk ? 'LIVE' : 'NO CAM',
+                cameraOk ? const Color(0xE622C55E) : const Color(0xE6EF4444),
+              ),
+            ),
+            if (!expanded && !fullWidth)
+              const Positioned(
+                bottom: 6,
+                right: 6,
+                child: Icon(Icons.open_in_full, color: Colors.white70, size: 14),
+              ),
+          ],
         ),
       ),
     );

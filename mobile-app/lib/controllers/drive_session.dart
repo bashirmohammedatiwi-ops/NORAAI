@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -13,20 +14,29 @@ import '../models/detection.dart' show DetectionBox, ServerConfig;
 import '../models/driver_config.dart';
 import '../models/nearby_event.dart' show LiveAlert, NearbyEvent;
 import '../services/api_exception.dart';
+import '../services/camera_frame_buffer.dart';
 import '../services/api_service.dart';
 import '../services/config_storage.dart';
 import '../services/detect_scheduler.dart';
+import '../services/following_distance_estimator.dart';
 import '../services/gps_bootstrap.dart';
+import '../services/heading_service.dart';
+import '../services/local_onnx_detector.dart';
 import '../services/location_service.dart';
 import '../services/model_sync.dart';
 import '../services/road_speed_service.dart';
+import '../services/road_vibration_sensor.dart';
+import '../services/speed_estimator.dart';
 import '../services/speed_monitor.dart';
 import '../config/app_config.dart';
 import '../utils/event_meta.dart';
+import '../utils/frame_compress.dart';
+import '../utils/image_compress.dart';
 import '../utils/map_geo.dart';
+import '../utils/map_styles.dart';
 import '../utils/platform_support.dart';
 
-const appVersion = '3.1.0';
+const appVersion = '3.9.4';
 
 enum SyncPhase { idle, connecting, syncingConfig, syncingModel, ready, error }
 
@@ -36,15 +46,30 @@ class DriveSession extends ChangeNotifier {
   final DriverConfig config;
   final VoidCallback onLogout;
 
+  /// Set by [AppShell] to switch tabs from alerts / hub actions.
+  void Function(int tab)? onNavigateTab;
+
   late final ApiService api = ApiService(config);
   late final RoadSpeedService roadSpeed = RoadSpeedService(api);
   late final LocationService locationService = LocationService();
   late final DetectScheduler scheduler = DetectScheduler();
   final mapController = MapController();
+  final HeadingService headingService = HeadingService();
+  final SpeedEstimator speedEstimator = SpeedEstimator();
+  final RoadVibrationSensor roadVibration = RoadVibrationSensor();
+  final LocalOnnxDetector localOnnx = LocalOnnxDetector();
+  final FollowingDistanceEstimator followingDistanceEstimator = FollowingDistanceEstimator();
+  final CameraFrameBuffer _frameBuffer = CameraFrameBuffer();
+  FollowingDistanceState followingDistance = const FollowingDistanceState();
+  DateTime? _lastHeadwayWarn;
 
   CameraController? camera;
   String? cameraError;
   bool cameraStarting = false;
+  bool torchOn = false;
+  String? nearbyError;
+  DateTime? _lastTelemetryAt;
+  int _bannerToken = 0;
   String? gpsError;
   bool gpsSearching = true;
   StreamSubscription<Position>? _posSub;
@@ -59,8 +84,17 @@ class DriveSession extends ChangeNotifier {
   String? connectionError;
   bool online = false;
   bool followMap = true;
+  bool mapHeadingUp = false;
+  DateTime? _lastUiNotify;
+  bool _lastCamInit = false;
+  String? _lastCamError;
+  MapStyle mapStyle = MapStyle.waze;
+  double _manualZoom = 0;
+  List<LatLng> positionTrail = [];
   bool scanning = false;
   bool detectBusy = false;
+  String? detectError;
+  double displayHeading = 0;
   int eventsCount = 0;
   int? lastLatencyMs;
   String? bannerText;
@@ -71,7 +105,16 @@ class DriveSession extends ChangeNotifier {
   DateTime? lastModelSync;
   String? cachedModelVersion;
   String? cachedModelSha256;
+  String? modelSyncError;
+  DateTime? _lastModelSyncFailAt;
+  bool _modelAutoSyncDone = false;
   int _failures = 0;
+  bool _localOnnxPending = false;
+  bool _onnxLoading = false;
+  DateTime? _lastProgressNotify;
+  DateTime? _cameraReadyAt;
+  Future<void>? _cameraInitFuture;
+  int _detectFailures = 0;
 
   List<DetectionBox> detections = [];
   List<LiveAlert> liveAlerts = [];
@@ -83,11 +126,75 @@ class DriveSession extends ChangeNotifier {
   Timer? _reconnectTimer;
   Timer? _gpsWatchdog;
 
+  int get vibrationLevel => roadVibration.levelPercent;
+
+  double get displayMinConfidence {
+    final cfg = serverCfg;
+    if (cfg == null) return 0.4;
+    return scheduler.displayMinConfidence(cfg);
+  }
+
+  double get vibrationIntensity => roadVibration.intensityMs2;
+
+  String get vibrationLabel => roadVibration.labelAr;
+
+  bool get vibrationSensorAvailable => roadVibration.available;
+
+  bool get localInferenceReady => localOnnx.isReady;
+
+  String? get localInferenceError => localOnnx.loadError;
+
+  /// On-device ONNX is preferred whenever the model is loaded.
+  bool get usesLocalInference =>
+      supportsLocalInference && localOnnx.isReady && serverCfg?.modelReady == true;
+
+  bool get prefersOnDeviceModel =>
+      supportsLocalInference && serverCfg?.modelReady == true;
+
+  void _notifyThrottled() {
+    final now = DateTime.now();
+    if (_lastUiNotify != null && now.difference(_lastUiNotify!).inMilliseconds < 280) return;
+    _lastUiNotify = now;
+    notifyListeners();
+  }
+
+  void _onCameraChanged() {
+    final cam = camera;
+    if (cam == null) return;
+    final init = cam.value.isInitialized;
+    final err = cam.value.errorDescription;
+    if (init != _lastCamInit || err != _lastCamError) {
+      _lastCamInit = init;
+      _lastCamError = err;
+      _notifyThrottled();
+    }
+  }
+
   void start() {
+    headingService.start();
+    roadVibration.start(_notifyThrottled);
+    unawaited(_loadModelCache().then((_) => ensureLocalOnnx()));
     startGps();
-    syncAll();
-    _configTimer = Timer.periodic(const Duration(seconds: 20), (_) => syncConfig());
+    unawaited(_safeSyncAll());
+    _configTimer = Timer.periodic(const Duration(seconds: 20), (_) => unawaited(_safeSyncConfig()));
     _nearbyTimer = Timer.periodic(const Duration(seconds: 15), (_) => fetchNearby());
+  }
+
+  Future<void> _safeSyncAll() async {
+    try {
+      await syncAll();
+    } catch (e, st) {
+      debugPrint('syncAll failed: $e\n$st');
+      _onConnectionFailed(ApiException.fromError(e).displayMessage);
+    }
+  }
+
+  Future<void> _safeSyncConfig() async {
+    try {
+      await syncConfig();
+    } catch (e, st) {
+      debugPrint('syncConfig failed: $e\n$st');
+    }
   }
 
   @override
@@ -99,12 +206,21 @@ class DriveSession extends ChangeNotifier {
     _gpsWatchdog?.cancel();
     _posSub?.cancel();
     camera?.dispose();
+    headingService.dispose();
+    roadVibration.dispose();
+    unawaited(localOnnx.dispose());
     api.dispose();
     super.dispose();
   }
 
-  double? get speedKmh =>
-      position != null && position!.speed >= 0 ? position!.speed * 3.6 : null;
+  double? get speedKmh {
+    final v = speedEstimator.displayKmh;
+    return v?.toDouble();
+  }
+
+  double? get speedRawKmh => speedEstimator.smoothedKmh;
+
+  double? get gpsAccuracyM => position?.accuracy;
 
   NearbyEvent? get nearestEvent {
     if (nearbyEvents.isEmpty) return null;
@@ -122,21 +238,72 @@ class DriveSession extends ChangeNotifier {
     return connectionError ?? 'غير متصل';
   }
 
+  Future<void> _loadModelCache() async {
+    final cache = await ConfigStorage.loadModelCache();
+    cachedModelVersion = cache.version;
+    cachedModelSha256 = cache.sha256;
+  }
+
   Future<void> syncAll() async {
-    await syncConfig(forceModelSync: true);
+    await syncConfig(forceModelSync: false);
     await fetchNearby(force: true);
+  }
+
+  Future<CameraController> _openCameraController(CameraDescription selected) async {
+    final presets = [ResolutionPreset.medium];
+
+    Object? lastError;
+    for (final preset in presets) {
+      final controller = CameraController(
+        selected,
+        preset,
+        enableAudio: false,
+        imageFormatGroup: kIsWeb ? null : ImageFormatGroup.yuv420,
+      );
+      controller.addListener(_onCameraChanged);
+      try {
+        await controller.initialize();
+        if (controller.value.isInitialized) return controller;
+        await controller.dispose();
+      } catch (e) {
+        lastError = e;
+        await controller.dispose();
+      }
+    }
+    throw lastError ?? StateError('camera init failed');
   }
 
   /// Lazy camera init — must run only when camera tab is visible (especially on web).
   Future<void> ensureCamera({bool force = false}) async {
     if (!force && camera != null && camera!.value.isInitialized) return;
+    if (_cameraInitFuture != null) return _cameraInitFuture!;
+
+    _cameraInitFuture = _ensureCameraImpl(force);
+    try {
+      await _cameraInitFuture;
+    } finally {
+      _cameraInitFuture = null;
+    }
+  }
+
+  Future<void> _ensureCameraImpl(bool force) async {
+    if (!force && camera != null && camera!.value.isInitialized) return;
     if (cameraStarting) return;
 
     cameraStarting = true;
+    _cameraReadyAt = null;
     cameraError = null;
+    _detectTimer?.cancel();
     notifyListeners();
 
     try {
+      final cfg = serverCfg;
+      if (localOnnx.isReady) {
+        modelStatus = 'محلي ONNX ⚡ · ${cachedModelVersion ?? cfg?.modelVersion ?? "AI"}';
+      } else if (cfg?.modelReady == true) {
+        modelStatus = 'الموديل جاهز — ONNX عند إغلاق الكاميرا';
+      }
+
       if (!kIsWeb) {
         final camPerm = await Permission.camera.request();
         if (!camPerm.isGranted) {
@@ -164,22 +331,16 @@ class DriveSession extends ChangeNotifier {
       final old = camera;
       camera = null;
       if (old != null) {
+        await _frameBuffer.detach(old);
         await old.dispose();
         if (kIsWeb) {
-          // Browser releases getUserMedia asynchronously.
-          await Future<void>.delayed(const Duration(milliseconds: 200));
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+        } else {
+          await Future<void>.delayed(const Duration(milliseconds: 400));
         }
       }
 
-      final controller = CameraController(
-        selected,
-        kIsWeb ? ResolutionPreset.medium : ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: kIsWeb ? null : ImageFormatGroup.jpeg,
-      );
-
-      controller.addListener(notifyListeners);
-      await controller.initialize();
+      final controller = await _openCameraController(selected);
 
       if (!controller.value.isInitialized) {
         await controller.dispose();
@@ -187,10 +348,29 @@ class DriveSession extends ChangeNotifier {
         return;
       }
 
+      try {
+        await controller.setFocusMode(FocusMode.auto);
+        await controller.setExposureMode(ExposureMode.auto);
+      } catch (_) {}
+
       camera = controller;
       cameraError = null;
+      _cameraReadyAt = DateTime.now();
+      _detectFailures = 0;
       notifyListeners();
-      scheduleNextDetect(0);
+
+      // Let preview stabilize before image stream (prevents native crashes).
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      if (camera != controller || !controller.value.isInitialized) return;
+
+      await _frameBuffer.attach(controller);
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      if (camera == controller && controller.value.isInitialized) {
+        if (!localOnnx.isReady && cfg?.modelReady == true) {
+          unawaited(ensureLocalOnnx());
+        }
+        scheduleNextDetect(600);
+      }
     } catch (e) {
       cameraError = kIsWeb
           ? 'لم يتم السماح بالكاميرا — اضغط «إعادة المحاولة» واقبل طلب المتصفح'
@@ -207,12 +387,21 @@ class DriveSession extends ChangeNotifier {
 
   Future<void> releaseCamera() async {
     _detectTimer?.cancel();
+    _cameraReadyAt = null;
+    detectBusy = false;
+    scanning = false;
     final old = camera;
     camera = null;
     cameraError = null;
+    torchOn = false;
+    detections = [];
     notifyListeners();
     if (old != null) {
+      await _frameBuffer.detach(old);
       await old.dispose();
+    }
+    if (!localOnnx.isReady && serverCfg?.modelReady == true) {
+      unawaited(ensureLocalOnnx());
     }
   }
 
@@ -234,30 +423,56 @@ class DriveSession extends ChangeNotifier {
       classMeta = buildClassMetaFromServer(cfg.projectClasses, cfg.alertTypes);
       _speedMonitor = SpeedViolationMonitor(cfg.speedViolation);
 
-      if (cfg.detectionEnabled && cfg.modelReady) {
-        unawaited(api.warmupModel());
-      }
-
       if (cfg.modelReady) {
-        final versionChanged = cfg.modelVersion != null &&
-            cfg.modelVersion != cachedModelVersion &&
-            cachedModelVersion != null;
-        final shaChanged =
-            cfg.modelSha256 != null && cfg.modelSha256 != cachedModelSha256;
+        modelSyncError = null;
+        if (supportsLocalInference) {
+          final serverSha = cfg.modelSha256?.toLowerCase();
+          var localApplied = false;
+          if (serverSha != null && serverSha.isNotEmpty) {
+            localApplied = await _applyLocalModelIfReady(serverSha, cfg);
+          }
 
-        final mode = effectiveInferenceMode(cfg.inferenceMode);
-        if (mode == 'local') {
-          if (forceModelSync || versionChanged || shaChanged || cachedModelVersion == null) {
-            await _syncModel(cfg);
-          } else {
-            modelStatus = 'محلي · ${cachedModelVersion ?? cfg.modelVersion ?? "—"}';
-            syncPhase = SyncPhase.ready;
+          if (!localApplied) {
+            final versionChanged = cfg.modelVersion != null &&
+                cfg.modelVersion != cachedModelVersion &&
+                cachedModelVersion != null;
+            final shaChanged = serverSha != null &&
+                cachedModelSha256 != null &&
+                serverSha != cachedModelSha256!.toLowerCase();
+            final needsModelSync = forceModelSync || versionChanged || shaChanged;
+            final missingLocalCache = cachedModelVersion == null;
+            final failCooldown = _lastModelSyncFailAt != null &&
+                DateTime.now().difference(_lastModelSyncFailAt!) < const Duration(minutes: 30);
+
+            if (forceModelSync) {
+              await _syncModel(cfg, userInitiated: true);
+            } else if (needsModelSync && !syncingModel && !failCooldown) {
+              modelStatus = 'متصل — تحميل الموديل داخل التطبيق';
+              syncPhase = SyncPhase.ready;
+              unawaited(Future<void>.delayed(const Duration(seconds: 1), () => _syncModel(cfg)));
+            } else if (missingLocalCache && !_modelAutoSyncDone && !syncingModel && !failCooldown) {
+              _modelAutoSyncDone = true;
+              modelStatus = 'متصل — تحميل الموديل داخل التطبيق';
+              syncPhase = SyncPhase.ready;
+              unawaited(Future<void>.delayed(const Duration(seconds: 1), () => _syncModel(cfg)));
+            } else {
+              modelStatus = localOnnx.isReady
+                  ? 'محلي ONNX ⚡ · ${cachedModelVersion ?? cfg.modelVersion ?? "—"}'
+                  : 'جاهز للتحميل · ${cachedModelVersion ?? cfg.modelVersion ?? "—"}';
+              syncPhase = SyncPhase.ready;
+              if (cachedModelSha256 != null) {
+                _localOnnxPending = true;
+                unawaited(ensureLocalOnnx());
+              }
+            }
           }
         } else {
-          modelStatus = supportsLocalOnnx
-              ? 'سيرفر · ${cfg.modelName ?? cfg.modelVersion ?? "—"}'
-              : 'سيرفر (متصفح) · ${cfg.modelName ?? cfg.modelVersion ?? "—"}';
+          final label = cfg.modelName ?? cfg.modelVersion ?? '—';
+          modelStatus = kIsWeb ? 'سيرفر (متصفح) · $label' : 'سيرفر · $label';
           syncPhase = SyncPhase.ready;
+          if (cfg.detectionEnabled) {
+            unawaited(api.warmupModel());
+          }
         }
       } else {
         modelStatus = cfg.message ?? 'لا يوجد موديل — درّب وزامِن من لوحة التحكم';
@@ -271,35 +486,121 @@ class DriveSession extends ChangeNotifier {
     }
   }
 
-  Future<void> _syncModel(ServerConfig cfg) async {
+  Future<bool> _applyLocalModelIfReady(String sha, ServerConfig cfg) async {
+    final localReady = await ModelSync.tryLocalReady(sha);
+    if (localReady == null) return false;
+
+    cachedModelVersion = localReady.version ?? cfg.modelVersion;
+    cachedModelSha256 = localReady.sha256 ?? sha;
+    await ConfigStorage.saveModelCache(
+      version: cachedModelVersion,
+      sha256: cachedModelSha256,
+    );
+    lastModelSync = DateTime.now();
+    modelStatus = localReady.message;
+    modelSyncError = null;
+    _lastModelSyncFailAt = null;
+    syncPhase = SyncPhase.ready;
+    _localOnnxPending = true;
+    unawaited(ensureLocalOnnx());
+    return true;
+  }
+
+  Future<void> _syncModel(ServerConfig cfg, {bool userInitiated = false}) async {
+    if (syncingModel) return;
+    if (userInitiated) {
+      _lastModelSyncFailAt = null;
+    }
+
     syncingModel = true;
     syncPhase = SyncPhase.syncingModel;
     modelSyncProgress = 0;
+    _lastProgressNotify = null;
     notifyListeners();
 
-    final result = await ModelSync.sync(
-      api,
-      cfg.modelVersion,
-      onProgress: (p) {
-        modelSyncProgress = p;
-        notifyListeners();
-      },
-    );
+    try {
+      final result = await ModelSync.sync(
+        api,
+        cfg.modelVersion,
+        expectedSha256: cfg.modelSha256,
+        onProgress: (p) {
+          modelSyncProgress = p;
+          final now = DateTime.now();
+          if (_lastProgressNotify == null ||
+              now.difference(_lastProgressNotify!).inMilliseconds >= 450 ||
+              p >= 1.0) {
+            _lastProgressNotify = now;
+            _notifyThrottled();
+          }
+        },
+      );
 
-    syncingModel = false;
-    if (result.ready) {
-      cachedModelVersion = result.version ?? cfg.modelVersion;
-      cachedModelSha256 = result.sha256 ?? cfg.modelSha256;
-      lastModelSync = DateTime.now();
-      modelStatus = result.message;
+      if (result.ready) {
+        cachedModelVersion = result.version ?? cfg.modelVersion;
+        cachedModelSha256 = result.sha256 ?? cfg.modelSha256;
+        await ConfigStorage.saveModelCache(
+          version: cachedModelVersion,
+          sha256: cachedModelSha256,
+        );
+        lastModelSync = DateTime.now();
+        modelStatus = result.message;
+        modelSyncError = null;
+        _lastModelSyncFailAt = null;
+        syncPhase = SyncPhase.ready;
+        connectionError = null;
+        if (result.path != null) {
+          _localOnnxPending = true;
+          unawaited(ensureLocalOnnx());
+        }
+      } else {
+        modelStatus = 'اكتشاف سحابي · ${cfg.modelName ?? cfg.modelVersion ?? "—"}';
+        modelSyncError = result.message;
+        _lastModelSyncFailAt = DateTime.now();
+        syncPhase = SyncPhase.ready;
+      }
+    } catch (e, st) {
+      debugPrint('_syncModel failed: $e\n$st');
+      modelStatus = 'اكتشاف سحابي · ${cfg.modelName ?? cfg.modelVersion ?? "—"}';
+      modelSyncError = ApiException.fromError(e).displayMessage;
+      _lastModelSyncFailAt = DateTime.now();
       syncPhase = SyncPhase.ready;
-      connectionError = null;
-    } else {
-      modelStatus = result.message;
-      syncPhase = online ? SyncPhase.ready : SyncPhase.error;
-      if (!online) connectionError = result.message;
+    } finally {
+      syncingModel = false;
+      notifyListeners();
     }
-    notifyListeners();
+  }
+
+  /// Load ONNX into app memory — never while camera is opening (OOM/native crash).
+  Future<void> ensureLocalOnnx() async {
+    if (!supportsLocalInference || localOnnx.isReady || localOnnx.isLoading || _onnxLoading) {
+      return;
+    }
+    if (cameraStarting) {
+      return;
+    }
+    if (!_localOnnxPending) {
+      final path = await ApiService.modelFilePath();
+      final manifest = await ApiService.modelManifestPath();
+      if (!await File(path).exists() || !await File(manifest).exists()) return;
+      _localOnnxPending = true;
+    }
+
+    _onnxLoading = true;
+    try {
+      final path = await ApiService.modelFilePath();
+      final manifest = await ApiService.modelManifestPath();
+      await localOnnx.load(modelPath: path, manifestPath: manifest);
+      if (localOnnx.isReady) {
+        _localOnnxPending = false;
+        modelStatus = 'محلي ONNX ⚡ · ${cachedModelVersion ?? serverCfg?.modelVersion ?? "—"}';
+        _notifyThrottled();
+      }
+    } catch (e, st) {
+      debugPrint('ensureLocalOnnx failed: $e\n$st');
+      modelSyncError = 'تعذّر تحميل ONNX — يُستخدم السيرفر';
+    } finally {
+      _onnxLoading = false;
+    }
   }
 
   Future<void> syncModelNow() async {
@@ -308,12 +609,14 @@ class DriveSession extends ChangeNotifier {
       await syncConfig(forceModelSync: true);
       return;
     }
-    if (effectiveInferenceMode(cfg.inferenceMode) == 'local') {
-      await _syncModel(cfg);
+    if (supportsLocalInference) {
+      await _syncModel(cfg, userInitiated: true);
       await syncConfig();
     } else {
-      await syncConfig(forceModelSync: true);
-      modelStatus = 'وضع السيرفر — لا حاجة لتحميل ONNX';
+      modelSyncError = null;
+      await api.warmupModel();
+      await syncConfig();
+      modelStatus = 'سيرفر · ${cfg.modelName ?? cfg.modelVersion ?? "—"} — متزامن';
       notifyListeners();
     }
   }
@@ -415,20 +718,33 @@ class DriveSession extends ChangeNotifier {
     gpsSearching = false;
     gpsError = null;
     _gpsWatchdog?.cancel();
-    if (moveMap) {
-      mapController.move(
-        LatLng(pos.latitude, pos.longitude),
-        zoomForAccuracy(pos.accuracy > 0 ? pos.accuracy : 80),
-      );
-    }
-    notifyListeners();
-    onPosition(pos);
+
+    speedEstimator.update(pos);
+    final gpsH = pos.heading;
+    final spd = speedEstimator.smoothedKmh ?? 0;
+    displayHeading = headingService.update(gpsHeading: gpsH, speedKmh: spd);
+    _updateFollowingDistance();
+
+    _appendTrail(pos);
+
+    // Camera glide handled by [DriveMapView] when followMap is true.
+    _notifyThrottled();
+    unawaited(onPosition(pos));
   }
 
   LatLng get mapCenter {
     final pos = position;
     if (pos != null) return LatLng(pos.latitude, pos.longitude);
     return kDefaultMapCenter;
+  }
+
+  double get mapZoom {
+    if (_manualZoom > 0) return _manualZoom;
+    final pos = position;
+    return zoomForDriving(
+      speedKmh: speedKmh ?? 0,
+      accuracyM: pos != null && pos.accuracy > 0 ? pos.accuracy : 40,
+    );
   }
 
   bool get hasGpsFix => position != null;
@@ -446,25 +762,29 @@ class DriveSession extends ChangeNotifier {
     final cfg = serverCfg;
     if (cfg == null || !online) return;
 
-    final speed = pos.speed >= 0 ? pos.speed * 3.6 : 0.0;
+    final speed = speedKmh ?? 0.0;
 
-    unawaited(api.sendTelemetry(
-      latitude: pos.latitude,
-      longitude: pos.longitude,
-      speed: speed > 0 ? speed : null,
-      gpsStatus: 'ok',
-      cameraStatus: camera?.value.isInitialized == true ? 'ok' : 'error',
-      appVersion: appVersion,
-      modelVersion: cfg.modelVersion,
-      modelSha256: cfg.modelSha256,
-    ));
+    final now = DateTime.now();
+    if (_lastTelemetryAt == null || now.difference(_lastTelemetryAt!).inSeconds >= 10) {
+      _lastTelemetryAt = now;
+      unawaited(api.sendTelemetry(
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        speed: speed > 0 ? speed : null,
+        gpsStatus: 'ok',
+        cameraStatus: camera?.value.isInitialized == true ? 'ok' : 'error',
+        appVersion: appVersion,
+        modelVersion: cfg.modelVersion,
+        modelSha256: cfg.modelSha256,
+      ));
+    }
 
     await roadSpeed.fetchIfNeeded(pos.latitude, pos.longitude, config.speedLimit);
 
     unawaited(locationService.reverseGeocode(pos.latitude, pos.longitude).then((p) {
-      if (p != null) {
+      if (p != null && p != placeName) {
         placeName = p;
-        notifyListeners();
+        _notifyThrottled();
       }
     }));
 
@@ -491,18 +811,10 @@ class DriveSession extends ChangeNotifier {
             speed: speed,
             speedLimit: roadSpeed.cached.limit,
           ));
-          bannerText = 'مخالفة سرعة: ${speed.round()} كم/س';
-          notifyListeners();
-          Future.delayed(const Duration(seconds: 4), () {
-            if (bannerText?.contains('مخالفة') == true) {
-              bannerText = null;
-              notifyListeners();
-            }
-          });
+          _showBanner('مخالفة سرعة: ${speed.round()} كم/س', const Duration(seconds: 4));
         }
       }
     }
-    notifyListeners();
   }
 
   Future<void> fetchNearby({bool force = false}) async {
@@ -511,23 +823,53 @@ class DriveSession extends ChangeNotifier {
     if (!force && !online) return;
     try {
       nearbyEvents = await api.fetchNearby(pos.latitude, pos.longitude);
+      nearbyError = null;
       notifyListeners();
-    } catch (_) {}
+    } on ApiException catch (e) {
+      nearbyError = e.displayMessage;
+      notifyListeners();
+    } catch (_) {
+      nearbyError = 'تعذّر تحميل الأحداث القريبة';
+      notifyListeners();
+    }
+  }
+
+  Future<Uint8List?> _captureTakePicture(CameraController cam, int maxW, int q) async {
+    try {
+      final file = await cam.takePicture().timeout(const Duration(seconds: 4));
+      final rawBytes = await file.readAsBytes();
+      if (!kIsWeb) {
+        unawaited(File(file.path).delete().catchError((_) => File(file.path)));
+      }
+      try {
+        return await compute(compressFrameIsolate, [rawBytes, maxW, q]);
+      } catch (_) {
+        return compressJpegBytes(rawBytes, maxWidth: maxW, quality: q);
+      }
+    } catch (_) {
+      return null;
+    }
   }
 
   void scheduleNextDetect(int delayMs) {
     _detectTimer?.cancel();
     _detectTimer = Timer(Duration(milliseconds: delayMs), () async {
+      final started = DateTime.now();
       await runDetect();
       final cfg = serverCfg;
       final pos = position;
       if (cfg == null || pos == null) {
-        scheduleNextDetect(1500);
+        scheduleNextDetect(1000);
         return;
       }
-      final speed = pos.speed >= 0 ? pos.speed * 3.6 : 0.0;
-      final next = scheduler.nextIntervalMs(cfg, speed, lastLatencyMs: lastLatencyMs);
-      scheduleNextDetect(next);
+      final speed = speedKmh ?? 0.0;
+      final useLocal = usesLocalInference;
+      final interval = useLocal
+          ? scheduler.localIntervalMs(lastLatencyMs: lastLatencyMs)
+          : scheduler.nextIntervalMs(cfg, speed, lastLatencyMs: lastLatencyMs);
+      final elapsed = DateTime.now().difference(started).inMilliseconds;
+      final floor = useLocal ? 45 : 120;
+      scheduleNextDetect((interval - elapsed).clamp(floor, interval));
     });
   }
 
@@ -536,80 +878,225 @@ class DriveSession extends ChangeNotifier {
     final cam = camera;
     final pos = position;
     if (cfg == null || cam == null || !cam.value.isInitialized || pos == null) return;
-    if (!online || !cfg.detectionEnabled || detectBusy) return;
+    if (!cfg.detectionEnabled || detectBusy || cameraStarting || _onnxLoading) return;
+
+    final readyAt = _cameraReadyAt;
+    if (readyAt != null && DateTime.now().difference(readyAt).inMilliseconds < 350) {
+      return;
+    }
+
+    final useLocal = usesLocalInference && localOnnx.isReady;
+    if (!useLocal && !online) return;
 
     detectBusy = true;
     scanning = true;
-    notifyListeners();
 
     try {
-      final file = await cam.takePicture();
-      final result = kIsWeb
-          ? await api.detectFrameBytes(
-              bytes: await file.readAsBytes(),
-              filename: 'frame.jpg',
-              latitude: pos.latitude,
-              longitude: pos.longitude,
-              speed: pos.speed >= 0 ? pos.speed * 3.6 : null,
-              speedLimit: roadSpeed.cached.limit,
-            )
-          : await api.detectFrame(
-              imagePath: file.path,
-              latitude: pos.latitude,
-              longitude: pos.longitude,
-              speed: pos.speed >= 0 ? pos.speed * 3.6 : null,
-              speedLimit: roadSpeed.cached.limit,
-            );
+      detectError = null;
+      final useLocalNow = usesLocalInference;
+      final maxW = useLocalNow
+          ? scheduler.localCaptureWidth(localOnnx.inputSize)
+          : scheduler.captureWidth(cfg, lastLatencyMs: lastLatencyMs);
+      final q = useLocalNow ? scheduler.localJpegQuality() : scheduler.jpegQuality(cfg, lastLatencyMs: lastLatencyMs);
+      final displayMin = scheduler.displayMinConfidence(cfg);
 
-      detections = result.detections
-          .where((d) => d.confidence >= cfg.minConfidence && d.bbox.length >= 4)
-          .toList();
-      lastLatencyMs = result.latencyMs;
+      Uint8List? frameBytes;
+      if (!kIsWeb && _frameBuffer.isAttached) {
+        frameBytes = await _frameBuffer.captureJpeg(maxWidth: maxW, quality: q);
+      } else {
+        frameBytes = await _captureTakePicture(cam, maxW, q);
+      }
+      if (frameBytes == null) {
+        _detectFailures++;
+        detectError = 'تعذّر التقاط إطار — ${_detectFailures >= 3 ? "أعد فتح الكاميرا" : "إعادة المحاولة..."}';
+        return;
+      }
+      _detectFailures = 0;
 
-      if (result.eventsCreated > 0) {
-        eventsCount += result.eventsCreated;
-        if (supportsVibration && await Vibration.hasVibrator() == true) {
-          await Vibration.vibrate(duration: 200);
+      if (useLocalNow) {
+        final local = await localOnnx.detect(
+          frameBytes,
+          minConfidence: cfg.minConfidence,
+        );
+        detections = local.boxes
+            .where((d) => d.confidence >= displayMin && d.bbox.length >= 4)
+            .toList();
+        lastLatencyMs = local.latencyMs;
+
+        _updateFollowingDistance();
+
+        if (online && detections.isNotEmpty) {
+          unawaited(api.reportLocalDetections(
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            detections: detections,
+            minConfidence: cfg.minConfidence,
+          ).then((report) => _handleDetectEvents(report.eventsCreated, report.alerts)));
         }
-        for (final raw in result.alerts) {
-          if (raw is Map<String, dynamic>) {
-            pushLiveAlert(LiveAlert.fromDetect(raw));
-          }
-        }
-        unawaited(fetchNearby(force: true));
+      } else {
+        final sw = Stopwatch()..start();
+        final result = await api.detectFrameBytes(
+          bytes: frameBytes,
+          filename: 'frame.jpg',
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          speed: speedKmh,
+          speedLimit: roadSpeed.cached.limit,
+          minConfidence: cfg.minConfidence,
+        );
+        lastLatencyMs = result.latencyMs ?? sw.elapsedMilliseconds;
+
+        detections = result.detections
+            .where((d) => d.confidence >= displayMin && d.bbox.length >= 4)
+            .toList();
+        _updateFollowingDistance();
+        unawaited(_handleDetectEvents(result.eventsCreated, result.alerts));
       }
     } on ApiException catch (e) {
       detections = [];
+      detectError = e.displayMessage;
       if (!online) connectionError = e.displayMessage;
-    } catch (_) {
+    } catch (e) {
       detections = [];
+      detectError = e is StateError ? e.message : 'فشل الاكتشاف — ${e.runtimeType}';
     } finally {
       detectBusy = false;
       scanning = false;
-      notifyListeners();
+      _notifyThrottled();
     }
+  }
+
+  void _updateFollowingDistance() {
+    final cfg = serverCfg;
+    followingDistance = followingDistanceEstimator.update(
+      detections: detections,
+      speedKmh: speedKmh,
+      safeHeadwaySec: 2.0,
+      minConfidence: (cfg?.minConfidence ?? 0.35) * 0.85,
+    );
+    _maybeWarnHeadway();
+  }
+
+  void _maybeWarnHeadway() {
+    if (!followingDistance.tooClose) return;
+    final speed = speedKmh ?? 0;
+    if (speed < 25) return;
+    final now = DateTime.now();
+    if (_lastHeadwayWarn != null && now.difference(_lastHeadwayWarn!).inSeconds < 12) {
+      return;
+    }
+    _lastHeadwayWarn = now;
+    final dist = followingDistance.distanceM?.round();
+    final headway = followingDistance.headwaySec?.toStringAsFixed(1);
+    _showBanner(
+      dist != null
+          ? 'قرب زائد! $dist م · ${headway ?? "?"} ث'
+          : 'قرب زائد من المركبة الأمامية',
+      const Duration(seconds: 3),
+    );
+    if (supportsVibration) {
+      unawaited(Vibration.vibrate(duration: 300));
+    }
+  }
+
+  Future<void> _handleDetectEvents(int eventsCreated, List<dynamic> alerts) async {
+    if (eventsCreated <= 0) return;
+    eventsCount += eventsCreated;
+    if (supportsVibration && await Vibration.hasVibrator() == true) {
+      await Vibration.vibrate(duration: 200);
+    }
+    for (final raw in alerts) {
+      if (raw is Map<String, dynamic>) {
+        pushLiveAlert(LiveAlert.fromDetect(raw));
+      }
+    }
+    unawaited(fetchNearby(force: true));
   }
 
   void pushLiveAlert(LiveAlert alert) {
     liveAlerts = [alert, ...liveAlerts].take(10).toList();
-    bannerText = alert.label;
+    _showBanner(alert.label, const Duration(seconds: 3));
+  }
+
+  void _showBanner(String text, Duration duration) {
+    final token = ++_bannerToken;
+    bannerText = text;
     notifyListeners();
-    Future.delayed(const Duration(seconds: 3), () {
-      if (bannerText == alert.label) {
+    Future.delayed(duration, () {
+      if (_bannerToken == token && bannerText == text) {
         bannerText = null;
         notifyListeners();
       }
     });
   }
 
+  Future<void> toggleTorch() async {
+    final cam = camera;
+    if (cam == null || !cam.value.isInitialized) return;
+    try {
+      final next = !torchOn;
+      await cam.setFlashMode(next ? FlashMode.torch : FlashMode.off);
+      torchOn = next;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  void focusMapOn(double lat, double lon, {double? zoom}) {
+    followMap = false;
+    _manualZoom = zoom ?? 17.0;
+    final center = LatLng(lat, lon);
+    if (mapHeadingUp) {
+      mapController.moveAndRotate(center, _manualZoom, -displayHeading);
+    } else {
+      mapController.move(center, _manualZoom);
+    }
+    notifyListeners();
+  }
+
+  void openEventOnMap(double lat, double lon) {
+    focusMapOn(lat, lon);
+    onNavigateTab?.call(1);
+  }
+
+  void _appendTrail(Position pos) {
+    final pt = LatLng(pos.latitude, pos.longitude);
+    if (positionTrail.isEmpty) {
+      positionTrail.add(pt);
+      return;
+    }
+    final last = positionTrail.last;
+    if (distanceMeters(last.latitude, last.longitude, pt.latitude, pt.longitude) >= 2.5) {
+      positionTrail.add(pt);
+      if (positionTrail.length > 400) {
+        positionTrail.removeRange(0, positionTrail.length - 400);
+      }
+    }
+  }
+
   void locateNow() {
-    final pos = position;
-    if (pos == null) return;
+    if (position == null) return;
     followMap = true;
-    mapController.move(
-      LatLng(pos.latitude, pos.longitude),
-      zoomForAccuracy(pos.accuracy),
-    );
+    _manualZoom = 0;
+    notifyListeners();
+  }
+
+  void zoomMapIn() {
+    followMap = false;
+    _manualZoom = (mapController.camera.zoom + 0.8).clamp(12.0, 19.0);
+    mapController.move(mapController.camera.center, _manualZoom);
+    notifyListeners();
+  }
+
+  void zoomMapOut() {
+    followMap = false;
+    _manualZoom = (mapController.camera.zoom - 0.8).clamp(12.0, 19.0);
+    mapController.move(mapController.camera.center, _manualZoom);
+    notifyListeners();
+  }
+
+  void cycleMapStyle() {
+    final styles = MapStyle.values;
+    mapStyle = styles[(mapStyle.index + 1) % styles.length];
     notifyListeners();
   }
 
@@ -618,8 +1105,19 @@ class DriveSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleMapHeadingUp() {
+    mapHeadingUp = !mapHeadingUp;
+    if (!mapHeadingUp) {
+      mapController.rotate(0);
+    } else if (followMap) {
+      mapController.rotate(-displayHeading);
+    }
+    notifyListeners();
+  }
+
   void onMapMoved() {
     followMap = false;
+    _manualZoom = mapController.camera.zoom;
     notifyListeners();
   }
 

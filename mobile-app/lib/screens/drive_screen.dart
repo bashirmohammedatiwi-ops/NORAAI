@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/drive_session.dart';
+import '../theme/app_colors.dart';
+import '../utils/responsive.dart';
 import '../widgets/alert_sheet.dart';
-import '../widgets/camera_pip.dart';
-import '../widgets/dash_bar.dart';
+import '../widgets/camera_stack.dart';
 import '../widgets/drive_map_view.dart';
 import '../widgets/drive_top_bar.dart';
+import '../widgets/metrics_strip.dart';
 
-/// Full combined drive view — map + camera + dash.
+/// وضع القيادة — خريطة وكاميرا في أقسام منفصلة بدون تغطية.
 class DriveScreen extends StatefulWidget {
   const DriveScreen({super.key});
 
@@ -17,13 +19,12 @@ class DriveScreen extends StatefulWidget {
 
 class _DriveScreenState extends State<DriveScreen> {
   bool _showAlerts = false;
-  bool _camExpanded = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      DriveSessionScope.of(context).requestCamera(force: true);
+      DriveSessionScope.of(context).requestCamera();
     });
   }
 
@@ -33,102 +34,186 @@ class _DriveScreenState extends State<DriveScreen> {
       listenable: DriveSessionScope.of(context),
       builder: (context, _) {
         final s = DriveSessionScope.of(context);
-        final bottomPad = MediaQuery.of(context).padding.bottom;
-        const dashHeight = 168.0;
-        final camBottom = dashHeight + bottomPad + 8;
+        final landscape = isLandscape(context);
+        final camReady = s.camera != null && s.camera!.value.isInitialized;
+        final minConf = s.displayMinConfidence;
+
+        if (landscape) {
+          return Scaffold(
+            backgroundColor: AppColors.bgDeep,
+            body: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Stack(
+                    children: [
+                      DriveMapView(
+                        mapController: s.mapController,
+                        center: s.mapCenter,
+                        position: s.position,
+                        hasGpsFix: s.hasGpsFix,
+                        displayHeading: s.displayHeading,
+                        headingUp: s.mapHeadingUp,
+                        followMap: s.followMap,
+                        mapZoom: s.mapZoom,
+                        mapStyle: s.mapStyle,
+                        trail: s.positionTrail,
+                        speedLimit: s.roadSpeed.cached.limit,
+                        speedKmh: s.speedKmh,
+                        nearbyEvents: s.nearbyEvents,
+                        classMeta: s.classMeta,
+                        onMapMoved: s.onMapMoved,
+                      ),
+                      DriveTopBar(
+                        vehicleId: s.config.vehicleId,
+                        online: s.online,
+                        eventsCount: s.eventsCount,
+                        alertsCount: s.alertsCount,
+                        followMode: s.followMap,
+                        onAlerts: () => setState(() => _showAlerts = !_showAlerts),
+                        onLocate: s.locateNow,
+                        onToggleFollow: s.toggleFollow,
+                        onLogout: s.logout,
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: camReady
+                            ? CameraStack(
+                                controller: s.camera!,
+                                detections: s.detections,
+                                minConfidence: minConf,
+                                scanning: s.scanning,
+                                headwayDistanceM: s.followingDistance.distanceM,
+                                leadVehicleClass: s.followingDistance.leadClass,
+                                localInference: s.usesLocalInference,
+                              )
+                            : const Center(child: CircularProgressIndicator(color: AppColors.accent)),
+                      ),
+                      MetricsStrip(
+                        speed: s.speedKmh,
+                        roadSpeed: s.roadSpeed.cached,
+                        placeName: s.placeName ?? s.roadSpeed.cached.roadName,
+                        heading: s.displayHeading,
+                        nearestEvent: s.nearestEvent,
+                        classMeta: s.classMeta,
+                        scanning: s.scanning,
+                        latencyMs: s.lastLatencyMs,
+                        vibrationLevel: s.vibrationLevel,
+                        vibrationAvailable: s.vibrationSensorAvailable,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
 
         return Scaffold(
-          backgroundColor: const Color(0xFF0F172A),
-          body: Stack(
+          backgroundColor: AppColors.bgDeep,
+          body: Column(
             children: [
-              DriveMapView(
-                mapController: s.mapController,
-                center: s.mapCenter,
-                position: s.position,
-                hasGpsFix: s.hasGpsFix,
-                nearbyEvents: s.nearbyEvents,
+              Expanded(
+                flex: 5,
+                child: Stack(
+                  children: [
+                    DriveMapView(
+                      mapController: s.mapController,
+                      center: s.mapCenter,
+                      position: s.position,
+                      hasGpsFix: s.hasGpsFix,
+                      displayHeading: s.displayHeading,
+                      headingUp: s.mapHeadingUp,
+                      followMap: s.followMap,
+                      mapZoom: s.mapZoom,
+                      mapStyle: s.mapStyle,
+                      trail: s.positionTrail,
+                      speedLimit: s.roadSpeed.cached.limit,
+                      speedKmh: s.speedKmh,
+                      nearbyEvents: s.nearbyEvents,
+                      classMeta: s.classMeta,
+                      onMapMoved: s.onMapMoved,
+                    ),
+                    DriveTopBar(
+                      vehicleId: s.config.vehicleId,
+                      online: s.online,
+                      eventsCount: s.eventsCount,
+                      alertsCount: s.alertsCount,
+                      followMode: s.followMap,
+                      onAlerts: () => setState(() => _showAlerts = !_showAlerts),
+                      onLocate: s.locateNow,
+                      onToggleFollow: s.toggleFollow,
+                      onLogout: s.logout,
+                    ),
+                    if (s.bannerText != null)
+                      Positioned(
+                        top: MediaQuery.of(context).padding.top + 58,
+                        left: 12,
+                        right: 12,
+                        child: _banner(s.bannerText!, AppColors.danger),
+                      ),
+                    if (s.detectError != null)
+                      Positioned(
+                        top: MediaQuery.of(context).padding.top + 58,
+                        left: 12,
+                        right: 12,
+                        child: _banner(s.detectError!, AppColors.warning),
+                      ),
+                    if (_showAlerts)
+                      AlertSheet(
+                        liveAlerts: s.liveAlerts,
+                        nearbyEvents: s.nearbyEvents,
+                        classMeta: s.classMeta,
+                      ),
+                  ],
+                ),
+              ),
+              if (camReady)
+                SizedBox(
+                  height: 180,
+                  child: CameraStack(
+                    controller: s.camera!,
+                    detections: s.detections,
+                    minConfidence: minConf,
+                    scanning: s.scanning,
+                    headwayDistanceM: s.followingDistance.distanceM,
+                    leadVehicleClass: s.followingDistance.leadClass,
+                    localInference: s.usesLocalInference,
+                  ),
+                ),
+              MetricsStrip(
+                speed: s.speedKmh,
+                roadSpeed: s.roadSpeed.cached,
+                placeName: s.placeName ?? s.roadSpeed.cached.roadName,
+                heading: s.displayHeading,
+                nearestEvent: s.nearestEvent,
                 classMeta: s.classMeta,
-                onMapMoved: s.onMapMoved,
+                scanning: s.scanning,
+                latencyMs: s.lastLatencyMs,
+                vibrationLevel: s.vibrationLevel,
+                vibrationAvailable: s.vibrationSensorAvailable,
               ),
-              DriveTopBar(
-                vehicleId: s.config.vehicleId,
-                online: s.online,
-                eventsCount: s.eventsCount,
-                alertsCount: s.alertsCount,
-                followMode: s.followMap,
-                onAlerts: () => setState(() => _showAlerts = !_showAlerts),
-                onLocate: s.locateNow,
-                onToggleFollow: s.toggleFollow,
-                onLogout: s.logout,
-              ),
-              if (s.configMessage != null && s.configMessage!.isNotEmpty)
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 58,
-                  left: 12,
-                  right: 12,
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xE6B45309),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(s.configMessage!, style: const TextStyle(color: Colors.white, fontSize: 11)),
-                  ),
-                ),
-              if (s.bannerText != null)
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 58,
-                  left: 48,
-                  right: 48,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xE6EF4444),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      s.bannerText!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-              if (s.camera != null)
-                CameraPip(
-                  controller: s.camera!,
-                  detections: s.detections,
-                  minConfidence: s.serverCfg?.minConfidence ?? 0.45,
-                  expanded: _camExpanded,
-                  scanning: s.scanning,
-                  cameraOk: s.camera!.value.isInitialized,
-                  bottomOffset: camBottom,
-                  onToggle: () => setState(() => _camExpanded = !_camExpanded),
-                ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: bottomPad,
-                child: DashBar(
-                  speed: s.speedKmh,
-                  roadSpeed: s.roadSpeed.cached,
-                  placeName: s.placeName ?? s.roadSpeed.cached.roadName,
-                  modelStatus: s.modelStatus,
-                  nearestEvent: s.nearestEvent,
-                  classMeta: s.classMeta,
-                  latencyMs: s.lastLatencyMs,
-                  scanning: s.scanning,
-                ),
-              ),
-              if (_showAlerts)
-                AlertSheet(
-                  liveAlerts: s.liveAlerts,
-                  nearbyEvents: s.nearbyEvents,
-                  classMeta: s.classMeta,
-                ),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _banner(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 11)),
     );
   }
 }

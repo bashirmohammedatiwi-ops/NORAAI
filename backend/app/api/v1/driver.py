@@ -19,6 +19,7 @@ from app.schemas import (
     DriverModelManifest,
     DriverNearbyEvent,
     DriverProjectClass,
+    DriverReportDetectionsRequest,
     DriverSpeedLimitResponse,
     DriverSpeedViolationRequest,
     SpeedViolationConfig,
@@ -35,6 +36,7 @@ from app.core.config import get_settings
 from app.services.driver.detection import (
     build_alert_types,
     create_events_from_detections,
+    map_class_to_event,
     preload_project_model,
     run_detection,
 )
@@ -123,7 +125,7 @@ async def driver_config(device: FleetDevice = Depends(get_fleet_device), db: Asy
         except Exception:
             pass
 
-    inference_mode = str(mobile_cfg.get("inference_mode") or "local")
+    inference_mode = str(mobile_cfg.get("inference_mode") or "server")
     detection_on = bool(mobile_cfg.get("detection_enabled", True)) and model_ready and bool(allowed)
 
     settings = get_settings()
@@ -243,10 +245,10 @@ async def driver_model_manifest(
     if not artifact:
         raise HTTPException(status_code=404, detail="No model deployed for mobile app")
     try:
-        _, sha256 = ensure_mobile_onnx_bytes(artifact)
+        onnx_bytes, sha256 = ensure_mobile_onnx_bytes(artifact)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    manifest = build_model_manifest(artifact, sha256)
+    manifest = build_model_manifest(artifact, sha256, onnx_byte_len=len(onnx_bytes))
     return DriverModelManifest(
         artifact_id=artifact.id,
         model_name=manifest["model_name"],
@@ -278,7 +280,7 @@ async def driver_model_download(
     if not artifact:
         raise HTTPException(status_code=404, detail="No model deployed for mobile app")
     try:
-        data, _ = ensure_mobile_onnx_bytes(artifact)
+        data, sha256 = ensure_mobile_onnx_bytes(artifact)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return Response(
@@ -286,7 +288,9 @@ async def driver_model_download(
         media_type="application/octet-stream",
         headers={
             "Content-Disposition": f'attachment; filename="model_{artifact.id}.onnx"',
-            "X-Model-Version": mobile_onnx_key(artifact.project_id, artifact.id),
+            "Content-Length": str(len(data)),
+            "X-Model-Version": sha256[:16],
+            "X-Model-Sha256": sha256,
         },
     )
 
@@ -330,6 +334,61 @@ async def report_speed_violation(
     return {"created": True, "event_id": str(event.id)}
 
 
+@router.post("/detections/report", response_model=DriverDetectResponse)
+async def report_client_detections(
+    body: DriverReportDetectionsRequest,
+    device: FleetDevice = Depends(get_fleet_device),
+    db: AsyncSession = Depends(get_db),
+):
+    """Register road events from on-device ONNX detections (no image upload)."""
+    min_conf = body.min_confidence if body.min_confidence is not None else 0.45
+    detections: list[dict] = []
+    alerts: list[dict] = []
+
+    for item in body.detections:
+        if item.confidence < min_conf:
+            continue
+        event_type = item.event_type
+        if not event_type:
+            mapped = map_class_to_event(item.class_name)
+            event_type = mapped.value if mapped else None
+        det = {
+            "class": item.class_name,
+            "confidence": item.confidence,
+            "bbox": item.bbox,
+            "event_type": event_type,
+        }
+        detections.append(det)
+        alerts.append({
+            "type": event_type or item.class_name,
+            "label": item.class_name,
+            "class_name": item.class_name,
+            "confidence": item.confidence,
+            "bbox": item.bbox,
+        })
+
+    events = await create_events_from_detections(
+        db,
+        device.project_id,
+        device,
+        body.latitude,
+        body.longitude,
+        detections,
+        min_confidence=min_conf,
+    )
+    await _publish_events(device.project_id, events)
+
+    return DriverDetectResponse(
+        detections=detections,
+        alerts=alerts,
+        events_created=len(events),
+        model_ready=True,
+        message=None,
+        latency_ms=None,
+        pipeline="mobile_onnx",
+    )
+
+
 @router.post("/detect", response_model=DriverDetectResponse)
 async def driver_detect(
     file: UploadFile = File(...),
@@ -337,6 +396,7 @@ async def driver_detect(
     longitude: float = Form(...),
     speed: float | None = Form(None),
     speed_limit: float = Form(80),
+    min_confidence: float | None = Form(None),
     device: FleetDevice = Depends(get_fleet_device),
     db: AsyncSession = Depends(get_db),
 ):
@@ -347,7 +407,12 @@ async def driver_detect(
     artifact = await get_active_model(db, device.project_id)
     model_ready = is_production_model(artifact)
 
-    detections, infer_message, meta = await run_detection(db, device.project_id, content)
+    detections, infer_message, meta = await run_detection(
+        db,
+        device.project_id,
+        content,
+        min_confidence=min_confidence,
+    )
     alerts: list[dict] = []
 
     for det in detections:
@@ -360,8 +425,15 @@ async def driver_detect(
             "bbox": det.get("bbox"),
         })
 
+    event_min_conf = float(min_confidence) if min_confidence is not None else 0.5
     events = await create_events_from_detections(
-        db, device.project_id, device, latitude, longitude, detections
+        db,
+        device.project_id,
+        device,
+        latitude,
+        longitude,
+        detections,
+        min_confidence=event_min_conf,
     )
 
     if speed is not None and speed > speed_limit:

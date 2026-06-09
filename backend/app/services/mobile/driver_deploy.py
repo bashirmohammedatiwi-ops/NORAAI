@@ -104,11 +104,19 @@ def ensure_mobile_onnx_bytes(artifact: ModelArtifact) -> tuple[bytes, str]:
     return data, _sha256_bytes(data)
 
 
-def build_model_manifest(artifact: ModelArtifact, sha256: str) -> dict:
+def build_model_manifest(
+    artifact: ModelArtifact,
+    sha256: str,
+    onnx_byte_len: int | None = None,
+) -> dict:
     metrics = artifact.metrics or {}
     image_size = int(metrics.get("image_size") or 640)
     classes = model_class_names(artifact)
     version = sha256[:16]
+    if onnx_byte_len is not None and onnx_byte_len > 0:
+        size_mb = round(onnx_byte_len / (1024 * 1024), 2)
+    else:
+        size_mb = round((artifact.model_size_mb or 0), 2)
     return {
         "artifact_id": str(artifact.id),
         "model_name": artifact.name,
@@ -119,7 +127,7 @@ def build_model_manifest(artifact: ModelArtifact, sha256: str) -> dict:
         "image_size": image_size,
         "nc": len(classes),
         "classes": classes,
-        "model_size_mb": round((artifact.model_size_mb or 0), 2),
+        "model_size_mb": size_mb,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -138,7 +146,7 @@ async def sync_driver_model(
         raise ValueError("Selected model has no valid trained weights")
 
     onnx_bytes, sha256 = ensure_mobile_onnx_bytes(artifact)
-    manifest = build_model_manifest(artifact, sha256)
+    manifest = build_model_manifest(artifact, sha256, onnx_byte_len=len(onnx_bytes))
     upload_bytes(
         mobile_manifest_key(project.id, artifact.id),
         json.dumps(manifest).encode("utf-8"),

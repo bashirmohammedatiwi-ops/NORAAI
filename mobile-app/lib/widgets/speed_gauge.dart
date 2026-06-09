@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-class SpeedGauge extends StatefulWidget {
+import '../theme/app_colors.dart';
+
+class SpeedGauge extends StatelessWidget {
   const SpeedGauge({
     super.key,
     required this.speed,
@@ -8,6 +10,7 @@ class SpeedGauge extends StatefulWidget {
     this.fromRoad = false,
     this.limitLabel,
     this.compact = false,
+    this.accuracyM,
   });
 
   final double? speed;
@@ -15,78 +18,56 @@ class SpeedGauge extends StatefulWidget {
   final bool fromRoad;
   final String? limitLabel;
   final bool compact;
-
-  @override
-  State<SpeedGauge> createState() => _SpeedGaugeState();
-}
-
-class _SpeedGaugeState extends State<SpeedGauge> {
-  double? _smoothed;
-
-  @override
-  void didUpdateWidget(covariant SpeedGauge oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.speed != null) {
-      _smoothed = _smoothed == null
-          ? widget.speed
-          : _smoothed! + (widget.speed! - _smoothed!) * 0.3;
-    }
-  }
+  final double? accuracyM;
 
   Color _color(double ratio) {
-    if (ratio >= 1) return const Color(0xFFEF4444);
-    if (ratio >= 0.92) return const Color(0xFFF97316);
-    if (ratio >= 0.78) return const Color(0xFFEAB308);
-    return const Color(0xFF0D9488);
+    if (ratio >= 1) return AppColors.danger;
+    if (ratio >= 0.92) return AppColors.orange;
+    if (ratio >= 0.78) return AppColors.warning;
+    return AppColors.accent;
   }
 
   @override
   Widget build(BuildContext context) {
-    final v = _smoothed;
-    final ratio = v != null && widget.limit > 0 ? v / widget.limit : 0.0;
-    final color = v != null ? _color(ratio) : const Color(0xFF64748B);
+    final v = speed?.round();
+    final ratio = v != null && limit > 0 ? v / limit : 0.0;
+    final color = v != null ? _color(ratio) : AppColors.textMuted;
     final over = ratio >= 1;
 
-    if (widget.compact) {
+    if (compact) {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            v?.round().toString() ?? '--',
-            style: TextStyle(
-              color: color,
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-            ),
+            v?.toString() ?? '--',
+            style: TextStyle(color: color, fontSize: 28, fontWeight: FontWeight.w800),
           ),
-          const Text('كم/س', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10)),
+          const Text('كم/س', style: TextStyle(color: AppColors.textSecondary, fontSize: 10)),
           const SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: ratio.clamp(0, 1.12),
               minHeight: 4,
-              backgroundColor: const Color(0xFF1E293B),
+              backgroundColor: AppColors.border,
               color: color,
             ),
           ),
-          Text(
-            'حد ${widget.limit.round()}',
-            style: const TextStyle(color: Color(0xFF64748B), fontSize: 9),
-          ),
+          Text('حد ${limit.round()}', style: const TextStyle(color: AppColors.textMuted, fontSize: 9)),
         ],
       );
     }
 
     return SizedBox(
       width: 200,
-      height: 110,
+      height: 118,
       child: CustomPaint(
         painter: _GaugePainter(
           ratio: ratio.clamp(0, 1.12),
           color: color,
-          speed: v?.round(),
+          speed: v,
           over: over,
+          accuracyM: accuracyM,
         ),
       ),
     );
@@ -99,12 +80,14 @@ class _GaugePainter extends CustomPainter {
     required this.color,
     required this.speed,
     required this.over,
+    this.accuracyM,
   });
 
   final double ratio;
   final Color color;
   final int? speed;
   final bool over;
+  final double? accuracyM;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -112,53 +95,65 @@ class _GaugePainter extends CustomPainter {
     const sweep = 3.665;
     final center = Offset(size.width / 2, size.height - 4);
     final radius = size.width * 0.42;
-    final bg = Paint()
-      ..color = const Color(0x331E293B)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 10
-      ..strokeCap = StrokeCap.round;
-    final fg = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 10
-      ..strokeCap = StrokeCap.round;
 
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
       start,
       sweep,
       false,
-      bg,
+      Paint()
+        ..color = AppColors.border.withValues(alpha: 0.35)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 10
+        ..strokeCap = StrokeCap.round,
     );
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
       start,
       sweep * ratio,
       false,
-      fg,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 10
+        ..strokeCap = StrokeCap.round,
     );
 
     final tp = TextPainter(
       text: TextSpan(
         text: speed?.toString() ?? '--',
         style: TextStyle(
-          color: over ? const Color(0xFFEF4444) : Colors.white,
-          fontSize: 32,
-          fontWeight: FontWeight.w800,
+          color: over ? AppColors.danger : AppColors.textPrimary,
+          fontSize: 34,
+          fontWeight: FontWeight.w900,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    tp.paint(canvas, Offset(center.dx - tp.width / 2, center.dy - 42));
+    tp.paint(canvas, Offset(center.dx - tp.width / 2, center.dy - 44));
 
     final sub = TextPainter(
       text: const TextSpan(
         text: 'كم/س',
-        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
       ),
       textDirection: TextDirection.rtl,
     )..layout();
     sub.paint(canvas, Offset(center.dx - sub.width / 2, center.dy - 18));
+
+    if (accuracyM != null && accuracyM! > 0) {
+      final acc = TextPainter(
+        text: TextSpan(
+          text: 'GPS ±${accuracyM!.round()}م',
+          style: TextStyle(
+            color: accuracyM! < 12 ? AppColors.success : AppColors.warning,
+            fontSize: 8,
+          ),
+        ),
+        textDirection: TextDirection.rtl,
+      )..layout();
+      acc.paint(canvas, Offset(center.dx - acc.width / 2, center.dy + 2));
+    }
   }
 
   @override

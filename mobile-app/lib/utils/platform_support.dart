@@ -9,9 +9,16 @@ bool get supportsLocalOnnx => !kIsWeb;
 /// Haptic feedback is mobile-only.
 bool get supportsVibration => !kIsWeb;
 
+/// Accelerometer / road vibration sensor (mobile native).
+bool get supportsMotionSensors => !kIsWeb;
+
+/// On-device ONNX inference (Android / iOS native).
+bool get supportsLocalInference => isNativeMobile;
+
 /// On web, driver detection always goes through the API.
 String effectiveInferenceMode(String? serverMode) {
   if (kIsWeb) return 'server';
+  if (!supportsLocalInference) return 'server';
   return serverMode ?? 'local';
 }
 
@@ -19,6 +26,9 @@ String inferenceModeLabel(String? serverMode) {
   final mode = effectiveInferenceMode(serverMode);
   if (kIsWeb && serverMode == 'local') {
     return 'سيرفر (متصفح)';
+  }
+  if (!supportsLocalInference && serverMode == 'local') {
+    return 'سيرفر (اكتشاف سحابي)';
   }
   return mode == 'local' ? 'محلي ONNX' : 'سيرفر';
 }

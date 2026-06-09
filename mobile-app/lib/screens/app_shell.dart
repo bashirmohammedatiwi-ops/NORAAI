@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../controllers/drive_session.dart';
+import '../theme/app_colors.dart';
 import 'alerts_app_screen.dart';
 import 'camera_app_screen.dart';
 import 'home_hub_screen.dart';
@@ -11,6 +12,9 @@ import 'drive_screen.dart';
 import 'maps_app_screen.dart';
 import 'model_info_screen.dart';
 import '../models/driver_config.dart';
+import '../utils/responsive.dart';
+
+const _navTabs = <int>[0, 1, 5, 2, 4];
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.config, required this.onLogout});
@@ -28,10 +32,16 @@ class _AppShellState extends State<AppShell> {
 
   bool get _isCameraTab => _tab == 2 || _tab == 5;
 
+  int get _navIndex {
+    final i = _navTabs.indexOf(_tab);
+    return i >= 0 ? i : 0;
+  }
+
   @override
   void initState() {
     super.initState();
     _session = DriveSession(widget.config, widget.onLogout);
+    _session.onNavigateTab = _selectTab;
     _session.start();
   }
 
@@ -46,9 +56,15 @@ class _AppShellState extends State<AppShell> {
     setState(() => _tab = i);
 
     if (i == 2 || i == 5) {
-      _session.requestCamera(force: kIsWeb);
-    } else if (kIsWeb && wasCamera) {
+      _session.requestCamera();
+    } else if (wasCamera) {
       unawaited(_session.releaseCamera());
+    }
+  }
+
+  void _selectNav(int navIndex) {
+    if (navIndex >= 0 && navIndex < _navTabs.length) {
+      _selectTab(_navTabs[navIndex]);
     }
   }
 
@@ -73,24 +89,72 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final landscape = isLandscape(context);
+
     return DriveSessionScope(
       notifier: _session,
       child: Scaffold(
-        backgroundColor: const Color(0xFF0F172A),
-        body: _buildBody(),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _tab > 4 ? 0 : _tab,
-          onDestinationSelected: _selectTab,
-          backgroundColor: const Color(0xFF1E293B),
-          indicatorColor: const Color(0xFF0D9488),
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.apps), label: 'الرئيسية'),
-            NavigationDestination(icon: Icon(Icons.map_outlined), label: 'خرائط'),
-            NavigationDestination(icon: Icon(Icons.videocam_outlined), label: 'كاميرا'),
-            NavigationDestination(icon: Icon(Icons.psychology_outlined), label: 'موديل'),
-            NavigationDestination(icon: Icon(Icons.notifications_outlined), label: 'تنبيهات'),
-          ],
-        ),
+        backgroundColor: AppColors.bgDeep,
+        extendBody: false,
+        body: landscape
+            ? Row(
+                children: [
+                  NavigationRail(
+                    extended: MediaQuery.sizeOf(context).width > 900,
+                    minExtendedWidth: 88,
+                    selectedIndex: _navIndex,
+                    onDestinationSelected: _selectNav,
+                    labelType: NavigationRailLabelType.none,
+                    destinations: const [
+                      NavigationRailDestination(icon: Icon(Icons.home_rounded), label: Text('الرئيسية')),
+                      NavigationRailDestination(icon: Icon(Icons.map_rounded), label: Text('خرائط')),
+                      NavigationRailDestination(icon: Icon(Icons.dashboard_rounded), label: Text('قيادة')),
+                      NavigationRailDestination(icon: Icon(Icons.videocam_rounded), label: Text('كاميرا')),
+                      NavigationRailDestination(icon: Icon(Icons.notifications_rounded), label: Text('تنبيهات')),
+                    ],
+                  ),
+                  const VerticalDivider(width: 1, thickness: 1),
+                  Expanded(child: _buildBody()),
+                ],
+              )
+            : _buildBody(),
+        bottomNavigationBar: landscape
+            ? null
+            : NavigationBar(
+                height: 64,
+                selectedIndex: _navIndex,
+                onDestinationSelected: _selectNav,
+                backgroundColor: AppColors.bgElevated,
+                indicatorColor: AppColors.accent.withValues(alpha: 0.2),
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.home_outlined),
+                    selectedIcon: Icon(Icons.home_rounded),
+                    label: 'الرئيسية',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.map_outlined),
+                    selectedIcon: Icon(Icons.map_rounded),
+                    label: 'خرائط',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.dashboard_outlined),
+                    selectedIcon: Icon(Icons.dashboard_rounded),
+                    label: 'قيادة',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.videocam_outlined),
+                    selectedIcon: Icon(Icons.videocam_rounded),
+                    label: 'كاميرا',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.notifications_outlined),
+                    selectedIcon: Icon(Icons.notifications_rounded),
+                    label: 'تنبيهات',
+                  ),
+                ],
+              ),
       ),
     );
   }

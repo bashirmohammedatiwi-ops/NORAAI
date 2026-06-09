@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/drive_session.dart';
+import '../theme/app_colors.dart';
 import '../utils/event_meta.dart';
 import '../utils/platform_support.dart';
+import '../widgets/nurai_background.dart';
+import '../widgets/nurai_header.dart';
 
 class ModelInfoScreen extends StatelessWidget {
   const ModelInfoScreen({super.key});
@@ -17,28 +20,32 @@ class ModelInfoScreen extends StatelessWidget {
         final classes = cfg?.classes ?? [];
         final modelClasses = cfg?.modelClasses ?? [];
 
-        return CustomScrollView(
+        final topPad = MediaQuery.of(context).padding.top;
+
+        return NuraiBackground(
+          child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 8, 16, 0),
+                padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'معلومات الموديل',
-                      style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'الكلاسات والإعدادات الحالية',
-                      style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                    const NuraiHeader(
+                      title: 'معلومات الموديل',
+                      subtitle: 'الكلاسات والإعدادات الحالية',
                     ),
                     const SizedBox(height: 16),
                     _statusCard(cfg?.modelReady == true, s.modelStatus),
                     const SizedBox(height: 8),
                     _connectionRow(s),
                     const SizedBox(height: 12),
+                    if (s.usesLocalInference) ...[
+                      _statusCard(s.localInferenceReady, s.localInferenceReady
+                          ? 'ONNX محلي · جاهز (${s.lastLatencyMs ?? "—"}ms)'
+                          : (s.localInferenceError ?? 'جاري تحميل ONNX...')),
+                      const SizedBox(height: 8),
+                    ],
                     _infoGrid([
                       _InfoItem('اسم الموديل', cfg?.modelName ?? '—'),
                       _InfoItem('الإصدار', cfg?.modelVersion ?? '—'),
@@ -62,7 +69,7 @@ class ModelInfoScreen extends StatelessWidget {
                                 : const Icon(Icons.sync),
                             label: Text(s.syncingModel ? 'جاري المزامنة...' : 'مزامنة الموديل'),
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF0D9488),
+                              backgroundColor: AppColors.accent,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
                           ),
@@ -71,7 +78,7 @@ class ModelInfoScreen extends StatelessWidget {
                         IconButton.filled(
                           onPressed: s.syncConfig,
                           icon: const Icon(Icons.refresh),
-                          style: IconButton.styleFrom(backgroundColor: const Color(0xFF334155)),
+                          style: IconButton.styleFrom(backgroundColor: AppColors.bgElevated),
                         ),
                       ],
                     ),
@@ -109,6 +116,7 @@ class ModelInfoScreen extends StatelessWidget {
               ),
             ),
           ],
+        ),
         );
       },
     );
@@ -119,9 +127,9 @@ class ModelInfoScreen extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: s.online ? const Color(0xFF1E293B) : const Color(0x33EF4444),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: s.online ? const Color(0xFF334155) : const Color(0x66EF4444)),
+        color: s.online ? AppColors.bgCard.withValues(alpha: 0.8) : AppColors.danger.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: s.online ? AppColors.borderLight : AppColors.danger.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -130,14 +138,14 @@ class ModelInfoScreen extends StatelessWidget {
             children: [
               Icon(
                 s.online ? Icons.cloud_done : Icons.cloud_off,
-                color: s.online ? const Color(0xFF22C55E) : const Color(0xFFF87171),
+                color: s.online ? AppColors.success : AppColors.danger,
                 size: 18,
               ),
               const SizedBox(width: 8),
               Text(
                 s.connectionLabel,
                 style: TextStyle(
-                  color: s.online ? Colors.white : const Color(0xFFF87171),
+                  color: s.online ? AppColors.textPrimary : AppColors.danger,
                   fontWeight: FontWeight.w600,
                   fontSize: 13,
                 ),
@@ -153,19 +161,33 @@ class ModelInfoScreen extends StatelessWidget {
           if (s.lastConfigSync != null)
             Text(
               'آخر مزامنة إعدادات: ${_formatTime(s.lastConfigSync!)}',
-              style: const TextStyle(color: Color(0xFF64748B), fontSize: 10),
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
             ),
           if (s.lastModelSync != null)
             Text(
               'آخر تحميل موديل: ${_formatTime(s.lastModelSync!)}',
-              style: const TextStyle(color: Color(0xFF64748B), fontSize: 10),
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
             ),
-          if (s.syncingModel && s.modelSyncProgress > 0) ...[
+          if (s.syncingModel) ...[
             const SizedBox(height: 6),
             LinearProgressIndicator(
-              value: s.modelSyncProgress,
-              backgroundColor: const Color(0xFF334155),
-              color: const Color(0xFF0D9488),
+              value: s.modelSyncProgress > 0 ? s.modelSyncProgress : null,
+              backgroundColor: AppColors.border,
+              color: AppColors.accent,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              s.modelSyncProgress > 0
+                  ? 'تحميل الموديل ${(s.modelSyncProgress * 100).round()}%'
+                  : 'جاري التحضير...',
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+            ),
+          ],
+          if (s.modelSyncError != null && !s.syncingModel) ...[
+            const SizedBox(height: 6),
+            Text(
+              s.modelSyncError!,
+              style: const TextStyle(color: AppColors.danger, fontSize: 10),
             ),
           ],
         ],
@@ -191,14 +213,14 @@ class ModelInfoScreen extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: ready ? const Color(0x3322C55E) : const Color(0x33EF4444),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: ready ? const Color(0xFF22C55E) : const Color(0xFFEF4444)),
+        color: ready ? AppColors.success.withValues(alpha: 0.1) : AppColors.danger.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: ready ? AppColors.success.withValues(alpha: 0.4) : AppColors.danger.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
           Icon(ready ? Icons.check_circle : Icons.error_outline,
-              color: ready ? const Color(0xFF22C55E) : const Color(0xFFEF4444), size: 32),
+              color: ready ? AppColors.success : AppColors.danger, size: 32),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -206,9 +228,9 @@ class ModelInfoScreen extends StatelessWidget {
               children: [
                 Text(
                   ready ? 'الموديل جاهز' : 'الموديل غير جاهز',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
                 ),
-                Text(status, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
+                Text(status, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
               ],
             ),
           ),
@@ -218,7 +240,7 @@ class ModelInfoScreen extends StatelessWidget {
   }
 
   Widget _sectionTitle(String text) {
-    return Text(text, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold));
+    return Text(text, style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold));
   }
 
   Widget _emptyBox(String text) {
@@ -226,10 +248,10 @@ class ModelInfoScreen extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.bgCard.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Text(text, style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+      child: Text(text, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
     );
   }
 
@@ -239,8 +261,8 @@ class ModelInfoScreen extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.bgCard.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: m.color.withValues(alpha: active ? 0.6 : 0.2)),
       ),
       child: Row(
@@ -251,8 +273,8 @@ class ModelInfoScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(m.labelAr, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                Text(name, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+                Text(m.labelAr, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+                Text(name, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
               ],
             ),
           ),
@@ -263,7 +285,7 @@ class ModelInfoScreen extends StatelessWidget {
           ),
           if (!active) ...[
             const SizedBox(width: 8),
-            const Text('غير مفعّل', style: TextStyle(color: Color(0xFF64748B), fontSize: 9)),
+            const Text('غير مفعّل', style: TextStyle(color: AppColors.textMuted, fontSize: 9)),
           ],
         ],
       ),
@@ -280,19 +302,20 @@ class ModelInfoScreen extends StatelessWidget {
               width: 160,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(12),
+                color: AppColors.bgCard.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(i.label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+                  Text(i.label, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
                   const SizedBox(height: 2),
                   Text(
                     i.value,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),

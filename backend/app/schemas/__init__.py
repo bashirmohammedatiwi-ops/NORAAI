@@ -631,6 +631,20 @@ class DriverSpeedLimitResponse(BaseModel):
     highway_type: str | None = None
 
 
+class DriverDetectionReportItem(BaseModel):
+    class_name: str
+    confidence: float
+    bbox: list[float]
+    event_type: str | None = None
+
+
+class DriverReportDetectionsRequest(BaseModel):
+    latitude: float
+    longitude: float
+    detections: list[DriverDetectionReportItem]
+    min_confidence: float | None = None
+
+
 class DriverDetectResponse(BaseModel):
     detections: list[dict]
     alerts: list[dict]

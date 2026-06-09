@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_colors.dart';
+
 class DriveTopBar extends StatelessWidget {
   const DriveTopBar({
     super.key,
@@ -29,108 +31,64 @@ class DriveTopBar extends StatelessWidget {
     final top = MediaQuery.of(context).padding.top;
     return Positioned(
       top: top + 6,
-      left: 12,
-      right: 12,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xE60F172A),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFF334155)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: const Color(0xFF0D9488),
-                borderRadius: BorderRadius.circular(8),
+      left: 10,
+      right: 10,
+      child: Material(
+        color: AppColors.bgElevated.withValues(alpha: 0.94),
+        elevation: 2,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            children: [
+              const Text('NURAI', style: TextStyle(color: AppColors.accentBright, fontWeight: FontWeight.w900, fontSize: 12)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(vehicleId, style: const TextStyle(color: AppColors.textMuted, fontSize: 10), overflow: TextOverflow.ellipsis),
               ),
-              alignment: Alignment.center,
-              child: const Text(
-                'N',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'NURAI Drive',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                  Text(
-                    vehicleId,
-                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
-                  ),
-                ],
-              ),
-            ),
-            _pill(
-              online ? 'متصل' : 'غير متصل',
-              online ? const Color(0xFF22C55E) : const Color(0xFF64748B),
-            ),
-            const SizedBox(width: 4),
-            _pill('$eventsCount حدث', const Color(0xFF0D9488)),
-            IconButton(
-              onPressed: onAlerts,
-              icon: Badge(
-                isLabelVisible: alertsCount > 0,
-                label: Text('$alertsCount'),
-                child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 20),
-              ),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            ),
-            if (onToggleFollow != null)
+              _dot(online),
+              const SizedBox(width: 6),
+              Text('$eventsCount', style: const TextStyle(color: AppColors.textSecondary, fontSize: 10)),
               IconButton(
-                onPressed: onToggleFollow,
-                icon: Icon(
-                  followMode ? Icons.my_location : Icons.location_searching,
-                  color: followMode ? const Color(0xFF2DD4BF) : const Color(0xFF94A3B8),
-                  size: 20,
-                ),
+                onPressed: onAlerts,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: Badge(
+                  isLabelVisible: alertsCount > 0,
+                  backgroundColor: AppColors.danger,
+                  label: Text('$alertsCount', style: const TextStyle(fontSize: 8)),
+                  child: const Icon(Icons.notifications_outlined, color: AppColors.textPrimary, size: 18),
+                ),
               ),
-            IconButton(
-              onPressed: onLocate,
-              icon: const Icon(Icons.gps_fixed, color: Color(0xFF2DD4BF), size: 20),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            ),
-            IconButton(
-              onPressed: onLogout,
-              icon: const Icon(Icons.logout, color: Color(0xFFF87171), size: 20),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            ),
-          ],
+              if (onToggleFollow != null)
+                IconButton(
+                  onPressed: onToggleFollow,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: Icon(
+                    followMode ? Icons.my_location : Icons.location_searching,
+                    color: followMode ? AppColors.accent : AppColors.textMuted,
+                    size: 18,
+                  ),
+                ),
+              IconButton(
+                onPressed: onLocate,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: const Icon(Icons.gps_fixed, color: AppColors.accentBright, size: 18),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _pill(String text, Color color) {
+  Widget _dot(bool online) {
     return Container(
-      margin: const EdgeInsets.only(left: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w600),
-      ),
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(color: online ? AppColors.success : AppColors.textMuted, shape: BoxShape.circle),
     );
   }
 }

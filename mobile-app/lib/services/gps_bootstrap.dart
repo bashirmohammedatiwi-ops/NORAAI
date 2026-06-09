@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -20,13 +22,30 @@ LocationSettings locationSettingsForFix({bool highAccuracy = false}) {
 LocationSettings locationSettingsForStream() {
   if (kIsWeb) {
     return const LocationSettings(
-      accuracy: LocationAccuracy.medium,
-      distanceFilter: 5,
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 2,
+    );
+  }
+  if (!kIsWeb && Platform.isAndroid) {
+    return AndroidSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+      intervalDuration: const Duration(milliseconds: 300),
+      forceLocationManager: false,
+    );
+  }
+  if (!kIsWeb && Platform.isIOS) {
+    return AppleSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+      activityType: ActivityType.automotiveNavigation,
+      pauseLocationUpdatesAutomatically: false,
+      showBackgroundLocationIndicator: false,
     );
   }
   return const LocationSettings(
     accuracy: LocationAccuracy.bestForNavigation,
-    distanceFilter: 5,
+    distanceFilter: 0,
   );
 }
 
