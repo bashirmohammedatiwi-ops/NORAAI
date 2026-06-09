@@ -92,8 +92,11 @@ class ModelSync {
       final manifest = await api.fetchManifest();
       final sha = (manifest['sha256'] as String? ?? '').toLowerCase();
       final version = manifest['version'] as String? ?? remoteVersion ?? '';
+      final manifestBytes = (manifest['model_bytes'] as num?)?.toInt();
       final sizeMb = (manifest['model_size_mb'] as num?)?.toDouble();
-      final expectedBytes = sizeMb != null && sizeMb > 0 ? (sizeMb * 1024 * 1024).round() : null;
+      final expectedBytes = manifestBytes != null && manifestBytes > 0
+          ? manifestBytes
+          : (sizeMb != null && sizeMb > 0 ? (sizeMb * 1024 * 1024).round() : null);
 
       if (sha.isEmpty) {
         return const ModelSyncResult(ready: false, message: 'بيانات الموديل غير مكتملة على السيرفر');
@@ -141,9 +144,22 @@ class ModelSync {
         final tmpPath = '$modelPath.part';
         try {
           await File(tmpPath).parent.create(recursive: true);
-          if (await File(tmpPath).exists()) await File(tmpPath).delete();
+          final partial = File(tmpPath);
+          final partialBytes = await partial.exists() ? await partial.length() : 0;
+          if (partialBytes > 0 && expectedBytes != null && partialBytes >= expectedBytes) {
+            await partial.delete();
+          }
 
-          onProgress?.call(0.05);
+          if (partialBytes > 0) {
+            onProgress?.call(
+              expectedBytes != null && expectedBytes > 0
+                  ? (0.05 + (partialBytes / expectedBytes) * 0.92).clamp(0.05, 0.97)
+                  : 0.15,
+            );
+          } else {
+            onProgress?.call(0.05);
+          }
+
           await api.downloadModel(
             tmpPath,
             expectedBytes: expectedBytes,
@@ -153,7 +169,7 @@ class ModelSync {
                 onProgress?.call((0.05 + (received / denom) * 0.92).clamp(0.05, 0.97));
               } else {
                 final estMb = received / (1024 * 1024);
-                onProgress?.call((0.05 + estMb * 0.15).clamp(0.05, 0.97));
+                onProgress?.call((0.05 + estMb * 0.08).clamp(0.05, 0.97));
               }
             },
           );
@@ -195,11 +211,6 @@ class ModelSync {
         } catch (e) {
           lastError = e;
           debugPrint('ModelSync attempt $attempt failed: $e');
-          if (await File(tmpPath).exists()) {
-            try {
-              await File(tmpPath).delete();
-            } catch (_) {}
-          }
           if (attempt < maxAttempts) {
             await Future<void>.delayed(Duration(seconds: attempt * 4));
           }

@@ -65,6 +65,37 @@ def download_bytes(key: str) -> bytes:
         response.release_conn()
 
 
+def object_exists(key: str) -> bool:
+    client = get_minio()
+    try:
+        client.stat_object(settings.minio_bucket, key)
+        return True
+    except Exception:
+        return False
+
+
+def object_size(key: str) -> int | None:
+    client = get_minio()
+    try:
+        stat = client.stat_object(settings.minio_bucket, key)
+        return int(stat.size)
+    except Exception:
+        return None
+
+
+def open_object(key: str, offset: int = 0, length: int = 0):
+    """Return a MinIO get_object response; caller must close/release."""
+    client = get_minio()
+    if offset > 0 or length > 0:
+        return client.get_object(
+            settings.minio_bucket,
+            key,
+            offset=offset,
+            length=length if length > 0 else 0,
+        )
+    return client.get_object(settings.minio_bucket, key)
+
+
 def upload_stream(
     key: str,
     stream: BinaryIO,

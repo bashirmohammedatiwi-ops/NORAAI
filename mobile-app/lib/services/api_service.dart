@@ -14,7 +14,7 @@ import 'api_exception.dart';
 const _defaultTimeout = Duration(seconds: 35);
 const _detectTimeout = Duration(seconds: 22);
 const _downloadTimeout = Duration(minutes: 45);
-const _downloadIdleTimeout = Duration(seconds: 90);
+const _downloadIdleTimeout = Duration(seconds: 180);
 
 class ApiService {
   ApiService(this.config);
@@ -93,27 +93,38 @@ class ApiService {
     int? expectedBytes,
     void Function(int received, int? total)? onProgress,
   }) async {
-    final request = http.Request('GET', Uri.parse('$baseUrl/api/v1/driver/model/download'));
-    request.headers.addAll(_headers);
-    request.headers['Accept'] = 'application/octet-stream';
-
-    final streamed = await _downloadClient.send(request).timeout(_downloadTimeout);
-    if (streamed.statusCode != 200) {
-      final body = await streamed.stream.bytesToString();
-      throw ApiException.fromResponse(streamed.statusCode, body);
-    }
-
-    final contentLength = streamed.contentLength;
-    final progressTotal = (contentLength != null && contentLength > 0)
-        ? contentLength
-        : expectedBytes;
-
-    var received = 0;
     final file = File(destPath);
     if (!await file.parent.exists()) {
       await file.parent.create(recursive: true);
     }
-    final sink = file.openWrite();
+
+    var resumeFrom = 0;
+    if (await file.exists()) {
+      resumeFrom = await file.length();
+    }
+
+    final request = http.Request('GET', Uri.parse('$baseUrl/api/v1/driver/model/download'));
+    request.headers.addAll(_headers);
+    request.headers['Accept'] = 'application/octet-stream';
+    if (resumeFrom > 0) {
+      request.headers['Range'] = 'bytes=$resumeFrom-';
+    }
+
+    final streamed = await _downloadClient.send(request).timeout(_downloadTimeout);
+    if (streamed.statusCode != 200 && streamed.statusCode != 206) {
+      final body = await streamed.stream.bytesToString();
+      throw ApiException.fromResponse(streamed.statusCode, body);
+    }
+
+    final headerBytes = int.tryParse(streamed.headers['x-model-bytes'] ?? '');
+    final chunkLen = streamed.contentLength;
+    final progressTotal = headerBytes ??
+        ((chunkLen != null && chunkLen > 0)
+            ? resumeFrom + chunkLen
+            : expectedBytes);
+
+    var receivedThisSession = 0;
+    final sink = resumeFrom > 0 ? file.openWrite(mode: FileMode.append) : file.openWrite();
     try {
       final byteStream = streamed.stream.timeout(
         _downloadIdleTimeout,
@@ -127,32 +138,38 @@ class ApiService {
       );
 
       await for (final chunk in byteStream) {
-        received += chunk.length;
+        receivedThisSession += chunk.length;
         sink.add(chunk);
-        onProgress?.call(received, progressTotal);
+        final totalReceived = resumeFrom + receivedThisSession;
+        onProgress?.call(totalReceived, progressTotal);
       }
       await sink.flush();
     } catch (e) {
       try {
         await sink.close();
       } catch (_) {}
-      if (await file.exists()) await file.delete();
+      // Keep partial file for resume on retry.
+      if (resumeFrom == 0 && receivedThisSession == 0 && await file.exists()) {
+        await file.delete();
+      }
       rethrow;
     }
     await sink.close();
 
-    if (received == 0) {
+    final totalReceived = resumeFrom + receivedThisSession;
+    if (totalReceived == 0) {
       if (await file.exists()) await file.delete();
       throw ApiException('empty download', userMessage: 'الملف المحمّل فارغ — أعد المحاولة');
     }
-    if (contentLength != null &&
-        contentLength > 0 &&
-        received < contentLength * 0.95) {
-      if (await file.exists()) await file.delete();
+
+    final expectedTotal = progressTotal;
+    if (expectedTotal != null &&
+        expectedTotal > 0 &&
+        totalReceived < expectedTotal * 0.95) {
       throw ApiException(
         'incomplete download',
         userMessage:
-            'تحميل غير مكتمل — أعد المحاولة (${_fmtBytes(received)} / ${_fmtBytes(contentLength)})',
+            'تحميل غير مكتمل — أعد المحاولة (${_fmtBytes(totalReceived)} / ${_fmtBytes(expectedTotal)})',
       );
     }
     return destPath;

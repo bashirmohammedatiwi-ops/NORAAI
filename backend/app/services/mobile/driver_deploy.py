@@ -12,7 +12,7 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.core.minio_client import download_bytes, upload_bytes
+from app.core.minio_client import download_bytes, object_size, open_object, upload_bytes
 from app.models import ModelArtifact, Project
 from app.services.driver.project_classes import is_production_model, model_class_names
 from app.services.mobile.config import get_mobile_config, patch_mobile_config
@@ -72,6 +72,66 @@ def _export_onnx_from_weights(weights_bytes: bytes, architecture: str, output_pa
         adapter.export_onnx(weights_path, output_path)
 
 
+def load_stored_mobile_manifest(artifact: ModelArtifact) -> dict | None:
+    """Read pre-synced manifest from MinIO (fast — no ONNX export)."""
+    try:
+        raw = download_bytes(mobile_manifest_key(artifact.project_id, artifact.id))
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def ensure_mobile_onnx_meta(artifact: ModelArtifact) -> tuple[str, str, int]:
+    """Return MinIO key, sha256, byte size — export only when cache is missing."""
+    onnx_key = mobile_onnx_key(artifact.project_id, artifact.id)
+    stored = load_stored_mobile_manifest(artifact)
+    size = object_size(onnx_key)
+
+    if size and size > 10_000 and stored and stored.get("sha256"):
+        return onnx_key, str(stored["sha256"]).lower(), size
+
+    if size and size > 10_000:
+        data = download_bytes(onnx_key)
+        sha = _sha256_bytes(data)
+        manifest = build_model_manifest(artifact, sha, onnx_byte_len=len(data))
+        upload_bytes(
+            mobile_manifest_key(artifact.project_id, artifact.id),
+            json.dumps(manifest).encode("utf-8"),
+            "application/json",
+        )
+        return onnx_key, sha, len(data)
+
+    data, sha = ensure_mobile_onnx_bytes(artifact)
+    manifest = build_model_manifest(artifact, sha, onnx_byte_len=len(data))
+    upload_bytes(
+        mobile_manifest_key(artifact.project_id, artifact.id),
+        json.dumps(manifest).encode("utf-8"),
+        "application/json",
+    )
+    return onnx_key, sha, len(data)
+
+
+def iter_mobile_onnx_chunks(
+    artifact: ModelArtifact,
+    *,
+    offset: int = 0,
+    chunk_size: int = 256 * 1024,
+):
+    """Stream ONNX bytes from MinIO in chunks."""
+    onnx_key, _, _ = ensure_mobile_onnx_meta(artifact)
+    response = open_object(onnx_key, offset=offset)
+    try:
+        while True:
+            chunk = response.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+    finally:
+        response.close()
+        response.release_conn()
+
+
 def ensure_mobile_onnx_bytes(artifact: ModelArtifact) -> tuple[bytes, str]:
     """Return ONNX bytes and sha256, exporting from .pt weights when needed."""
     onnx_key = mobile_onnx_key(artifact.project_id, artifact.id)
@@ -128,6 +188,7 @@ def build_model_manifest(
         "nc": len(classes),
         "classes": classes,
         "model_size_mb": size_mb,
+        "model_bytes": onnx_byte_len if onnx_byte_len and onnx_byte_len > 0 else None,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 

@@ -542,6 +542,7 @@ class DriverModelManifest(BaseModel):
     nc: int
     classes: list[str]
     model_size_mb: float | None = None
+    model_bytes: int | None = None
     updated_at: str
     download_url: str | None = None
 

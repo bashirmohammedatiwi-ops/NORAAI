@@ -36,7 +36,7 @@ import '../utils/map_geo.dart';
 import '../utils/map_styles.dart';
 import '../utils/platform_support.dart';
 
-const appVersion = '3.9.4';
+const appVersion = '3.9.5';
 
 enum SyncPhase { idle, connecting, syncingConfig, syncingModel, ready, error }
 

@@ -4,7 +4,8 @@ import json
 import math
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +30,9 @@ from app.services.mobile.config import get_mobile_config
 from app.services.mobile.driver_deploy import (
     build_model_manifest,
     ensure_mobile_onnx_bytes,
-    mobile_onnx_key,
+    ensure_mobile_onnx_meta,
+    iter_mobile_onnx_chunks,
+    load_stored_mobile_manifest,
     resolve_driver_artifact,
 )
 from app.core.config import get_settings
@@ -244,11 +247,18 @@ async def driver_model_manifest(
     artifact = await resolve_driver_artifact(db, project)
     if not artifact:
         raise HTTPException(status_code=404, detail="No model deployed for mobile app")
+    stored = load_stored_mobile_manifest(artifact)
     try:
-        onnx_bytes, sha256 = ensure_mobile_onnx_bytes(artifact)
+        if stored and stored.get("sha256"):
+            _, sha256, byte_len = ensure_mobile_onnx_meta(artifact)
+            manifest = stored
+            if not manifest.get("model_bytes") and byte_len > 0:
+                manifest = build_model_manifest(artifact, sha256, onnx_byte_len=byte_len)
+        else:
+            onnx_bytes, sha256 = ensure_mobile_onnx_bytes(artifact)
+            manifest = build_model_manifest(artifact, sha256, onnx_byte_len=len(onnx_bytes))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    manifest = build_model_manifest(artifact, sha256, onnx_byte_len=len(onnx_bytes))
     return DriverModelManifest(
         artifact_id=artifact.id,
         model_name=manifest["model_name"],
@@ -260,6 +270,7 @@ async def driver_model_manifest(
         nc=manifest["nc"],
         classes=manifest["classes"],
         model_size_mb=manifest.get("model_size_mb"),
+        model_bytes=manifest.get("model_bytes"),
         updated_at=manifest["updated_at"],
         download_url="/api/v1/driver/model/download",
     )
@@ -267,10 +278,10 @@ async def driver_model_manifest(
 
 @router.get("/model/download")
 async def driver_model_download(
+    request: Request,
     device: FleetDevice = Depends(get_fleet_device),
     db: AsyncSession = Depends(get_db),
 ):
-    from fastapi.responses import Response
     from app.models import Project
 
     project = await db.get(Project, device.project_id)
@@ -280,18 +291,41 @@ async def driver_model_download(
     if not artifact:
         raise HTTPException(status_code=404, detail="No model deployed for mobile app")
     try:
-        data, sha256 = ensure_mobile_onnx_bytes(artifact)
+        _, sha256, total_size = ensure_mobile_onnx_meta(artifact)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return Response(
-        content=data,
+
+    start = 0
+    range_header = request.headers.get("range") or request.headers.get("Range")
+    if range_header:
+        part = range_header.replace("bytes=", "").strip()
+        if "-" in part:
+            start_str = part.split("-", 1)[0].strip()
+            if start_str.isdigit():
+                start = int(start_str)
+
+    if start >= total_size:
+        raise HTTPException(status_code=416, detail="Range not satisfiable")
+
+    content_length = total_size - start
+    headers = {
+        "Content-Disposition": f'attachment; filename="model_{artifact.id}.onnx"',
+        "Content-Length": str(content_length),
+        "Accept-Ranges": "bytes",
+        "X-Model-Version": sha256[:16],
+        "X-Model-Sha256": sha256,
+        "X-Model-Bytes": str(total_size),
+    }
+    status_code = 200
+    if start > 0:
+        headers["Content-Range"] = f"bytes {start}-{total_size - 1}/{total_size}"
+        status_code = 206
+
+    return StreamingResponse(
+        iter_mobile_onnx_chunks(artifact, offset=start),
+        status_code=status_code,
         media_type="application/octet-stream",
-        headers={
-            "Content-Disposition": f'attachment; filename="model_{artifact.id}.onnx"',
-            "Content-Length": str(len(data)),
-            "X-Model-Version": sha256[:16],
-            "X-Model-Sha256": sha256,
-        },
+        headers=headers,
     )
 
 
