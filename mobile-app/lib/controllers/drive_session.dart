@@ -29,6 +29,7 @@ import '../services/road_vibration_sensor.dart';
 import '../services/speed_estimator.dart';
 import '../services/speed_monitor.dart';
 import '../config/app_config.dart';
+import '../config/detection_config.dart';
 import '../utils/event_meta.dart';
 import '../utils/frame_compress.dart';
 import '../utils/image_compress.dart';
@@ -36,7 +37,7 @@ import '../utils/map_geo.dart';
 import '../utils/map_styles.dart';
 import '../utils/platform_support.dart';
 
-const appVersion = '3.9.5';
+const appVersion = '3.10.6';
 
 enum SyncPhase { idle, connecting, syncingConfig, syncingModel, ready, error }
 
@@ -115,6 +116,8 @@ class DriveSession extends ChangeNotifier {
   DateTime? _cameraReadyAt;
   Future<void>? _cameraInitFuture;
   int _detectFailures = 0;
+  int _localInferFailures = 0;
+  bool _localInferBroken = false;
 
   List<DetectionBox> detections = [];
   List<LiveAlert> liveAlerts = [];
@@ -144,9 +147,9 @@ class DriveSession extends ChangeNotifier {
 
   String? get localInferenceError => localOnnx.loadError;
 
-  /// On-device ONNX is preferred whenever the model is loaded.
+  /// On-device ONNX when loaded and not failing repeatedly.
   bool get usesLocalInference =>
-      supportsLocalInference && localOnnx.isReady && serverCfg?.modelReady == true;
+      supportsLocalInference && localOnnx.isReady && !_localInferBroken;
 
   bool get prefersOnDeviceModel =>
       supportsLocalInference && serverCfg?.modelReady == true;
@@ -177,8 +180,14 @@ class DriveSession extends ChangeNotifier {
     startGps();
     unawaited(_safeSyncAll());
     _configTimer = Timer.periodic(const Duration(seconds: 20), (_) => unawaited(_safeSyncConfig()));
-    _nearbyTimer = Timer.periodic(const Duration(seconds: 15), (_) => fetchNearby());
+    if (DetectionConfig.mapEventReporting) {
+      _nearbyTimer = Timer.periodic(const Duration(seconds: 15), (_) => fetchNearby());
+    }
   }
+
+  /// AR overlay active — keeps tracker animating between inference frames.
+  bool get overlayScanning =>
+      serverCfg?.detectionEnabled == true && camera != null && camera!.value.isInitialized;
 
   Future<void> _safeSyncAll() async {
     try {
@@ -250,7 +259,9 @@ class DriveSession extends ChangeNotifier {
   }
 
   Future<CameraController> _openCameraController(CameraDescription selected) async {
-    final presets = [ResolutionPreset.medium];
+    final presets = supportsLocalInference
+        ? [ResolutionPreset.high, ResolutionPreset.medium]
+        : [ResolutionPreset.medium];
 
     Object? lastError;
     for (final preset in presets) {
@@ -592,6 +603,8 @@ class DriveSession extends ChangeNotifier {
       await localOnnx.load(modelPath: path, manifestPath: manifest);
       if (localOnnx.isReady) {
         _localOnnxPending = false;
+        _localInferBroken = false;
+        _localInferFailures = 0;
         modelStatus = 'محلي ONNX ⚡ · ${cachedModelVersion ?? serverCfg?.modelVersion ?? "—"}';
         _notifyThrottled();
       }
@@ -818,6 +831,7 @@ class DriveSession extends ChangeNotifier {
   }
 
   Future<void> fetchNearby({bool force = false}) async {
+    if (!DetectionConfig.mapEventReporting) return;
     final pos = position;
     if (pos == null) return;
     if (!force && !online) return;
@@ -858,7 +872,8 @@ class DriveSession extends ChangeNotifier {
       await runDetect();
       final cfg = serverCfg;
       final pos = position;
-      if (cfg == null || pos == null) {
+      final useLocalLoop = usesLocalInference;
+      if (cfg == null || (!useLocalLoop && pos == null)) {
         scheduleNextDetect(1000);
         return;
       }
@@ -868,7 +883,7 @@ class DriveSession extends ChangeNotifier {
           ? scheduler.localIntervalMs(lastLatencyMs: lastLatencyMs)
           : scheduler.nextIntervalMs(cfg, speed, lastLatencyMs: lastLatencyMs);
       final elapsed = DateTime.now().difference(started).inMilliseconds;
-      final floor = useLocal ? 45 : 120;
+      final floor = useLocal ? DetectionConfig.localDetectFloorMs : 120;
       scheduleNextDetect((interval - elapsed).clamp(floor, interval));
     });
   }
@@ -877,27 +892,29 @@ class DriveSession extends ChangeNotifier {
     final cfg = serverCfg;
     final cam = camera;
     final pos = position;
-    if (cfg == null || cam == null || !cam.value.isInitialized || pos == null) return;
-    if (!cfg.detectionEnabled || detectBusy || cameraStarting || _onnxLoading) return;
+    if (cfg == null || cam == null || !cam.value.isInitialized) return;
+    if (!cfg.detectionEnabled || detectBusy || cameraStarting) return;
 
     final readyAt = _cameraReadyAt;
-    if (readyAt != null && DateTime.now().difference(readyAt).inMilliseconds < 350) {
+    if (readyAt != null && DateTime.now().difference(readyAt).inMilliseconds < 200) {
       return;
     }
 
     final useLocal = usesLocalInference && localOnnx.isReady;
-    if (!useLocal && !online) return;
+    if (!useLocal && (pos == null || !online)) return;
 
     detectBusy = true;
     scanning = true;
 
     try {
       detectError = null;
-      final useLocalNow = usesLocalInference;
-      final maxW = useLocalNow
+      final preferLocal = usesLocalInference;
+      final maxW = preferLocal
           ? scheduler.localCaptureWidth(localOnnx.inputSize)
           : scheduler.captureWidth(cfg, lastLatencyMs: lastLatencyMs);
-      final q = useLocalNow ? scheduler.localJpegQuality() : scheduler.jpegQuality(cfg, lastLatencyMs: lastLatencyMs);
+      final q = preferLocal
+          ? scheduler.localJpegQuality()
+          : scheduler.jpegQuality(cfg, lastLatencyMs: lastLatencyMs);
       final displayMin = scheduler.displayMinConfidence(cfg);
 
       Uint8List? frameBytes;
@@ -913,52 +930,93 @@ class DriveSession extends ChangeNotifier {
       }
       _detectFailures = 0;
 
-      if (useLocalNow) {
-        final local = await localOnnx.detect(
-          frameBytes,
-          minConfidence: cfg.minConfidence,
-        );
-        detections = local.boxes
-            .where((d) => d.confidence >= displayMin && d.bbox.length >= 4)
-            .toList();
-        lastLatencyMs = local.latencyMs;
+      final canServer = online && pos != null && cfg.modelReady;
+      final canLocal = preferLocal;
+      List<DetectionBox> boxes = [];
+      int? latency;
+      bool usedServerInfer = false;
 
-        _updateFollowingDistance();
-
-        if (online && detections.isNotEmpty) {
-          unawaited(api.reportLocalDetections(
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-            detections: detections,
-            minConfidence: cfg.minConfidence,
-          ).then((report) => _handleDetectEvents(report.eventsCreated, report.alerts)));
+      if (canLocal) {
+        try {
+          final inferMin = scheduler.localInferMinConfidence(cfg);
+          final localMin = scheduler.localDisplayMinConfidence(cfg);
+          final local = await localOnnx.detect(
+            frameBytes,
+            minConfidence: inferMin,
+          );
+          boxes = local.boxes
+              .where((d) => d.confidence >= localMin && d.bbox.length >= 4)
+              .toList();
+          latency = local.latencyMs;
+        } catch (e, st) {
+          debugPrint('Local ONNX detect failed: $e\n$st');
+          _localInferFailures++;
+          if (_localInferFailures >= 2) {
+            _localInferBroken = true;
+          }
         }
-      } else {
+      }
+
+      if (boxes.isEmpty && canServer) {
+        final gps = pos!;
         final sw = Stopwatch()..start();
         final result = await api.detectFrameBytes(
           bytes: frameBytes,
           filename: 'frame.jpg',
-          latitude: pos.latitude,
-          longitude: pos.longitude,
+          latitude: gps.latitude,
+          longitude: gps.longitude,
           speed: speedKmh,
           speedLimit: roadSpeed.cached.limit,
           minConfidence: cfg.minConfidence,
         );
-        lastLatencyMs = result.latencyMs ?? sw.elapsedMilliseconds;
-
-        detections = result.detections
+        latency = result.latencyMs ?? sw.elapsedMilliseconds;
+        boxes = result.detections
             .where((d) => d.confidence >= displayMin && d.bbox.length >= 4)
             .toList();
-        _updateFollowingDistance();
-        unawaited(_handleDetectEvents(result.eventsCreated, result.alerts));
+        usedServerInfer = true;
+        if (boxes.isNotEmpty) detectError = null;
+        if (DetectionConfig.mapEventReporting) {
+          unawaited(_handleDetectEvents(result.eventsCreated, result.alerts));
+        }
+      }
+
+      detections = boxes;
+      if (latency != null) lastLatencyMs = latency;
+
+      if (detections.isEmpty && detectError == null) {
+        if (!canServer && pos == null) {
+          detectError = 'انتظر GPS للاكتشاف السحابي';
+        } else if (!canServer && !online) {
+          detectError = 'لا يوجد اتصال — الاكتشاف السحابي غير متاح';
+        } else if (_localInferBroken && canServer && !usedServerInfer) {
+          detectError = 'الموديل المحلي معطّل — جاري التحويل للسيرفر';
+        }
+      }
+
+      _updateFollowingDistance();
+
+      if (DetectionConfig.mapEventReporting &&
+          online &&
+          pos != null &&
+          detections.isNotEmpty &&
+          !usedServerInfer) {
+        unawaited(api.reportLocalDetections(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          detections: detections,
+          minConfidence: cfg.minConfidence,
+        ).then((report) => _handleDetectEvents(report.eventsCreated, report.alerts)));
       }
     } on ApiException catch (e) {
       detections = [];
       detectError = e.displayMessage;
       if (!online) connectionError = e.displayMessage;
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('runDetect failed: $e\n$st');
       detections = [];
-      detectError = e is StateError ? e.message : 'فشل الاكتشاف — ${e.runtimeType}';
+      detectError = e is StateError
+          ? e.message
+          : ApiException.fromError(e).displayMessage;
     } finally {
       detectBusy = false;
       scanning = false;
@@ -1000,6 +1058,7 @@ class DriveSession extends ChangeNotifier {
   }
 
   Future<void> _handleDetectEvents(int eventsCreated, List<dynamic> alerts) async {
+    if (!DetectionConfig.mapEventReporting) return;
     if (eventsCreated <= 0) return;
     eventsCount += eventsCreated;
     if (supportsVibration && await Vibration.hasVibrator() == true) {

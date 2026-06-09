@@ -11,7 +11,6 @@ class CameraFrameBuffer {
   _FrameSnapshot? _snapshot;
   bool _attached = false;
   bool _captureBusy = false;
-  int _tick = 0;
 
   bool get hasFrame => _snapshot != null;
   bool get isAttached => _attached;
@@ -33,7 +32,6 @@ class CameraFrameBuffer {
 
   Future<void> detach(CameraController? controller) async {
     _snapshot = null;
-    _tick = 0;
     if (!_attached) return;
     _attached = false;
     if (controller != null && controller.value.isStreamingImages) {
@@ -45,8 +43,6 @@ class CameraFrameBuffer {
 
   void _onCameraImage(CameraImage image) {
     if (_captureBusy) return;
-    _tick++;
-    if (_tick.isOdd) return;
 
     try {
       _snapshot = _FrameSnapshot.fromCameraImage(image);

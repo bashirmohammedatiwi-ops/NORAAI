@@ -553,7 +553,14 @@ class YOLOAdapter:
         try:
             from ultralytics import YOLO
             model = YOLO(weights_path)
-            model.export(format="onnx")
+            # End-to-end ONNX (NMS in graph) — easier on-device decode for mobile.
+            model.export(
+                format="onnx",
+                simplify=True,
+                dynamic=False,
+                imgsz=640,
+                nms=True,
+            )
             onnx_path = weights_path.replace(".pt", ".onnx")
             if os.path.exists(onnx_path):
                 Path(onnx_path).rename(output_path)

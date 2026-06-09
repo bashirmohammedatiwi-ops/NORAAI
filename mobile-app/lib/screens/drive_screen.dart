@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/detection_config.dart';
 import '../controllers/drive_session.dart';
 import '../theme/app_colors.dart';
 import '../utils/responsive.dart';
@@ -63,6 +64,7 @@ class _DriveScreenState extends State<DriveScreen> {
                         nearbyEvents: s.nearbyEvents,
                         classMeta: s.classMeta,
                         onMapMoved: s.onMapMoved,
+                        showEventMarkers: DetectionConfig.mapEventReporting,
                       ),
                       DriveTopBar(
                         vehicleId: s.config.vehicleId,
@@ -88,7 +90,7 @@ class _DriveScreenState extends State<DriveScreen> {
                                 controller: s.camera!,
                                 detections: s.detections,
                                 minConfidence: minConf,
-                                scanning: s.scanning,
+                                scanning: s.overlayScanning,
                                 headwayDistanceM: s.followingDistance.distanceM,
                                 leadVehicleClass: s.followingDistance.leadClass,
                                 localInference: s.usesLocalInference,
@@ -102,7 +104,7 @@ class _DriveScreenState extends State<DriveScreen> {
                         heading: s.displayHeading,
                         nearestEvent: s.nearestEvent,
                         classMeta: s.classMeta,
-                        scanning: s.scanning,
+                        scanning: s.overlayScanning,
                         latencyMs: s.lastLatencyMs,
                         vibrationLevel: s.vibrationLevel,
                         vibrationAvailable: s.vibrationSensorAvailable,
@@ -139,6 +141,7 @@ class _DriveScreenState extends State<DriveScreen> {
                       nearbyEvents: s.nearbyEvents,
                       classMeta: s.classMeta,
                       onMapMoved: s.onMapMoved,
+                      showEventMarkers: DetectionConfig.mapEventReporting,
                     ),
                     DriveTopBar(
                       vehicleId: s.config.vehicleId,
@@ -181,7 +184,7 @@ class _DriveScreenState extends State<DriveScreen> {
                     controller: s.camera!,
                     detections: s.detections,
                     minConfidence: minConf,
-                    scanning: s.scanning,
+                    scanning: s.overlayScanning,
                     headwayDistanceM: s.followingDistance.distanceM,
                     leadVehicleClass: s.followingDistance.leadClass,
                     localInference: s.usesLocalInference,
@@ -194,7 +197,7 @@ class _DriveScreenState extends State<DriveScreen> {
                 heading: s.displayHeading,
                 nearestEvent: s.nearestEvent,
                 classMeta: s.classMeta,
-                scanning: s.scanning,
+                scanning: s.overlayScanning,
                 latencyMs: s.lastLatencyMs,
                 vibrationLevel: s.vibrationLevel,
                 vibrationAvailable: s.vibrationSensorAvailable,

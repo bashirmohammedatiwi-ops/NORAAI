@@ -32,6 +32,7 @@ class DriveMapView extends StatefulWidget {
     this.speedLimit = 80,
     this.speedKmh,
     this.onMapMoved,
+    this.showEventMarkers = false,
   });
 
   final MapController mapController;
@@ -49,6 +50,7 @@ class DriveMapView extends StatefulWidget {
   final List<NearbyEvent> nearbyEvents;
   final Map<String, EventMeta> classMeta;
   final VoidCallback? onMapMoved;
+  final bool showEventMarkers;
 
   static const _maxMarkers = 20;
 
@@ -144,7 +146,9 @@ class _DriveMapViewState extends State<DriveMapView> with SingleTickerProviderSt
     final lon = widget.center.longitude;
     final markerRotation = widget.headingUp ? 0.0 : widget.displayHeading;
     final accuracy = widget.position?.accuracy ?? 0;
-    final nearest = _nearestEvents(widget.nearbyEvents, DriveMapView._maxMarkers);
+    final nearest = widget.showEventMarkers
+        ? _nearestEvents(widget.nearbyEvents, DriveMapView._maxMarkers)
+        : <NearbyEvent>[];
     final overLimit = widget.speedKmh != null &&
         widget.speedLimit > 0 &&
         widget.speedKmh! > widget.speedLimit;

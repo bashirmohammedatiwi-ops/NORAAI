@@ -1,8 +1,10 @@
+import 'dart:math' as math;
+
 import '../models/detection.dart';
 
 /// Balances upload size, inference speed, and detection accuracy.
 class DetectScheduler {
-  static const int _minIntervalMs = 200;
+  static const int _minIntervalMs = 120;
   static const int _maxIntervalMs = 2200;
   static const int _minCaptureWidth = 640;
   static const int _maxCaptureWidth = 1024;
@@ -58,21 +60,31 @@ class DetectScheduler {
     return q.clamp(78, 90);
   }
 
-  /// Display threshold — slightly below server config to avoid hiding valid boxes.
+  /// Display threshold — permissive so valid boxes are not hidden on phone.
   double displayMinConfidence(ServerConfig cfg) =>
-      (cfg.minConfidence * 0.92).clamp(0.25, cfg.minConfidence);
+      (cfg.minConfidence * 0.78).clamp(0.15, cfg.minConfidence);
 
-  /// On-device ONNX — much faster cadence.
+  /// Raw ONNX decode threshold — match server conf band.
+  double localInferMinConfidence(ServerConfig cfg) =>
+      math.max(0.08, cfg.minConfidence * 0.2);
+
+  /// Display filter for on-device boxes (slightly below server threshold).
+  double localDisplayMinConfidence(ServerConfig cfg) =>
+      (cfg.minConfidence * 0.65).clamp(0.12, cfg.minConfidence);
+
+  /// On-device ONNX — target 15–30 FPS effective.
   int localIntervalMs({int? lastLatencyMs}) {
-    if (lastLatencyMs == null) return 100;
-    if (lastLatencyMs < 70) return 55;
-    if (lastLatencyMs < 120) return 80;
-    if (lastLatencyMs < 200) return 110;
-    if (lastLatencyMs < 350) return 150;
-    return 220;
+    if (lastLatencyMs == null) return 66;
+    if (lastLatencyMs < 55) return 33;
+    if (lastLatencyMs < 90) return 45;
+    if (lastLatencyMs < 140) return 66;
+    if (lastLatencyMs < 220) return 95;
+    if (lastLatencyMs < 350) return 130;
+    return 180;
   }
 
-  int localCaptureWidth(int modelInputSize) => (modelInputSize * 1.15).round().clamp(416, 896);
+  int localCaptureWidth(int modelInputSize) =>
+      (modelInputSize * 1.25).round().clamp(640, 960);
 
-  int localJpegQuality() => 88;
+  int localJpegQuality() => 85;
 }

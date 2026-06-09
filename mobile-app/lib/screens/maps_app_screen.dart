@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/detection_config.dart';
 import '../controllers/drive_session.dart';
 import '../theme/app_colors.dart';
 import '../widgets/drive_map_view.dart';
@@ -44,6 +45,7 @@ class MapsAppScreen extends StatelessWidget {
                       nearbyEvents: s.nearbyEvents,
                       classMeta: s.classMeta,
                       onMapMoved: s.onMapMoved,
+                      showEventMarkers: DetectionConfig.mapEventReporting,
                     ),
                     GpsStatusBanner(
                       searching: s.gpsSearching,
@@ -103,7 +105,7 @@ class MapsAppScreen extends StatelessWidget {
                 heading: s.displayHeading,
                 nearestEvent: s.nearestEvent,
                 classMeta: s.classMeta,
-                scanning: s.scanning,
+                scanning: s.overlayScanning,
                 latencyMs: s.lastLatencyMs,
                 vibrationLevel: s.vibrationLevel,
                 vibrationAvailable: s.vibrationSensorAvailable,
