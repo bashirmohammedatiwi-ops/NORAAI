@@ -43,7 +43,7 @@ def _normalize_training_architecture(architecture: str, config: dict) -> tuple[s
     if variant in ("n", "s"):
         config = dict(config)
         config["model_variant"] = variant
-    if arch not {a.value for a in ModelArchitecture}:
+    if arch not in {a.value for a in ModelArchitecture}:
         arch = "yolo11"
     return arch, config
 
