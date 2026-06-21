@@ -33,14 +33,20 @@ router = APIRouter(tags=["training", "models"])
 
 
 def _normalize_training_architecture(architecture: str, config: dict) -> tuple[str, dict]:
-    """Map yolo11n/yolo11s UI values to stored architecture + model_variant."""
+    """Map yolo11n/yolo12s UI values to stored architecture + model_variant."""
     arch = (architecture or "yolo11").strip().lower()
     variant = config.get("model_variant")
     if arch == "yolo11n":
         arch, variant = "yolo11", "n"
     elif arch == "yolo11s":
         arch, variant = "yolo11", "s"
-    if variant in ("n", "s"):
+    elif arch == "yolo12n":
+        arch, variant = "yolo12", "n"
+    elif arch == "yolo12s":
+        arch, variant = "yolo12", "s"
+    elif arch == "yolo12m":
+        arch, variant = "yolo12", "m"
+    if variant in ("n", "s", "m"):
         config = dict(config)
         config["model_variant"] = variant
     if arch not in {a.value for a in ModelArchitecture}:
@@ -416,7 +422,7 @@ async def import_project_model(
             weights_bytes=weights_bytes,
             name=name,
             architecture=arch_value,
-            model_variant=model_variant if model_variant in ("n", "s") else "n",
+            model_variant=model_variant if model_variant in ("n", "s", "m") else "n",
             classes=class_list,
             promote=promote,
             onnx_bytes=onnx_bytes,

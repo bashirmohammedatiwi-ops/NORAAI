@@ -12,14 +12,28 @@ interface Props {
   onImported?: () => void;
 }
 
+const YOLO12_PRESETS = [
+  { architecture: 'yolo12', variant: 's', label: 'YOLO12s (RDD2022 / road damage)' },
+  { architecture: 'yolo12', variant: 'n', label: 'YOLO12n (lighter, mobile)' },
+  { architecture: 'yolo12', variant: 'm', label: 'YOLO12m (higher accuracy)' },
+] as const;
+
+const YOLO11_PRESETS = [
+  { architecture: 'yolo11', variant: 'n', label: 'YOLO11n' },
+  { architecture: 'yolo11', variant: 's', label: 'YOLO11s' },
+] as const;
+
 export function ModelImportCard({ projectId, classNames = [], onImported }: Props) {
   const ptRef = useRef<HTMLInputElement>(null);
   const onnxRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('Imported Model');
-  const [variant, setVariant] = useState('n');
-  const [classes, setClasses] = useState(classNames.join(', '));
+  const [family, setFamily] = useState<'yolo11' | 'yolo12'>('yolo12');
+  const [variant, setVariant] = useState('s');
+  const [classes, setClasses] = useState(classNames.join(', ') || 'D00,D10,D20,D40,Repair');
   const [promote, setPromote] = useState(true);
   const [loading, setLoading] = useState(false);
+
+  const presets = family === 'yolo12' ? YOLO12_PRESETS : YOLO11_PRESETS;
 
   const importModel = async () => {
     const pt = ptRef.current?.files?.[0];
@@ -32,7 +46,7 @@ export function ModelImportCard({ projectId, classNames = [], onImported }: Prop
       const fd = new FormData();
       fd.append('weights_file', pt);
       fd.append('name', name);
-      fd.append('architecture', 'yolo11');
+      fd.append('architecture', family);
       fd.append('model_variant', variant);
       fd.append('classes', classes);
       fd.append('promote', String(promote));
@@ -60,7 +74,7 @@ export function ModelImportCard({ projectId, classNames = [], onImported }: Prop
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <p className="text-muted-foreground text-xs">
-          ارفع <code>.pt</code> من Local Trainer أو أي تدريب YOLO خارجي. اختياري: <code>.onnx</code>
+          ارفع <code>.pt</code> خارجي (مثل RDD2022 YOLO12s). اختياري: <code>.onnx</code> — وإلا يُصدّر السيرفر تلقائياً عند المزامنة للهاتف.
         </p>
         <div>
           <label className="text-xs text-muted-foreground">Weights (.pt)</label>
@@ -71,14 +85,33 @@ export function ModelImportCard({ projectId, classNames = [], onImported }: Prop
           <input ref={onnxRef} type="file" accept=".onnx" className="mt-1 block w-full text-xs" />
         </div>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Model name" />
-        <Select value={variant} onChange={(e) => setVariant(e.target.value)}>
-          <option value="n">YOLO11n</option>
-          <option value="s">YOLO11s</option>
+        <Select
+          label="YOLO family"
+          value={family}
+          onChange={(e) => {
+            const next = e.target.value as 'yolo11' | 'yolo12';
+            setFamily(next);
+            setVariant(next === 'yolo12' ? 's' : 'n');
+          }}
+        >
+          <option value="yolo12">YOLO12 (RDD2022, external weights)</option>
+          <option value="yolo11">YOLO11</option>
+        </Select>
+        <Select
+          label="Variant"
+          value={variant}
+          onChange={(e) => setVariant(e.target.value)}
+        >
+          {presets.map((p) => (
+            <option key={`${p.architecture}-${p.variant}`} value={p.variant}>
+              {p.label}
+            </option>
+          ))}
         </Select>
         <Input
           value={classes}
           onChange={(e) => setClasses(e.target.value)}
-          placeholder="Classes: pothole, crack, accident"
+          placeholder="Classes: D00,D10,D20,D40,Repair"
         />
         <label className="flex items-center gap-2 text-xs">
           <input type="checkbox" checked={promote} onChange={(e) => setPromote(e.target.checked)} />

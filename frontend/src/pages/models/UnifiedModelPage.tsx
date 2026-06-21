@@ -505,6 +505,9 @@ export default function UnifiedModelPage() {
               <option value="yolo11n">YOLO11n (nano)</option>
               <option value="yolo11s">YOLO11s (small)</option>
               <option value="yolo11">YOLO11 (default nano)</option>
+              <option value="yolo12n">YOLO12n (nano)</option>
+              <option value="yolo12s">YOLO12s (small — RDD2022)</option>
+              <option value="yolo12m">YOLO12m (medium)</option>
               <option value="yolov10">YOLOv10</option>
               <option value="rt_detr">RT-DETR</option>
             </Select>

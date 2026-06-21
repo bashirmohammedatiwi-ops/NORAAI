@@ -99,6 +99,10 @@ class EfficientDetAdapter:
 
 def resolve_yolo_weights(architecture: str, model_variant: str | None = None) -> str:
     variant = (model_variant or "").strip().lower()
+    if architecture.startswith("yolo12") or architecture == "yolo12":
+        if variant in ("n", "s", "m"):
+            return f"yolo12{variant}.pt"
+        return "yolo12s.pt"
     if architecture == "yolo11n" or variant == "n":
         return "yolo11n.pt"
     if architecture == "yolo11s" or variant == "s":
@@ -109,7 +113,7 @@ def resolve_yolo_weights(architecture: str, model_variant: str | None = None) ->
 
 
 def get_adapter(architecture: str, model_variant: str | None = None):
-    if architecture in ("yolo11", "yolo11n", "yolo11s"):
+    if architecture in ("yolo11", "yolo11n", "yolo11s", "yolo12", "yolo12n", "yolo12s", "yolo12m"):
         weights = resolve_yolo_weights(architecture, model_variant)
         return YOLOAdapter(weights)
     mapping = {

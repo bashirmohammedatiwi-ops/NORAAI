@@ -13,7 +13,7 @@ from app.models import ModelArtifact
 from app.services.driver.project_classes import is_production_model
 from app.services.models.active_model import get_active_model_sync
 
-YOLO_FINE_TUNE_ARCHITECTURES = frozenset({"yolo11", "yolov10", "rt_detr"})
+YOLO_FINE_TUNE_ARCHITECTURES = frozenset({"yolo11", "yolo12", "yolov10", "rt_detr"})
 
 
 def wants_continue_training(config: dict) -> bool:

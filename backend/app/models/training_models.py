@@ -26,6 +26,7 @@ class TrainingMode(str, enum.Enum):
 
 class ModelArchitecture(str, enum.Enum):
     YOLO11 = "yolo11"
+    YOLO12 = "yolo12"
     YOLOV10 = "yolov10"
     RT_DETR = "rt_detr"
     FASTER_RCNN = "faster_rcnn"

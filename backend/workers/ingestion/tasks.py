@@ -217,7 +217,7 @@ def import_yolo_dataset(
                 can_fine = bool(
                     artifact
                     and not (artifact.metrics or {}).get("mock")
-                    and artifact.architecture in ("yolo11", "yolov10", "rt_detr")
+                    and artifact.architecture in ("yolo11", "yolo12", "yolov10", "rt_detr")
                 )
                 preset = recommend_preset(has_model, can_fine)
                 config = build_retrain_config(

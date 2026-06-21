@@ -28,7 +28,7 @@ def _recommended_training_preset(artifact: ModelArtifact | None) -> str:
     can_fine = bool(
         artifact
         and not (artifact.metrics or {}).get("mock")
-        and artifact.architecture in ("yolo11", "yolov10", "rt_detr")
+        and artifact.architecture in ("yolo11", "yolo12", "yolov10", "rt_detr")
     )
     return recommend_preset(has_model, can_fine)
 
@@ -315,7 +315,7 @@ async def get_active_model_status(db: AsyncSession, project_id: uuid.UUID) -> di
         "can_fine_tune": bool(
             artifact
             and not (artifact.metrics or {}).get("mock")
-            and artifact.architecture in ("yolo11", "yolov10", "rt_detr")
+            and artifact.architecture in ("yolo11", "yolo12", "yolov10", "rt_detr")
         ),
         "recommended_preset": _recommended_training_preset(artifact),
         "fine_tune_source": (artifact.metrics or {}).get("fine_tune_source") if artifact else None,
