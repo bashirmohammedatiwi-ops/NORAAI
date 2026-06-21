@@ -38,7 +38,9 @@ def _cpu_preset_options() -> list[dict]:
 
 TRAINING_OPTIONS = {
     "architectures": [
-        {"value": "yolo11", "label": "YOLO11", "description": "Latest Ultralytics YOLO"},
+        {"value": "yolo11n", "label": "YOLO11n", "description": "Nano — fastest, best for CPU/MPS"},
+        {"value": "yolo11s", "label": "YOLO11s", "description": "Small — better accuracy, slower"},
+        {"value": "yolo11", "label": "YOLO11 (nano default)", "description": "Latest Ultralytics YOLO"},
         {"value": "yolov10", "label": "YOLOv10", "description": "YOLOv10 real-time detection"},
         {"value": "rt_detr", "label": "RT-DETR", "description": "Real-time DEtection TRansformer"},
         {"value": "faster_rcnn", "label": "Faster R-CNN", "description": "Two-stage detector"},

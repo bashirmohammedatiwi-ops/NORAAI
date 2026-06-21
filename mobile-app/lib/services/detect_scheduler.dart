@@ -74,17 +74,17 @@ class DetectScheduler {
 
   /// On-device ONNX — target 15–30 FPS effective.
   int localIntervalMs({int? lastLatencyMs}) {
-    if (lastLatencyMs == null) return 66;
-    if (lastLatencyMs < 55) return 33;
-    if (lastLatencyMs < 90) return 45;
-    if (lastLatencyMs < 140) return 66;
-    if (lastLatencyMs < 220) return 95;
-    if (lastLatencyMs < 350) return 130;
-    return 180;
+    if (lastLatencyMs == null) return 40;
+    if (lastLatencyMs < 45) return 25;
+    if (lastLatencyMs < 70) return 33;
+    if (lastLatencyMs < 110) return 50;
+    if (lastLatencyMs < 180) return 75;
+    if (lastLatencyMs < 280) return 100;
+    return 140;
   }
 
-  int localCaptureWidth(int modelInputSize) =>
-      (modelInputSize * 1.25).round().clamp(640, 960);
+  /// YUV fast path uses model input size directly — no extra JPEG resize.
+  int localCaptureWidth(int modelInputSize) => modelInputSize.clamp(640, 640);
 
   int localJpegQuality() => 85;
 }

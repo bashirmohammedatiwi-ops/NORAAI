@@ -114,15 +114,27 @@ class _ArDetectPainter extends CustomPainter {
 
     TrackedDetection? leadTrack;
     for (final t in tracks) {
-      final rect = _mapBbox(t.display, size);
+      var rect = _mapBbox(t.display, size);
       if (rect.width < 6 || rect.height < 6) continue;
+
+      // Spawn/despawn: ease the box in/out by scaling around its center.
+      final appear = t.appear.clamp(0.0, 1.0);
+      if (appear < 0.999) {
+        final eased = Curves.easeOutBack.transform(appear.clamp(0.0, 1.0));
+        final scale = 0.82 + 0.18 * eased;
+        rect = Rect.fromCenter(
+          center: rect.center,
+          width: rect.width * scale,
+          height: rect.height * scale,
+        );
+      }
 
       final isLead = headwayDistanceM != null &&
           leadVehicleClass != null &&
           t.className.toLowerCase() == leadVehicleClass!.toLowerCase();
       if (isLead) leadTrack = t;
 
-      _drawArBox(canvas, rect, t, isLead: isLead);
+      _drawArBox(canvas, rect, t, isLead: isLead, appear: appear);
     }
 
     if (leadTrack != null && headwayDistanceM != null) {
@@ -186,49 +198,98 @@ class _ArDetectPainter extends CustomPainter {
     }
   }
 
-  void _drawArBox(Canvas canvas, Rect rect, TrackedDetection t, {required bool isLead}) {
+  void _drawArBox(
+    Canvas canvas,
+    Rect rect,
+    TrackedDetection t, {
+    required bool isLead,
+    required double appear,
+  }) {
     final base = classColor(t.className);
     final pulse = 0.5 + 0.5 * math.sin(animTime * 5.5 + t.id);
     final lock = t.lockStrength.clamp(0.0, 1.0);
     final accent = isLead ? AppColors.warning : Color.lerp(base, _neonCyan, lock * 0.55)!;
     final color = accent;
+    final a = appear; // global opacity multiplier for spawn/fade
 
     final dashPhase = animTime * 40;
 
+    // Motion streak — trailing glow opposite to velocity direction.
+    final speed = math.sqrt(t.vx * t.vx + t.vy * t.vy);
+    if (speed > 0.04 && !t.dying) {
+      final dirLen = (speed * 0.25).clamp(0.0, 0.18);
+      final tail = Offset(-t.vx, -t.vy) / (speed == 0 ? 1 : speed);
+      final streakEnd = rect.center +
+          Offset(tail.dx * dirLen * rect.width * 3, tail.dy * dirLen * rect.height * 3);
+      canvas.drawLine(
+        rect.center,
+        streakEnd,
+        Paint()
+          ..shader = ui.Gradient.linear(
+            rect.center,
+            streakEnd,
+            [color.withValues(alpha: 0.35 * a), Colors.transparent],
+          )
+          ..strokeWidth = 6
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+      );
+    }
+
     // Outer neon bloom
     canvas.drawRRect(
-      RRect.fromRectAndRadius(rect.inflate(10 + pulse * 4), const Radius.circular(10)),
+      RRect.fromRectAndRadius(rect.inflate(10 + pulse * 4), const Radius.circular(12)),
       Paint()
-        ..color = color.withValues(alpha: 0.06 + lock * 0.14)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+        ..color = color.withValues(alpha: (0.06 + lock * 0.16) * a)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
 
-    // Dual stroke — solid + animated dash
-    final outer = RRect.fromRectAndRadius(rect.deflate(0.5), const Radius.circular(8));
+    // Dual stroke — solid base + animated dash
+    final outer = RRect.fromRectAndRadius(rect.deflate(0.5), const Radius.circular(9));
     canvas.drawRRect(
       outer,
       Paint()
-        ..color = color.withValues(alpha: 0.35)
+        ..color = color.withValues(alpha: 0.32 * a)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 4.5,
     );
-    _drawDashedRRect(canvas, outer, color.withValues(alpha: 0.9), dashPhase, 2.2);
+    _drawDashedRRect(canvas, outer, color.withValues(alpha: 0.92 * a), dashPhase, 2.2);
 
-    // Inner glass fill
+    // Inner glass fill with subtle vertical sheen
+    final fillRect = rect.deflate(2);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(rect.deflate(2), const Radius.circular(6)),
-      Paint()..color = color.withValues(alpha: 0.05 + lock * 0.1),
+      RRect.fromRectAndRadius(fillRect, const Radius.circular(7)),
+      Paint()
+        ..shader = ui.Gradient.linear(
+          fillRect.topCenter,
+          fillRect.bottomCenter,
+          [
+            color.withValues(alpha: (0.12 + lock * 0.12) * a),
+            color.withValues(alpha: 0.02 * a),
+          ],
+        ),
     );
 
     // AR corner brackets
-    _drawCornerBrackets(canvas, rect, color, lock, pulse);
+    _drawCornerBrackets(canvas, rect, color, lock, pulse, a);
 
-    // Lock reticle
+    // Lock reticle + scan ring
     if (lock > 0.2) {
       final c = rect.center;
       final r = 3.5 + pulse * 2 + lock * 3;
-      canvas.drawCircle(c, r + 5, Paint()..color = color.withValues(alpha: 0.25));
-      canvas.drawCircle(c, r, Paint()..color = Colors.white.withValues(alpha: 0.95));
+      // Expanding scan ring (radar ping)
+      final ping = (animTime * 1.5 + t.id) % 1.0;
+      final pingR = r + ping * (math.min(rect.width, rect.height) * 0.45);
+      canvas.drawCircle(
+        c,
+        pingR,
+        Paint()
+          ..color = color.withValues(alpha: (1 - ping) * 0.3 * a)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5,
+      );
+      canvas.drawCircle(c, r + 5, Paint()..color = color.withValues(alpha: 0.25 * a));
+      canvas.drawCircle(c, r, Paint()..color = Colors.white.withValues(alpha: 0.95 * a));
       canvas.drawCircle(
         c,
         r,
@@ -240,10 +301,10 @@ class _ArDetectPainter extends CustomPainter {
     }
 
     // Confidence arc (top-right)
-    _drawConfidenceArc(canvas, rect, t.confidence, color);
+    _drawConfidenceArc(canvas, rect, t.confidence, color, a);
 
     // Label pill
-    _drawLabelPill(canvas, rect, t, isLead: isLead, color: color);
+    _drawLabelPill(canvas, rect, t, isLead: isLead, color: color, opacity: a);
   }
 
   void _drawCornerBrackets(
@@ -252,16 +313,17 @@ class _ArDetectPainter extends CustomPainter {
     Color color,
     double lock,
     double pulse,
+    double opacity,
   ) {
-    final len = 16.0 + lock * 12 + pulse * 4;
+    final len = (16.0 + lock * 12 + pulse * 4).clamp(8.0, rect.shortestSide * 0.4);
     final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.88 + pulse * 0.12)
+      ..color = Colors.white.withValues(alpha: (0.88 + pulse * 0.12) * opacity)
       ..strokeWidth = 2.8
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
     final glow = Paint()
-      ..color = color.withValues(alpha: 0.7)
+      ..color = color.withValues(alpha: 0.7 * opacity)
       ..strokeWidth = 4
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke
@@ -284,27 +346,27 @@ class _ArDetectPainter extends CustomPainter {
     bracket(rect.bottomRight, false, false);
   }
 
-  void _drawConfidenceArc(Canvas canvas, Rect rect, double conf, Color color) {
+  void _drawConfidenceArc(Canvas canvas, Rect rect, double conf, Color color, double opacity) {
     final c = Offset(rect.right - 10, rect.top + 10);
     final r = 9.0;
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.35 * opacity)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
     canvas.drawArc(
       Rect.fromCircle(center: c, radius: r),
       -math.pi / 2,
       math.pi * 2 * conf,
       false,
       Paint()
-        ..color = color.withValues(alpha: 0.9)
+        ..color = color.withValues(alpha: 0.95 * opacity)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.5
         ..strokeCap = StrokeCap.round,
-    );
-    canvas.drawCircle(
-      c,
-      r,
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.35)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
     );
   }
 
@@ -314,6 +376,7 @@ class _ArDetectPainter extends CustomPainter {
     TrackedDetection t, {
     required bool isLead,
     required Color color,
+    required double opacity,
   }) {
     final label = isLead
         ? '◉ ${headwayDistanceM!.round()}م · ${t.className}'
@@ -323,7 +386,7 @@ class _ArDetectPainter extends CustomPainter {
       text: TextSpan(
         text: label,
         style: TextStyle(
-          color: Colors.white,
+          color: Colors.white.withValues(alpha: opacity),
           fontSize: isLead ? 11 : 10,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.3,
@@ -334,9 +397,18 @@ class _ArDetectPainter extends CustomPainter {
 
     final chipW = tp.width + 18;
     final chipH = tp.height + 10;
-    final chipRect = Rect.fromLTWH(rect.left, rect.top - chipH - 6, chipW, chipH);
+    // Keep the chip on-screen: flip below the box if it would clip the top.
+    final top = rect.top - chipH - 6 < 0 ? rect.bottom + 6 : rect.top - chipH - 6;
+    final chipRect = Rect.fromLTWH(rect.left, top, chipW, chipH);
     final chip = RRect.fromRectAndRadius(chipRect, const Radius.circular(10));
 
+    // Drop shadow for legibility over bright scenes.
+    canvas.drawRRect(
+      chip.shift(const Offset(0, 1.5)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.35 * opacity)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
     canvas.drawRRect(
       chip,
       Paint()
@@ -344,15 +416,15 @@ class _ArDetectPainter extends CustomPainter {
           chipRect.topLeft,
           chipRect.bottomRight,
           [
-            color.withValues(alpha: 0.92),
-            _neonBlue.withValues(alpha: 0.75),
+            color.withValues(alpha: 0.95 * opacity),
+            _neonBlue.withValues(alpha: 0.8 * opacity),
           ],
         ),
     );
     canvas.drawRRect(
       chip,
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.35)
+        ..color = Colors.white.withValues(alpha: 0.4 * opacity)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2,
     );

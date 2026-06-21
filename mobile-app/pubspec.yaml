@@ -1,7 +1,7 @@
 name: norai_drive
 description: NURAI Drive — تطبيق السائق Flutter (خريطة، كاميرا، اكتشاف، مخالفات سرعة)
 publish_to: 'none'
-version: 3.10.6+28
+version: 3.12.0+32
 
 environment:
   sdk: ^3.11.3

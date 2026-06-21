@@ -29,6 +29,7 @@ import {
 } from '@/lib/trainingPresets';
 import { cancelTrainingJob } from '@/lib/cancelTraining';
 import { TrainSourceModelPicker, type TrainSourceMode } from '@/components/training/TrainSourceModelPicker';
+import { ModelImportCard } from '@/components/models/ModelImportCard';
 
 function normalizeClassesUsed(raw: unknown): string[] {
   if (Array.isArray(raw)) {
@@ -501,7 +502,9 @@ export default function UnifiedModelPage() {
               <p className="text-[11px] text-muted-foreground -mt-2">{CPU_PRESETS[preset].description}</p>
             )}
             <Select label="Architecture" value={architecture} onChange={(e) => setArchitecture(e.target.value)} disabled={!!model}>
-              <option value="yolo11">YOLO11</option>
+              <option value="yolo11n">YOLO11n (nano)</option>
+              <option value="yolo11s">YOLO11s (small)</option>
+              <option value="yolo11">YOLO11 (default nano)</option>
               <option value="yolov10">YOLOv10</option>
               <option value="rt_detr">RT-DETR</option>
             </Select>
@@ -625,6 +628,18 @@ export default function UnifiedModelPage() {
           </CardContent>
         </Card>
       </div>
+
+      {projectId && (
+        <ModelImportCard
+          projectId={projectId}
+          classNames={projectClasses.map((c) => c.name)}
+          onImported={() => {
+            refetch();
+            loadModels();
+            invalidateProject(projectId);
+          }}
+        />
+      )}
 
       {models.length > 0 && (
         <Card>

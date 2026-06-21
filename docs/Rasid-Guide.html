@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RASID — Complete Project Guide</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --accent: #0f766e;
+      --accent-2: #14b8a6;
+      --accent-soft: #e6f5f3;
+      --ink: #0f172a;
+      --text: #1f2937;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --line-strong: #cbd5e1;
+      --bg: #eef2f5;
+      --paper: #ffffff;
+      --code-bg: #0f172a;
+      --warn: #b45309;
+      --new: #be123c;
+      --sidebar-w: 300px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      line-height: 1.95; font-size: 16px;
+    }
+    .en, code, h2, h3, h4, .kicker, .toc a span.t { direction: ltr; unicode-bidi: isolate; }
+
+    /* ===== Top bar ===== */
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(255,255,255,0.9); backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 22px;
+    }
+    .topbar__brand { display: flex; align-items: center; gap: 12px; }
+    .topbar__logo {
+      width: 38px; height: 38px; border-radius: 11px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 18px;
+      box-shadow: 0 4px 14px rgba(15,118,110,0.35);
+    }
+    .topbar__title b { font-size: 16px; color: var(--ink); }
+    .topbar__title span { display: block; font-size: 11px; color: var(--muted); letter-spacing: 0.18em; }
+    .topbar__actions { display: flex; gap: 8px; }
+    .btn {
+      border: 1px solid var(--line-strong); background: #fff; color: var(--text);
+      padding: 9px 16px; border-radius: 9px; cursor: pointer; font-family: inherit;
+      font-weight: 600; font-size: 13px; transition: 0.15s;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn--solid { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn--solid:hover { background: var(--accent-2); color: #fff; }
+
+    /* ===== Layout ===== */
+    .layout { display: flex; align-items: flex-start; max-width: 1260px; margin: 0 auto; }
+
+    /* ===== Sidebar TOC ===== */
+    .toc {
+      position: sticky; top: 63px; align-self: flex-start;
+      width: var(--sidebar-w); flex-shrink: 0;
+      height: calc(100vh - 63px); overflow-y: auto;
+      padding: 22px 14px 60px; border-left: 1px solid var(--line);
+    }
+    .toc__title { font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: 0.1em; padding: 0 10px 10px; }
+    .toc a {
+      display: flex; gap: 9px; align-items: center;
+      padding: 8px 11px; border-radius: 9px; color: var(--text);
+      text-decoration: none; font-size: 13px; font-weight: 500; margin-bottom: 2px;
+      border: 1px solid transparent;
+    }
+    .toc a span.t { flex: 1; }
+    .toc a .n {
+      flex-shrink: 0; width: 24px; height: 24px; border-radius: 7px;
+      background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 700;
+      display: grid; place-items: center;
+    }
+    .toc a:hover { background: #f1f5f9; }
+    .toc a.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; border-color: rgba(15,118,110,0.25); }
+    .toc a.active .n { background: var(--accent); color: #fff; }
+    .toc a.is-new .n { background: #ffe4e6; color: var(--new); }
+    .toc a.is-new.active .n { background: var(--new); color: #fff; }
+
+    /* ===== Content ===== */
+    .content { flex: 1; min-width: 0; padding: 26px 30px 120px; }
+
+    .chapter { margin-bottom: 46px; scroll-margin-top: 80px; }
+    .chapter__head {
+      display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px;
+      padding-bottom: 14px; border-bottom: 2px solid var(--line);
+    }
+    .chapter__num {
+      flex-shrink: 0; width: 52px; height: 52px; border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff;
+      display: grid; place-items: center; font-size: 20px; font-weight: 800;
+      box-shadow: 0 6px 16px rgba(15,118,110,0.3);
+    }
+    .chapter__titles { text-align: left; flex: 1; }
+    .chapter__titles .kicker { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 0.12em; }
+    .chapter__titles h2 { font-size: 23px; color: var(--ink); font-weight: 800; line-height: 1.35; }
+    .badge-new {
+      display: inline-block; vertical-align: middle; margin-left: 8px;
+      background: #ffe4e6; color: var(--new); font-size: 11px; font-weight: 700;
+      padding: 3px 9px; border-radius: 20px; direction: rtl;
+    }
+
+    .card {
+      background: var(--paper); border: 1px solid var(--line); border-radius: 16px;
+      padding: 22px 24px; margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+    }
+    .card > *:last-child { margin-bottom: 0; }
+
+    h3 { font-size: 18px; color: var(--ink); font-weight: 700; margin: 22px 0 8px; text-align: left; }
+    h3:first-child { margin-top: 0; }
+    h4 { font-size: 15px; color: var(--accent); font-weight: 700; margin: 14px 0 6px; text-align: left; }
+    p { margin-bottom: 12px; }
+    strong { color: var(--ink); font-weight: 700; }
+
+    .lead {
+      font-size: 17px; line-height: 2; color: var(--text);
+      border-right: 4px solid var(--accent); background: var(--accent-soft);
+      padding: 14px 18px; border-radius: 0 12px 12px 0; margin-bottom: 18px;
+    }
+
+    ul, ol { margin: 6px 22px 14px 0; }
+    li { margin-bottom: 7px; }
+    li::marker { color: var(--accent); }
+
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    .grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 14px; }
+    @media (max-width: 900px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+
+    .mini { border: 1px solid var(--line); border-radius: 13px; padding: 15px 17px; background: #fbfdfd; }
+    .mini h4 { margin-top: 0; }
+    .mini--problem { background: #fef2f2; border-color: #fecaca; }
+    .mini--problem h4 { color: #b91c1c; }
+    .mini--solution { background: #f0fdf4; border-color: #bbf7d0; }
+    .mini--solution h4 { color: #15803d; }
+
+    .callout {
+      display: flex; gap: 12px; padding: 14px 16px; border-radius: 12px;
+      background: #fffbeb; border: 1px solid #fde68a; margin: 14px 0; font-size: 14.5px;
+    }
+    .callout__icon { font-size: 20px; flex-shrink: 0; }
+    .callout--info { background: var(--accent-soft); border-color: #99f6e4; }
+    .callout--tip { background: #eff6ff; border-color: #bfdbfe; }
+
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; font-size: 14px; overflow: hidden; border-radius: 12px; }
+    thead th { background: var(--ink); color: #fff; text-align: right; font-weight: 600; padding: 10px 13px; }
+    tbody td { padding: 9px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:last-child td { border-bottom: 0; }
+
+    code {
+      display: inline-block; background: #f1f5f9; color: #0f766e; border: 1px solid var(--line);
+      border-radius: 6px; padding: 1px 6px; font-size: 12.5px;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    pre.code {
+      direction: ltr; text-align: left; background: var(--code-bg); color: #e2e8f0;
+      border-radius: 12px; padding: 16px 18px; font-size: 12.5px; line-height: 1.7;
+      overflow-x: auto; margin: 12px 0;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    pre.code .c { color: #64748b; }
+
+    .steps { counter-reset: step; margin: 12px 0; }
+    .step { display: flex; gap: 14px; margin-bottom: 12px; }
+    .step__n {
+      counter-increment: step; flex-shrink: 0;
+      width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff;
+      display: grid; place-items: center; font-weight: 700; font-size: 13px;
+    }
+    .step__n::before { content: counter(step); }
+    .step__body { padding-top: 2px; }
+    .step__body b { color: var(--ink); }
+
+    .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }
+    .flow__node { background: #fff; border: 1.5px solid var(--accent); color: var(--accent); border-radius: 10px; padding: 8px 14px; font-weight: 700; font-size: 13px; direction: ltr; }
+    .flow__node--alt { background: var(--accent); color: #fff; }
+    .flow__arrow { color: var(--muted); font-size: 18px; }
+
+    figure.diagram {
+      margin: 18px 0; background: #fff;
+      border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+      box-shadow: 0 6px 22px rgba(15,23,42,0.07);
+      position: relative;
+    }
+    figure.diagram::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2), #8b5cf6);
+    }
+    figure.diagram .canvas {
+      padding: 28px 18px 24px; display: flex; justify-content: center;
+      background:
+        radial-gradient(circle at 1px 1px, rgba(15,118,110,0.10) 1px, transparent 0) 0 0 / 22px 22px,
+        linear-gradient(180deg, #fbfdfd 0%, #eef5f4 100%);
+    }
+    figure.diagram .mermaid { width: 100%; max-width: 860px; }
+    figcaption {
+      padding: 11px 18px; border-top: 1px solid var(--line);
+      background: linear-gradient(90deg, var(--accent-soft), #ffffff);
+      border-right: 4px solid var(--accent);
+      font-size: 13px; color: var(--ink); text-align: right; font-weight: 600;
+    }
+    figcaption::before {
+      content: "◈"; color: var(--accent); margin-left: 7px; font-size: 12px;
+    }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+    .pill { background: var(--accent-soft); color: var(--accent); border-radius: 20px; padding: 5px 13px; font-size: 13px; font-weight: 600; direction: ltr; }
+
+    .cover {
+      background: linear-gradient(150deg, #0b3b38 0%, #0f766e 55%, #14b8a6 100%);
+      color: #fff; border-radius: 22px; padding: 50px 44px; margin-bottom: 34px;
+      position: relative; overflow: hidden;
+    }
+    .cover::after { content: ""; position: absolute; left: -60px; top: -60px; width: 240px; height: 240px; background: rgba(255,255,255,0.08); border-radius: 50%; }
+    .cover__badge { display: inline-block; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); border-radius: 20px; padding: 5px 14px; font-size: 13px; margin-bottom: 18px; }
+    .cover h1 { font-size: 48px; font-weight: 800; margin-bottom: 4px; }
+    .cover .sub { letter-spacing: 0.5em; font-size: 15px; opacity: 0.85; margin-bottom: 18px; direction: ltr; }
+    .cover .desc { font-size: 16.5px; line-height: 2; max-width: 660px; opacity: 0.95; }
+    .cover__meta { display: flex; flex-wrap: wrap; gap: 26px; margin-top: 26px; font-size: 14px; }
+    .cover__meta div span { display: block; opacity: 0.7; font-size: 12px; margin-bottom: 2px; }
+    .cover__meta div b { font-size: 15px; }
+
+    .endnote { text-align: center; color: var(--muted); padding: 30px; border-top: 1px solid var(--line); margin-top: 20px; }
+    .endnote b { display: block; color: var(--accent); font-size: 18px; margin-bottom: 4px; }
+
+    .gloss { display: grid; grid-template-columns: 190px 1fr; gap: 0; }
+    .gloss dt { font-weight: 700; color: var(--accent); padding: 9px 0; border-bottom: 1px solid var(--line); direction: ltr; text-align: left; }
+    .gloss dd { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--line); }
+
+    @media print {
+      :root { --bg: #fff; }
+      body { background: #fff; font-size: 11pt; line-height: 1.6; }
+      .topbar, .toc, .no-print { display: none !important; }
+      .layout { display: block; max-width: none; }
+      .content { padding: 0; }
+      .chapter { page-break-before: always; }
+      .cover + .chapter, .chapter:first-of-type { page-break-before: avoid; }
+      .card, figure.diagram, table, .mini, .callout, .step { page-break-inside: avoid; }
+      .cover, thead th, .chapter__num, .topbar__logo, .step__n, .flow__node--alt { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar no-print">
+  <div class="topbar__brand">
+    <div class="topbar__logo">ر</div>
+    <div class="topbar__title"><b>RASID</b><span>COMPLETE PROJECT GUIDE</span></div>
+  </div>
+  <div class="topbar__actions">
+    <button class="btn" onclick="document.documentElement.scrollTop=0">▲ الأعلى</button>
+    <button class="btn btn--solid" onclick="window.print()">طباعة / حفظ PDF</button>
+  </div>
+</div>
+
+<div class="layout">
+
+  <nav class="toc no-print" id="toc">
+    <div class="toc__title">TABLE OF CONTENTS</div>
+    <a href="#ch1"><span class="n">1</span><span class="t">Introduction</span></a>
+    <a href="#ch2"><span class="n">2</span><span class="t">Problem &amp; Solution</span></a>
+    <a href="#ch3"><span class="n">3</span><span class="t">System Architecture</span></a>
+    <a href="#ch4"><span class="n">4</span><span class="t">Technology Stack</span></a>
+    <a href="#ch5"><span class="n">5</span><span class="t">AI Model &amp; Training</span></a>
+    <a href="#ch6" class="is-new"><span class="n">6</span><span class="t">Server-Side Detection</span></a>
+    <a href="#ch7"><span class="n">7</span><span class="t">Real-Time Communication</span></a>
+    <a href="#ch8"><span class="n">8</span><span class="t">MLOps Lifecycle</span></a>
+    <a href="#ch9"><span class="n">9</span><span class="t">Database &amp; Data Model</span></a>
+    <a href="#ch10"><span class="n">10</span><span class="t">Rasid Console</span></a>
+    <a href="#ch11" class="is-new"><span class="n">11</span><span class="t">Rasid Drive (In-Vehicle)</span></a>
+    <a href="#ch12" class="is-new"><span class="n">12</span><span class="t">Detection Rendering (AR)</span></a>
+    <a href="#ch13" class="is-new"><span class="n">13</span><span class="t">Driving Cockpit UI</span></a>
+    <a href="#ch14"><span class="n">14</span><span class="t">Driver Assistance</span></a>
+    <a href="#ch15"><span class="n">15</span><span class="t">API Reference</span></a>
+    <a href="#ch16"><span class="n">16</span><span class="t">Security &amp; Deployment</span></a>
+    <a href="#ch17"><span class="n">17</span><span class="t">Conclusion</span></a>
+    <a href="#gloss"><span class="n">A</span><span class="t">Glossary</span></a>
+  </nav>
+
+  <main class="content">
+
+    <!-- ===== Cover ===== -->
+    <section class="cover">
+      <div class="cover__badge">NURAI · 2026</div>
+      <h1>راصد</h1>
+      <div class="sub">R A S I D</div>
+      <p class="desc">
+        منصّة ذكية متكاملة تَرصد الطريق وتكتشف المخاطر مثل الحُفر والحوادث والعوائق لحظةً بلحظة باستخدام
+        الذكاء الاصطناعي، وتعرضها على خريطة حيّة. تجمع المنصّة بين تدريب نماذج الرؤية الحاسوبية،
+        وجهاز <strong style="color:#fff">Rasid Drive</strong> المركّب داخل السيارة، ومعالجة مركزية على السيرفر،
+        ولوحة تحكّم إدارية شاملة.
+      </p>
+      <div class="cover__meta">
+        <div><span>STUDENTS</span><b>بشير محمد · سلمان داود · مهدي احمد</b></div>
+        <div><span>SUPERVISOR</span><b>د. مهند عبدالاله</b></div>
+        <div><span>UNIVERSITY</span><b>جامعة تكنولوجيا المعلومات والاتصالات</b></div>
+      </div>
+    </section>
+
+    <!-- ════════ 1 ════════ -->
+    <section class="chapter" id="ch1">
+      <div class="chapter__head">
+        <div class="chapter__num">1</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 01</div><h2>Introduction — What is RASID?</h2></div>
+      </div>
+      <div class="card">
+        <p class="lead">
+          <strong>RASID</strong> اسمٌ مشتقّ من فعل «يَرصُد»، أي يراقب الطريق ويكتشف المخاطر مبكراً قبل أن تتحوّل إلى حوادث.
+          والاختصار يعني: Road · AI · Surveillance · Intelligence · Detection.
+        </p>
+        <p>
+          الفكرة باختصار: جهاز <strong>Rasid Drive</strong> مركّب داخل السيارة، توجَّه كاميراه نحو الطريق فيلتقط الصور
+          مع موقع GPS ويرسلها إلى <strong>السيرفر</strong>. هناك يقوم نموذج الذكاء الاصطناعي بفحص كل صورة وكشف الأخطار،
+          ثم تُسجَّل النتائج وتُبثّ لحظياً إلى خريطة المتابعة وإلى بقيّة المركبات.
+        </p>
+        <h3>Vision</h3>
+        <p style="font-size:18px;color:var(--accent);font-weight:700;text-align:center;padding:8px 0;">
+          «نرصد الطريق… قبل أن تصبح المشكلة حادثاً»
+        </p>
+        <h3>Why It Matters</h3>
+        <ul>
+          <li><strong>Safety:</strong> اكتشاف الحفر والحوادث مبكراً يقلّل حوادث المرور وأضرار المركبات.</li>
+          <li><strong>Smart Maintenance:</strong> تزويد الجهات المسؤولة بخريطة دقيقة وحيّة لأماكن تلف الطرق.</li>
+          <li><strong>Full AI Cycle:</strong> المشروع يبني دورة متكاملة من جمع الصور حتى نشر النموذج وتحسينه باستمرار.</li>
+        </ul>
+        <h3>Users &amp; Roles</h3>
+        <table>
+          <thead><tr><th>User</th><th>الدور</th><th>Tool</th></tr></thead>
+          <tbody>
+            <tr><td>ML Engineer</td><td>رفع الصور، التدريب، النشر</td><td>Rasid Console</td></tr>
+            <tr><td>Annotator</td><td>مراجعة وتصحيح صناديق الكشف</td><td>Annotation</td></tr>
+            <tr><td>Fleet Manager</td><td>تسجيل أجهزة المركبات وإصدار المفاتيح</td><td>Fleet</td></tr>
+            <tr><td>Driver</td><td>تشغيل الكاميرا والكشف أثناء القيادة</td><td>Rasid Drive</td></tr>
+            <tr><td>Monitor</td><td>متابعة الأخطار على الخريطة الحيّة</td><td>Road Intelligence</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════ 2 ════════ -->
+    <section class="chapter" id="ch2">
+      <div class="chapter__head">
+        <div class="chapter__num">2</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 02</div><h2>Problem &amp; Solution</h2></div>
+      </div>
+      <div class="card">
+        <div class="grid2">
+          <div class="mini mini--problem">
+            <h4>The Problem</h4>
+            <ul>
+              <li>اكتشاف الحفر والحوادث <strong>متأخّر</strong>، بعد وقوع الضرر غالباً.</li>
+              <li>بيانات الذكاء الاصطناعي <strong>مبعثرة</strong> بلا دورة عمل منظّمة.</li>
+              <li>لا يوجد <strong>ربط</strong> بين الميدان (المركبات) والنموذج.</li>
+              <li>مسوحات الطرق اليدوية <strong>مكلفة وبطيئة</strong>.</li>
+              <li>حدود السرعة <strong>ثابتة</strong> وغير واقعية لكل طريق.</li>
+            </ul>
+          </div>
+          <div class="mini mini--solution">
+            <h4>The RASID Solution</h4>
+            <ul>
+              <li>كشف لحظي بالذكاء الاصطناعي على السيرفر أثناء القيادة.</li>
+              <li>دورة منظّمة: Ingestion ← Annotation ← Training ← Deploy ← Monitor.</li>
+              <li>ربط مباشر بين أجهزة المركبات والسيرفر عبر مفتاح خاص لكل جهاز.</li>
+              <li>الاعتماد على الكاميرا والذكاء الاصطناعي بدل المسوحات اليدوية.</li>
+              <li>حدّ سرعة ديناميكي يُجلب من OpenStreetMap.</li>
+            </ul>
+          </div>
+        </div>
+        <figure class="diagram">
+          <div class="canvas">
+            <pre class="mermaid">
+flowchart RL
+    IN["📷 Image + GPS"]:::input --> SRV["🧠 Server · YOLO"]:::ai
+    SRV --> EV["⚠️ RoadEvent"]:::process
+    EV --> DB[("🗄️ PostgreSQL · PostGIS")]:::store
+    EV --> MQ[("⚡ Redis Pub/Sub")]:::store
+    MQ --> UI["🗺️ Live Map"]:::output
+    classDef input fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#8b5cf6,stroke-width:2px,color:#4c1d95;
+    classDef process fill:#ccfbf1,stroke:#0f766e,stroke-width:2px,color:#0f172a;
+    classDef store fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#0f172a;
+    classDef output fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d;
+            </pre>
+          </div>
+          <figcaption>Figure 1 — High-level detection flow: Vehicle → Server → Live Map</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ════════ 3 ════════ -->
+    <section class="chapter" id="ch3">
+      <div class="chapter__head">
+        <div class="chapter__num">3</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 03</div><h2>System Architecture</h2></div>
+      </div>
+      <div class="card">
+        <p>يتكوّن النظام من أربعة أجزاء رئيسية تعمل معاً:</p>
+        <div class="grid2">
+          <div class="mini"><h4>① Rasid Console</h4>تطبيق ويب لإدارة الذكاء الاصطناعي: رفع الصور، التعنين، التدريب، النشر، والأسطول.</div>
+          <div class="mini"><h4>② Backend Server</h4>عقل المنظومة: واجهات API، تشغيل النموذج، قاعدة البيانات، والبثّ اللحظي.</div>
+          <div class="mini"><h4>③ Rasid Drive <span class="badge-new">NEW</span></h4>جهاز مركّب في السيارة يصوّر الطريق ويرسل الصور و GPS إلى السيرفر ويعرض النتائج.</div>
+          <div class="mini"><h4>④ Infrastructure</h4>التخزين والمراقبة والنشر عبر حاويات Docker.</div>
+        </div>
+        <figure class="diagram">
+          <div class="canvas">
+            <pre class="mermaid">
+flowchart TB
+    subgraph CL["🖥️ Clients"]
+        C1["💻 Rasid Console — Web"]:::input
+        C2["🚗 Rasid Drive — In-Vehicle"]:::input
+    end
+    C1 --> API["⚙️ FastAPI + WebSocket"]:::process
+    C2 --> API
+    API --> CEL["🔧 Celery Workers"]:::process
+    API --> PG[("🗄️ PostgreSQL + PostGIS")]:::store
+    API --> RD[("⚡ Redis")]:::store
+    CEL --> PG
+    CEL --> MINIO[("📦 MinIO Storage")]:::store
+    RD -->|"live events"| C1
+    classDef input fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef process fill:#ccfbf1,stroke:#0f766e,stroke-width:2px,color:#0f172a;
+    classDef store fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#0f172a;
+    style CL fill:#f1f5f9,stroke:#94a3b8,stroke-width:1px,color:#334155;
+            </pre>
+          </div>
+          <figcaption>Figure 2 — Overall platform architecture</figcaption>
+        </figure>
+        <h3>Repository Structure</h3>
+        <pre class="code"><span class="c"># project root</span>
+ai_road/
+├── backend/      <span class="c"># FastAPI · Celery · YOLO · PostGIS</span>
+├── frontend/     <span class="c"># Rasid Console (React + Vite)</span>
+├── mobile-app/   <span class="c"># Rasid Drive (Flutter)</span>
+├── infra/        <span class="c"># nginx · prometheus · grafana</span>
+├── docs/         <span class="c"># reports &amp; documentation</span>
+└── scripts/      <span class="c"># deployment scripts</span></pre>
+      </div>
+    </section>
+
+    <!-- ════════ 4 ════════ -->
+    <section class="chapter" id="ch4">
+      <div class="chapter__head">
+        <div class="chapter__num">4</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 04</div><h2>Technology Stack</h2></div>
+      </div>
+      <div class="card">
+        <p>اخترنا كل تقنية لدورٍ محدّد:</p>
+        <table>
+          <thead><tr><th>Layer</th><th>Technology</th><th>الدور</th></tr></thead>
+          <tbody>
+            <tr><td>Console</td><td>React 18 · TypeScript · Vite</td><td>واجهة سريعة لإدارة الذكاء الاصطناعي والخرائط.</td></tr>
+            <tr><td>In-Vehicle App <span class="badge-new">NEW</span></td><td>Flutter (Dart)</td><td>واجهة قيادة عالية الأداء مع وصول مباشر للكاميرا و GPS.</td></tr>
+            <tr><td>API</td><td>FastAPI · asyncpg</td><td>إطار سريع لبناء واجهات API غير متزامنة مع توثيق تلقائي.</td></tr>
+            <tr><td>Background Jobs</td><td>Celery</td><td>تنفيذ المهام الثقيلة دون تعطيل الواجهة.</td></tr>
+            <tr><td>AI</td><td>YOLO11 · PyTorch</td><td>كشف الأجسام السريع على السيرفر.</td></tr>
+            <tr><td>Database</td><td>PostgreSQL 16 · PostGIS</td><td>تخزين علاقي + استعلامات جغرافية.</td></tr>
+            <tr><td>Cache / Broker</td><td>Redis 7</td><td>طابور المهام + بثّ لحظي + تخزين حدود السرعة.</td></tr>
+            <tr><td>Storage</td><td>MinIO (S3)</td><td>تخزين الصور والنماذج والتقارير.</td></tr>
+            <tr><td>DevOps</td><td>Docker · Nginx · Grafana · Prometheus</td><td>التشغيل والعزل والمراقبة.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════ 5 ════════ -->
+    <section class="chapter" id="ch5">
+      <div class="chapter__head">
+        <div class="chapter__num">5</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 05 · AI CORE</div><h2>The AI Model &amp; How We Train It</h2></div>
+      </div>
+
+      <div class="card">
+        <p class="lead">
+          <strong>YOLO</strong> (You Only Look Once) نموذج رؤية حاسوبية يكتشف عدّة أجسام في الصورة <strong>بنظرة واحدة</strong>:
+          يحدّد مكان كل جسم ونوعه ودرجة ثقته في خطوة واحدة سريعة، مما يجعله الخيار الأمثل للكشف اللحظي.
+          نستخدم تحديداً النسخة <strong>YOLO11n</strong> (النموذج الأصغر «nano»).
+        </p>
+
+        <h3>How Detection Works</h3>
+        <figure class="diagram">
+          <div class="canvas">
+            <pre class="mermaid">
+flowchart LR
+    A["📷 Input Image"]:::input --> B["✂️ Preprocess<br/>resize + letterbox"]:::process
+    B --> C["🧠 YOLO Inference"]:::ai
+    C --> D["🎯 Confidence Filter<br/>&ge; 0.5"]:::process
+    D --> E["🧹 NMS<br/>remove overlaps"]:::process
+    E --> F["▢ Bounding Boxes"]:::output
+    classDef input fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#8b5cf6,stroke-width:2px,color:#4c1d95;
+    classDef process fill:#ccfbf1,stroke:#0f766e,stroke-width:2px,color:#0f172a;
+    classDef output fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d;
+            </pre>
+          </div>
+          <figcaption>Figure 3 — YOLO detection steps</figcaption>
+        </figure>
+        <div class="steps">
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Preprocess:</b> تحجيم الصورة إلى مقاس ثابت مع إضافة حواف (letterbox) للحفاظ على النِّسَب.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Inference:</b> تمرير الصورة عبر الشبكة العصبية لإخراج مربعات محتملة مع النوع والثقة.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Confidence Filter:</b> استبعاد المربعات ذات الثقة المنخفضة (أقل من 0.5).</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>NMS:</b> عند تداخل عدّة مربعات على نفس الجسم يُبقى الأعلى ثقةً فقط.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Output:</b> قائمة نهائية من الصناديق تُعاد إلى جهاز السيارة وتُسجَّل كأحداث.</div></div>
+        </div>
+      </div>
+
+      <!-- ── Why Nano ── -->
+      <div class="card">
+        <h3>Why YOLO11n (the Nano Model)?</h3>
+        <p>تأتي عائلة YOLO11 بخمسة أحجام؛ كلما كبر الحجم زادت الدقّة قليلاً لكن زاد البطء واستهلاك الموارد كثيراً:</p>
+        <table>
+          <thead><tr><th>Model</th><th>Params</th><th>Speed</th><th>Accuracy</th><th>الاستخدام</th></tr></thead>
+          <tbody>
+            <tr><td><strong>YOLO11n</strong> ✅</td><td>~2.6M</td><td>الأسرع</td><td>جيدة</td><td><strong>خيارنا</strong></td></tr>
+            <tr><td>YOLO11s</td><td>~9.4M</td><td>سريع</td><td>أعلى</td><td>عند توفّر GPU</td></tr>
+            <tr><td>YOLO11m</td><td>~20M</td><td>متوسط</td><td>عالية</td><td>خوادم قوية</td></tr>
+            <tr><td>YOLO11l</td><td>~25M</td><td>بطيء</td><td>أعلى</td><td>دقّة قصوى</td></tr>
+            <tr><td>YOLO11x</td><td>~57M</td><td>الأبطأ</td><td>الأعلى</td><td>بحثي</td></tr>
+          </tbody>
+        </table>
+        <p class="muted" style="font-size:13px;color:var(--muted)">* الأرقام تقريبية لأغراض المقارنة.</p>
+        <div class="grid2">
+          <div class="mini mini--solution">
+            <h4>لماذا اخترنا n؟</h4>
+            <ul>
+              <li><strong>السيرفر بلا GPU:</strong> يعمل على VPS بـ 4 vCPU فقط، والنانو هو الأسرع بكثير على المعالج.</li>
+              <li><strong>زمن استجابة منخفض:</strong> يخدم عدّة مركبات لحظياً دون تأخير.</li>
+              <li><strong>تدريب أسرع:</strong> ساعات بدل أيام على CPU.</li>
+              <li><strong>حجم صغير:</strong> نموذج خفيف (~5MB) سهل النشر والترقية الفورية.</li>
+              <li><strong>ذاكرة أقل:</strong> مناسب لموارد الـ VPS المحدودة.</li>
+              <li><strong>دقّة كافية:</strong> أهداف الطريق (حُفر، حوادث، عوائق) كبيرة وواضحة لا تحتاج أضخم نموذج.</li>
+            </ul>
+          </div>
+          <div class="mini">
+            <h4>قاعدة الاختيار</h4>
+            <p>في الكشف اللحظي، النموذج الأسرع الذي يحقّق دقّة «كافية» أفضل من الأبطأ الأدقّ.
+              فالسائق يحتاج تنبيهاً <strong>الآن</strong>، وتأخير ثوانٍ يفقد الفائدة.</p>
+            <div class="callout callout--info" style="margin-bottom:0">
+              <div class="callout__icon">⤴</div>
+              <div>المعمارية تسمح بالترقية إلى s / m لاحقاً عند توفّر GPU <strong>دون أي تغيير في الكود</strong> — فقط نغيّر اسم النموذج.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Training process ── -->
+      <div class="card">
+        <h3>How the Model is Trained</h3>
+        <figure class="diagram">
+          <div class="canvas">
+            <pre class="mermaid">
+flowchart LR
+    DS["🏷️ Annotated Dataset"]:::input --> AUG["🔄 Augmentation"]:::process
+    AUG --> EP["🧠 Training Epochs"]:::ai
+    EP --> VAL["📊 Validation<br/>every N epochs"]:::process
+    VAL --> BEST["⭐ best.pt<br/>highest mAP"]:::output
+    BEST --> MIN[("📦 MinIO")]:::store
+    MIN --> PROD["🚀 Production Model"]:::output
+    classDef input fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#8b5cf6,stroke-width:2px,color:#4c1d95;
+    classDef process fill:#ccfbf1,stroke:#0f766e,stroke-width:2px,color:#0f172a;
+    classDef store fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#0f172a;
+    classDef output fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d;
+            </pre>
+          </div>
+          <figcaption>Figure 4 — Model training &amp; promotion flow</figcaption>
+        </figure>
+        <div class="steps">
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Dataset:</b> تُجمَّع الصور المعنونة وتُقسَّم إلى تدريب (train) وتحقّق (validation).</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Augmentation:</b> توليد تنويعات صناعية (دوران، قلب، تغيير ألوان، mosaic) ليتعلّم النموذج التعميم.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Epochs:</b> يمرّ النموذج على البيانات عدّة مرّات، ويحدّث أوزانه عبر Optimizer (AdamW) لتقليل الخطأ.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Validation:</b> قياس الدقّة (mAP · Precision · Recall) على بيانات لم يرها النموذج، وتُبثّ لحظياً عبر WebSocket.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Early Stopping:</b> إذا توقّف التحسّن لعدد <code>patience</code> من الحلقات يتوقّف التدريب لتوفير الوقت.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>best.pt:</b> يُحفَظ أفضل نموذج (أعلى دقّة) في MinIO ثم يُرقّى إلى الإنتاج.</div></div>
+        </div>
+
+        <h3>Training Parameters Explained</h3>
+        <table>
+          <thead><tr><th>Parameter</th><th>Value</th><th>المعنى</th></tr></thead>
+          <tbody>
+            <tr><td><code>model</code></td><td>yolo11n.pt</td><td>النموذج الأساس (نسخة nano مع أوزان مسبقة).</td></tr>
+            <tr><td><code>epochs</code></td><td>50</td><td>عدد مرّات المرور على كامل البيانات.</td></tr>
+            <tr><td><code>batch</code></td><td>16</td><td>عدد الصور في كل دفعة تدريب.</td></tr>
+            <tr><td><code>imgsz</code></td><td>640</td><td>مقاس صور التدريب.</td></tr>
+            <tr><td><code>lr0</code></td><td>0.01</td><td>معدّل التعلّم الابتدائي.</td></tr>
+            <tr><td><code>optimizer</code></td><td>AdamW</td><td>خوارزمية تحديث أوزان الشبكة.</td></tr>
+            <tr><td><code>patience</code></td><td>10</td><td>عدد الحلقات قبل التوقّف المبكر عند غياب التحسّن.</td></tr>
+            <tr><td><code>amp</code></td><td>true (GPU)</td><td>دقّة مختلطة لتسريع التدريب على GPU.</td></tr>
+            <tr><td><code>cos_lr</code></td><td>optional</td><td>جدولة معدّل التعلّم بمنحنى cosine.</td></tr>
+            <tr><td><code>freeze</code></td><td>optional</td><td>تجميد طبقات أولى عند الـ fine-tuning.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Augmentation Presets</h3>
+        <table>
+          <thead><tr><th>Preset</th><th>الشدّة</th><th>متى نستخدمه</th></tr></thead>
+          <tbody>
+            <tr><td><code>none</code></td><td>بلا تنويع</td><td>بيانات نظيفة جداً أو اختبار سريع.</td></tr>
+            <tr><td><code>light</code></td><td>خفيف</td><td>بيانات كبيرة + تدريب سريع.</td></tr>
+            <tr><td><code>medium</code></td><td>متوسط (افتراضي)</td><td>التوازن العام بين الدقّة والسرعة.</td></tr>
+            <tr><td><code>heavy</code></td><td>قوي (+ mixup)</td><td>بيانات قليلة نحتاج تعميماً أعلى.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── Training speed ── -->
+      <div class="card">
+        <h3>Training Speed Optimization</h3>
+        <p class="lead">
+          بما أن السيرفر يدرّب على <strong>CPU فقط</strong> (VPS بدون GPU)، طوّرنا طبقة ضبط تلقائي تختصر زمن التدريب
+          بشكل كبير دون التضحية بالدقّة عملياً.
+        </p>
+        <table>
+          <thead><tr><th>التقنية</th><th>الأثر</th></tr></thead>
+          <tbody>
+            <tr><td>Auto device select (CUDA → DirectML → CPU)</td><td>استخدام أسرع عتاد متاح تلقائياً.</td></tr>
+            <tr><td>Mixed Precision (AMP)</td><td>تسريع كبير عند توفّر GPU.</td></tr>
+            <tr><td>CPU thread tuning (OMP / MKL / Torch)</td><td>استغلال كل أنوية المعالج + تفعيل <code>mkldnn</code> و <code>float32 matmul = high</code>.</td></tr>
+            <tr><td>Env tuning (WAIT_POLICY · BLOCKTIME · AFFINITY)</td><td>تقليل زمن انتظار الخيوط وتثبيتها على الأنوية.</td></tr>
+            <tr><td><strong>Validation every N epochs</strong></td><td>أكبر توفير: التحقّق كل 2–4 حلقات بدل كل حلقة.</td></tr>
+            <tr><td>RAM image cache</td><td>تحميل الصور في الذاكرة بدل القرص لتسريع كل حلقة.</td></tr>
+            <tr><td>Rectangular batches (<code>rect</code>)</td><td>تقليل الحشو (padding) في الدفعات فتمرّ أسرع.</td></tr>
+            <tr><td>Lite augmentation (fast aug)</td><td>تقليل mosaic وإيقاف mixup/copy-paste/erasing للتسريع.</td></tr>
+            <tr><td>Smaller image size (512 / 416)</td><td>صور أصغر للبيانات الكبيرة = حلقات أسرع.</td></tr>
+            <tr><td>Auto batch scaling</td><td>ضبط حجم الدفعة حسب عدد الأنوية والذاكرة.</td></tr>
+            <tr><td>Fine-tuning (freeze + continue)</td><td>الاستكمال من نموذج سابق وتجميد الطبقات الأولى = تدريب أقصر.</td></tr>
+            <tr><td>Epoch capping (large datasets)</td><td>حدّ أعلى للحلقات على البيانات الضخمة.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout">
+          <div class="callout__icon">⚙️</div>
+          <div><b>Hostinger Mode:</b> وضع مُحسَّن خصيصاً لخادم 4 vCPU بلا GPU يفعّل أغلب هذه التقنيات تلقائياً
+            (RAM cache · rect · val كل 4 حلقات · lite-aug) لأقصى سرعة ممكنة.</div>
+        </div>
+
+        <h3>Fine-Tuning &amp; Incremental Training</h3>
+        <p>بدل التدريب من الصفر كل مرّة، يمكن <strong>الاستكمال من نموذج سابق</strong> (<code>best.pt</code>) مع
+          تجميد الطبقات الأولى وتدريب الأخيرة فقط — فيتعلّم النموذج البيانات الجديدة بسرعة كبيرة. هذا يتكامل مع
+          <strong>Active Learning</strong>: الحالات الصعبة تُراجَع ثم يُعاد التدريب التدريجي عليها.</p>
+      </div>
+
+      <!-- ── Classes ── -->
+      <div class="card">
+        <h3>The 8 RoadEvent Types</h3>
+        <table>
+          <thead><tr><th>Type</th><th>الوصف</th><th>Source</th></tr></thead>
+          <tbody>
+            <tr><td><code>pothole</code></td><td>حُفرة في الطريق</td><td>YOLO</td></tr>
+            <tr><td><code>accident</code></td><td>حادث مروري</td><td>YOLO</td></tr>
+            <tr><td><code>road_crack</code></td><td>تشقّق في الإسفلت</td><td>YOLO</td></tr>
+            <tr><td><code>barrier</code></td><td>حاجز / عائق</td><td>YOLO</td></tr>
+            <tr><td><code>road_closed</code></td><td>طريق مغلق</td><td>YOLO</td></tr>
+            <tr><td><code>construction</code></td><td>أعمال إنشاءات</td><td>YOLO</td></tr>
+            <tr><td><code>flooded_road</code></td><td>طريق غارق بالمياه</td><td>YOLO</td></tr>
+            <tr><td><code>traffic_violation</code></td><td>مخالفة سرعة</td><td>GPS</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════ 6 — SERVER DETECTION (NEW FOCUS) ════════ -->
+    <section class="chapter" id="ch6">
+      <div class="chapter__head">
+        <div class="chapter__num">6</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 06 · CORE</div><h2>Server-Side Detection Pipeline <span class="badge-new">NEW</span></h2></div>
+      </div>
+      <div class="card">
+        <p class="lead">
+          هذا هو قلب النظام: جهاز <strong>Rasid Drive</strong> لا يشغّل النموذج بنفسه، بل يرسل الصورة إلى <strong>السيرفر</strong>
+          حيث تتم كل المعالجة الثقيلة مركزياً. الميزة أن النموذج يُحمَّل مرّة واحدة في الذاكرة ويخدم كل المركبات،
+          ويمكن ترقيته فوراً دون تحديث الأجهزة.
+        </p>
+
+        <h3>Request → Response Sequence</h3>
+        <figure class="diagram">
+          <div class="canvas">
+            <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant D as 🚗 Rasid Drive
+    participant A as ⚙️ FastAPI
+    participant Y as 🧠 YOLO Engine
+    participant DB as 🗄️ PostGIS
+    participant R as ⚡ Redis
+    D->>A: POST /driver/detect (JPEG + GPS + speed)
+    A->>A: 🔑 Auth (X-Device-Key)
+    A->>A: 🖼️ Decode + Preprocess
+    Note over A,Y: Model stays loaded in memory
+    A->>Y: Inference
+    Y-->>A: Raw detections
+    A->>A: 🎯 Confidence filter + NMS
+    par Persist & broadcast
+        A->>DB: Insert RoadEvent
+    and
+        A->>R: Publish road:{project_id}
+    end
+    A-->>D: ✅ Boxes + alerts
+            </pre>
+          </div>
+          <figcaption>Figure 5 — Full server processing sequence for one frame</figcaption>
+        </figure>
+
+        <h3>What Happens Inside the Server</h3>
+        <figure class="diagram">
+          <div class="canvas">
+            <pre class="mermaid">
+flowchart TB
+    REQ["📥 Incoming frame<br/>JPEG + GPS + speed"]:::input --> AUTH{"🔑 Valid<br/>X-Device-Key?"}:::dec
+    AUTH -- No --> REJ["⛔ 401 Reject"]:::danger
+    AUTH -- Yes --> DEC["🖼️ Decode JPEG → array"]:::process
+    DEC --> PRE["✂️ Preprocess<br/>resize 640 + normalize"]:::process
+    PRE --> INF["🧠 YOLO inference<br/>model in memory"]:::ai
+    INF --> POST["🎯 Postprocess<br/>confidence ≥ 0.5 + NMS"]:::process
+    POST --> AL{"❓ confidence<br/>&lt; 0.70 ?"}:::dec
+    AL -- Yes --> Q["♻️ ActiveLearningQueue"]:::store
+    POST --> SPD{"🚦 speed &gt;<br/>limit ?"}:::dec
+    SPD -- Yes --> V["🚨 traffic_violation"]:::danger
+    POST --> EVT["⚠️ Build RoadEvent"]:::process
+    V --> EVT
+    EVT --> SAVE[("🗄️ Save to PostGIS")]:::store
+    EVT --> PUB[("⚡ Publish to Redis")]:::store
+    EVT --> RESP["📤 Return boxes + alerts"]:::output
+    classDef input fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#8b5cf6,stroke-width:2px,color:#4c1d95;
+    classDef process fill:#ccfbf1,stroke:#0f766e,stroke-width:2px,color:#0f172a;
+    classDef store fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#0f172a;
+    classDef output fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d;
+    classDef dec fill:#fef9c3,stroke:#eab308,stroke-width:2px,color:#713f12;
+    classDef danger fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#7f1d1d;
+            </pre>
+          </div>
+          <figcaption>Figure 6 — Internal server processing logic</figcaption>
+        </figure>
+
+        <h3>Step-by-Step</h3>
+        <div class="steps">
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Authentication:</b> يتحقّق السيرفر من ترويسة <code>X-Device-Key</code> لتمييز كل مركبة.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Decode &amp; Preprocess:</b> فكّ ضغط JPEG وتحويله إلى مصفوفة، ثم تحجيم وتطبيع.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Inference:</b> النموذج محمَّل مسبقاً في الذاكرة (لا يُحمَّل لكل طلب) فيكون الاستدلال سريعاً.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Postprocess:</b> ترشيح بالثقة (≥ 0.5) ثم NMS لإزالة التكرار.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Active Learning:</b> أيّ كشف بثقة أقل من 0.70 يُرسَل لطابور المراجعة لتحسين النموذج.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Speed Check:</b> إذا تجاوزت سرعة GPS الحدّ يُنشَأ حدث <code>traffic_violation</code>.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body"><b>Persist &amp; Publish:</b> يُحفظ <code>RoadEvent</code> في PostGIS ويُبثّ عبر Redis، ثم تُعاد الصناديق والتنبيهات للجهاز.</div></div>
+        </div>
+
+        <h3>Why Centralized Processing?</h3>
+        <div class="grid3">
+          <div class="mini"><h4>One Model</h4>نموذج واحد في الذاكرة يخدم كل المركبات.</div>
+          <div class="mini"><h4>Instant Upgrade</h4>ترقية النموذج على السيرفر تصل الجميع فوراً.</div>
+          <div class="mini"><h4>Central Data</h4>كل الأحداث تُجمَّع وتُحلَّل في مكان واحد.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════ 7 — REAL-TIME COMM ════════ -->
+    <section class="chapter" id="ch7">
+      <div class="chapter__head">
+        <div class="chapter__num">7</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 07</div><h2>Real-Time Communication</h2></div>
+      </div>
+      <div class="card">
+        <p class="lead">
+          عند إنشاء حدث على السيرفر يُنشَر فوراً عبر <strong>Redis Pub/Sub</strong>، ويلتقطه السيرفر ليبثّه إلى
+          كل المتصفّحات المفتوحة عبر <strong>WebSocket</strong>، فتتحدّث الخريطة لحظياً دون إعادة تحميل.
+        </p>
+        <figure class="diagram">
+          <div class="canvas">
+            <pre class="mermaid">
+flowchart RL
+    A["⚙️ FastAPI"]:::process -->|"publish road:{id}"| R[("⚡ Redis Channel")]:::store
+    R -->|"subscribe"| W["🔌 WebSocket Hub"]:::process
+    W -->|"push event"| M1["🗺️ Console Map #1"]:::output
+    W -->|"push event"| M2["🗺️ Console Map #2"]:::output
+    classDef process fill:#ccfbf1,stroke:#0f766e,stroke-width:2px,color:#0f172a;
+    classDef store fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#0f172a;
+    classDef output fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d;
+            </pre>
+          </div>
+          <figcaption>Figure 7 — Live event broadcast via Redis + WebSocket</figcaption>
+        </figure>
+        <table>
+          <thead><tr><th>Channel</th><th>الاستخدام</th></tr></thead>
+          <tbody>
+            <tr><td><code>/ws/road-intelligence</code></td><td>بثّ أحداث الطريق إلى خريطة المتابعة.</td></tr>
+            <tr><td><code>/ws/training/{id}</code></td><td>بثّ تقدّم ومقاييس التدريب لحظياً.</td></tr>
+            <tr><td><code>road:{project_id}</code></td><td>قناة Redis الداخلية لكل مشروع.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════ 8 — MLOps ════════ -->
+    <section class="chapter" id="ch8">
+      <div class="chapter__head">
+        <div class="chapter__num">8</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 08</div><h2>MLOps Lifecycle</h2></div>
+      </div>
+      <div class="card">
+        <p class="lead">
+          <strong>MLOps</strong> تعني تطبيق ممارسات هندسة البرمجيات على نماذج التعلّم الآلي لتكون دورة متكاملة ومتجدّدة،
+          وليست نموذجاً يُدرَّب مرّة واحدة.
+        </p>
+        <figure class="diagram">
+          <div class="canvas">
+            <pre class="mermaid">
+flowchart LR
+    ING["📥 Ingestion"]:::input --> ANN["✏️ Annotation"]:::process
+    ANN --> TR["🧠 Training"]:::ai
+    TR --> DEP["🚀 Deploy"]:::output
+    DEP --> DET["🔍 Detection"]:::process
+    DET --> MON["📊 Monitoring"]:::process
+    MON --> AL["♻️ Active Learning"]:::ai
+    AL -. "improve &amp; retrain" .-> ANN
+    classDef input fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#8b5cf6,stroke-width:2px,color:#4c1d95;
+    classDef process fill:#ccfbf1,stroke:#0f766e,stroke-width:2px,color:#0f172a;
+    classDef output fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d;
+            </pre>
+          </div>
+          <figcaption>Figure 8 — The self-improving MLOps cycle</figcaption>
+        </figure>
+        <ul>
+          <li><strong>Ingestion:</strong> رفع الصور من 6 مصادر مع فحص جودة وحذف المكرّر وتخزينها.</li>
+          <li><strong>Annotation:</strong> رسم صناديق حول الأخطار أو مراجعة اقتراحات النموذج.</li>
+          <li><strong>Training:</strong> تدريب YOLO على البيانات المعنونة وحساب مقاييس الدقّة.</li>
+          <li><strong>Deploy:</strong> ترقية أفضل نموذج <code>best.pt</code> إلى الإنتاج.</li>
+          <li><strong>Detection:</strong> استخدام النموذج في الميدان عبر جهاز السيارة والسيرفر.</li>
+          <li><strong>Monitoring:</strong> متابعة انخفاض الدقّة (drift) مع الوقت.</li>
+          <li><strong>Active Learning:</strong> الحالات غير المؤكّدة تُراجَع بشرياً ثم تعود للتدريب، فيتحسّن النموذج باستمرار.</li>
+        </ul>
+        <h3>Image Sources</h3>
+        <div class="pill-row">
+          <span class="pill">manual_upload</span><span class="pill">vehicle_device</span><span class="pill">traffic_camera</span>
+          <span class="pill">mobile_app</span><span class="pill">government_camera</span><span class="pill">drone_camera</span>
+        </div>
+        <h3>Celery Workers (6 Queues)</h3>
+        <table>
+          <thead><tr><th>Queue</th><th>المهمة</th></tr></thead>
+          <tbody>
+            <tr><td><code>ingestion</code></td><td>معالجة الصور: جودة ≥ 40، حذف المكرّر، تخزين.</td></tr>
+            <tr><td><code>labeling</code></td><td>التعنين التلقائي وطابور التعلّم النشِط.</td></tr>
+            <tr><td><code>training</code></td><td>تشغيل مهام التدريب وحساب المقاييس.</td></tr>
+            <tr><td><code>deploy</code></td><td>نشر النموذج إلى الإنتاج.</td></tr>
+            <tr><td><code>monitor</code></td><td>فحص انحراف الأداء كل ساعة.</td></tr>
+            <tr><td><code>reports</code></td><td>توليد تقارير PDF / Excel.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════ 9 — DATABASE ════════ -->
+    <section class="chapter" id="ch9">
+      <div class="chapter__head">
+        <div class="chapter__num">9</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 09</div><h2>Database &amp; Data Model</h2></div>
+      </div>
+      <div class="card">
+        <p>نستخدم <strong>PostgreSQL</strong> مع إضافة <strong>PostGIS</strong> التي تتيح تخزين المواقع الجغرافية
+          وإجراء استعلامات مثل «أرِني كل الأخطار ضمن 15 كم من موقعي».</p>
+        <figure class="diagram">
+          <div class="canvas">
+            <pre class="mermaid">
+flowchart TB
+    P["📁 Project"]:::root
+    P --> IMG["🖼️ Image"]:::process --> ANN["✏️ Annotation"]:::process
+    P --> DS["📚 Dataset"]:::process --> TJ["🧠 TrainingJob"]:::ai --> MA["⭐ ModelArtifact"]:::output
+    P --> FD["🚗 FleetDevice"]:::input --> RE["⚠️ RoadEvent"]:::process
+    FD --> DT["📡 DeviceTelemetry"]:::store
+    ANN -.-> ALQ["♻️ ActiveLearningQueue"]:::store
+    classDef root fill:#0f766e,stroke:#0f766e,stroke-width:2px,color:#ffffff;
+    classDef input fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#8b5cf6,stroke-width:2px,color:#4c1d95;
+    classDef process fill:#ccfbf1,stroke:#0f766e,stroke-width:2px,color:#0f172a;
+    classDef store fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#0f172a;
+    classDef output fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d;
+            </pre>
+          </div>
+          <figcaption>Figure 9 — Core entities and relationships</figcaption>
+        </figure>
+        <h3>Entity States</h3>
+        <table>
+          <thead><tr><th>Entity</th><th>States</th></tr></thead>
+          <tbody>
+            <tr><td>Image</td><td><code>pending → validated | rejected | flagged</code></td></tr>
+            <tr><td>Training</td><td><code>pending → running → completed | failed</code></td></tr>
+            <tr><td>Model</td><td><code>registered → staging → production | archived</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════ 10 — CONSOLE ════════ -->
+    <section class="chapter" id="ch10">
+      <div class="chapter__head">
+        <div class="chapter__num">10</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 10</div><h2>Rasid Console — Dashboard</h2></div>
+      </div>
+      <div class="card">
+        <p>تطبيق ويب يدير دورة الذكاء الاصطناعي بالكامل:</p>
+        <table>
+          <thead><tr><th>Page</th><th>الوظيفة</th></tr></thead>
+          <tbody>
+            <tr><td>Projects</td><td>إنشاء مشاريع مراقبة الطرق.</td></tr>
+            <tr><td>Ingestion</td><td>رفع الصور من 6 مصادر.</td></tr>
+            <tr><td>Classes</td><td>تعريف أنواع الكشف وألوانها.</td></tr>
+            <tr><td>Annotation</td><td>رسم الصناديق ومراجعة الاقتراحات (Konva).</td></tr>
+            <tr><td>Training</td><td>متابعة المهام والمقاييس عبر WebSocket لحظياً.</td></tr>
+            <tr><td>Models / Deploy</td><td>إدارة النماذج وترقيتها للإنتاج.</td></tr>
+            <tr><td>Monitoring</td><td>تنبيهات انحراف الأداء.</td></tr>
+            <tr><td>Fleet</td><td>تسجيل الأجهزة وإصدار <code>api_key</code> لمرّة واحدة.</td></tr>
+            <tr><td>Road Intelligence</td><td>عرض الأخطار لحظياً على خريطة Leaflet.</td></tr>
+            <tr><td>Reports</td><td>تصدير PDF / Excel.</td></tr>
+          </tbody>
+        </table>
+        <h3>Roles &amp; Permissions</h3>
+        <table>
+          <thead><tr><th>Role</th><th>الصلاحية</th></tr></thead>
+          <tbody>
+            <tr><td><code>admin</code></td><td>صلاحية كاملة.</td></tr>
+            <tr><td><code>ml_engineer</code></td><td>التدريب والنشر.</td></tr>
+            <tr><td><code>annotator</code></td><td>التعنين فقط.</td></tr>
+            <tr><td><code>viewer</code></td><td>قراءة فقط.</td></tr>
+          </tbody>
+        </table>
+        <h3>Fleet Onboarding</h3>
+        <div class="steps">
+          <div class="step"><div class="step__n"></div><div class="step__body">طلب <code>POST /fleet/{project_id}</code> فيُصدَر <code>api_key</code>.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body">إعداد الجهاز: URL · Project · Device · Key.</div></div>
+          <div class="step"><div class="step__n"></div><div class="step__body">يُرسل الجهاز المفتاح في كل طلب عبر <code>X-Device-Key</code>.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════ 11 — RASID DRIVE ════════ -->
+    <section class="chapter" id="ch11">
+      <div class="chapter__head">
+        <div class="chapter__num">11</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 11 · MAJOR</div><h2>Rasid Drive — In-Vehicle App <span class="badge-new">NEW</span></h2></div>
+      </div>
+      <div class="card">
+        <p class="lead">
+          <strong>Rasid Drive</strong> تطبيق مبني بـ <strong>Flutter</strong> يعمل على جهاز مركّب داخل السيارة (شاشة/وحدة أندرويد).
+          يلتقط الطريق بالكاميرا مع موقع GPS، ويرسل الإطارات إلى السيرفر للمعالجة، ثم يعرض الصناديق العائدة فوق الكاميرا
+          مع الخريطة والسرعة والتنبيهات.
+        </p>
+        <h3>Why an In-Vehicle Device?</h3>
+        <ul>
+          <li>جهاز ثابت في السيارة موجَّه دائماً نحو الطريق.</li>
+          <li>اتصال مستمر لإرسال الإطارات إلى السيرفر واستقبال النتائج.</li>
+          <li>أداء رسومي عالٍ لعرض الصناديق بسلاسة 60fps.</li>
+        </ul>
+        <h3>Data Flow</h3>
+        <figure class="diagram">
+          <div class="canvas">
+            <pre class="mermaid">
+flowchart RL
+    CAM["📷 Camera frame"]:::input --> ENC["🗜️ Encode JPEG"]:::process
+    GPS["📍 GPS + speed"]:::input --> PKT["📦 Request packet"]:::process
+    ENC --> PKT
+    PKT --> SRV["🧠 Server /driver/detect"]:::ai
+    SRV --> RES["📨 Boxes + alerts"]:::output
+    RES --> OV["▢ AR Overlay"]:::output
+    RES --> MAP["🗺️ Live Map"]:::output
+    classDef input fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#8b5cf6,stroke-width:2px,color:#4c1d95;
+    classDef process fill:#ccfbf1,stroke:#0f766e,stroke-width:2px,color:#0f172a;
+    classDef output fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d;
+            </pre>
+          </div>
+          <figcaption>Figure 10 — Rasid Drive client data flow</figcaption>
+        </figure>
+        <h3>Main Screens</h3>
+        <table>
+          <thead><tr><th>Screen</th><th>الوظيفة</th></tr></thead>
+          <tbody>
+            <tr><td>Home Hub</td><td>بوابة للوحدات الفرعية: Camera · Maps · Alerts · Drive.</td></tr>
+            <tr><td>Drive</td><td>الشاشة الأهم: كاميرا + كشف + خريطة + عدّادات.</td></tr>
+            <tr><td>Maps</td><td>خريطة كاملة بنمط Waze مع موقع المركبة والأخطار.</td></tr>
+            <tr><td>Alerts</td><td>قائمة الأخطار القريبة والتنبيهات الحيّة.</td></tr>
+            <tr><td>Setup</td><td>ربط الجهاز بالسيرفر والمشروع والمفتاح.</td></tr>
+          </tbody>
+        </table>
+        <h3>Timing Schedule</h3>
+        <table>
+          <thead><tr><th>Task</th><th>Interval</th></tr></thead>
+          <tbody>
+            <tr><td>Detect frame → server</td><td>every ~4s · JPEG 0.85</td></tr>
+            <tr><td>Sync config</td><td>every 20s</td></tr>
+            <tr><td>Nearby events</td><td>every 15s · 15 km</td></tr>
+            <tr><td>Speed limit</td><td>12s or 25 m</td></tr>
+            <tr><td>Telemetry</td><td>on location change</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════ 12 — AR OVERLAY ════════ -->
+    <section class="chapter" id="ch12">
+      <div class="chapter__head">
+        <div class="chapter__num">12</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 12 · UX</div><h2>Detection Rendering — AR Overlay <span class="badge-new">NEW</span></h2></div>
+      </div>
+      <div class="card">
+        <p class="lead">
+          الصناديق تصل من السيرفر بمعدّل أبطأ من تحديث الشاشة (60fps). لجعل الصناديق تتحرّك <strong>بسلاسة فائقة</strong>
+          بدل القفز، أضفنا نظام تتبّع تنبّؤي وطبقة رسم بأسلوب الواقع المعزّز (AR Overlay).
+        </p>
+        <h3>DetectionTracker</h3>
+        <ul>
+          <li><strong>IoU Matching:</strong> ربط الصندوق الجديد بالصندوق القديم لنفس الجسم.</li>
+          <li><strong>Velocity Prediction:</strong> حساب سرعة كل جسم واستقراء موقعه بين النتائج فيبدو متحرّكاً بنعومة.</li>
+          <li><strong>Spring Smoothing:</strong> ملاحقة الهدف بسرعة دون اهتزاز أو تجاوز.</li>
+          <li><strong>Spawn / Fade Lifecycle:</strong> ظهور بحركة تكبير واختفاء بتلاشٍ تدريجي.</li>
+        </ul>
+        <h3>Premium Graphics</h3>
+        <div class="grid3">
+          <div class="mini"><h4>Neon Glow</h4>هالة متوهّجة حول كل صندوق تزداد مع قوّة القفل.</div>
+          <div class="mini"><h4>AR Corners</h4>أقواس على زوايا الصندوق بأسلوب أنظمة التصويب.</div>
+          <div class="mini"><h4>Radar Ping</h4>حلقة نابضة تتمدّد حول الأجسام المثبَّتة.</div>
+          <div class="mini"><h4>Motion Streak</h4>أثر متوهّج خلف الأجسام المتحرّكة باتجاه سرعتها.</div>
+          <div class="mini"><h4>Confidence Arc</h4>قوس صغير يمثّل نسبة ثقة الكشف.</div>
+          <div class="mini"><h4>Label Pill</h4>اسم الجسم ونسبته بتدرّج لوني وظلّ للوضوح.</div>
+        </div>
+        <div class="callout callout--tip">
+          <div class="callout__icon">🎯</div>
+          <div>الفكرة بإيجاز: السيرفر يكشف كل عدّة لحظات، لكن الرسم يعمل بسلاسة 60fps، والتنبّؤ بالحركة يملأ الفجوة بينهما.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════ 13 — COCKPIT ════════ -->
+    <section class="chapter" id="ch13">
+      <div class="chapter__head">
+        <div class="chapter__num">13</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 13 · UI</div><h2>Driving Cockpit UI <span class="badge-new">NEW</span></h2></div>
+      </div>
+      <div class="card">
+        <p class="lead">
+          أُعيد تصميم شاشة القيادة بالكامل بأسلوب <strong>cockpit</strong> مناسب لشاشة السيارة: الكاميرا الذكية والخريطة
+          في بطاقات أنيقة بحواف دائرية، وأسفلها لوحة عدّادات عريضة.
+        </p>
+        <h3>Cockpit Components</h3>
+        <table>
+          <thead><tr><th>Component</th><th>الوظيفة</th></tr></thead>
+          <tbody>
+            <tr><td>RadialSpeedometer</td><td>عدّاد بقوس 270° يتغيّر لونه حسب تجاوز الحدّ.</td></tr>
+            <tr><td>SpeedLimitSign</td><td>إشارة دائرية بإطار أحمر بأسلوب إشارات الطرق.</td></tr>
+            <tr><td>CockpitBar</td><td>يجمع السرعة + الحدّ + اسم الطريق + الوقت + شارات الحالة.</td></tr>
+            <tr><td>CockpitTopBar</td><td>شعار NURAI، حالة الاتصال، التنبيهات، الخروج.</td></tr>
+            <tr><td>CockpitIconButton</td><td>أزرار زجاجية: الكشّاف، نمط الخريطة، التتبّع، تحديد الموقع.</td></tr>
+          </tbody>
+        </table>
+        <h3>Responsive Layout</h3>
+        <ul>
+          <li><strong>Landscape:</strong> الكاميرا (الأكبر) + الخريطة جنباً إلى جنب، وأسفلهما CockpitBar عريض.</li>
+          <li><strong>Portrait:</strong> الكاميرا في الأعلى ثم الخريطة ثم CockpitBar مُدمَج.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ════════ 14 — DRIVER ASSIST ════════ -->
+    <section class="chapter" id="ch14">
+      <div class="chapter__head">
+        <div class="chapter__num">14</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 14</div><h2>Driver Assistance Features</h2></div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Feature</th><th>كيف تعمل</th></tr></thead>
+          <tbody>
+            <tr><td>Speed Estimation</td><td>حساب السرعة من بيانات GPS وتنعيمها لعرض رقم مستقرّ.</td></tr>
+            <tr><td>Dynamic Speed Limit</td><td>يُجلب حدّ الطريق من OpenStreetMap (اختياري Google Roads) ويُخزَّن مؤقتاً 180s.</td></tr>
+            <tr><td>Headway Distance</td><td>تقدير المسافة والزمن للمركبة الأمامية والتحذير عند الاقتراب الخطر.</td></tr>
+            <tr><td>Vibration Sensor</td><td>قياس اهتزاز الطريق عبر حسّاس التسارع كمؤشّر لجودة الطريق.</td></tr>
+            <tr><td>Heading / Compass</td><td>عرض اتجاه الحركة وتدوير الخريطة معه.</td></tr>
+            <tr><td>Speed Violation</td><td>عند تجاوز الحدّ يُسجَّل حدث <code>traffic_violation</code>.</td></tr>
+          </tbody>
+        </table>
+        <h3>Speed Limits by Highway Type</h3>
+        <table>
+          <thead><tr><th>highway</th><th>km/h</th><th>highway</th><th>km/h</th></tr></thead>
+          <tbody>
+            <tr><td><code>motorway</code></td><td>120</td><td><code>residential</code></td><td>30</td></tr>
+            <tr><td><code>primary</code></td><td>80</td><td><code>living_street</code></td><td>20</td></tr>
+            <tr><td><code>secondary</code></td><td>60</td><td><code>service</code></td><td>20</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════ 15 — API ════════ -->
+    <section class="chapter" id="ch15">
+      <div class="chapter__head">
+        <div class="chapter__num">15</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 15</div><h2>API Reference</h2></div>
+      </div>
+      <div class="card">
+        <h3>Console API — JWT Auth</h3>
+        <table>
+          <thead><tr><th>Method</th><th>Path</th></tr></thead>
+          <tbody>
+            <tr><td>POST</td><td><code>/api/v1/auth/login</code></td></tr>
+            <tr><td>CRUD</td><td><code>/projects · /datasets · /annotation · /training</code></td></tr>
+            <tr><td>WS</td><td><code>/ws/road-intelligence · /ws/training/{id}</code></td></tr>
+          </tbody>
+        </table>
+        <h3>Driver API — X-Device-Key</h3>
+        <table>
+          <thead><tr><th>Method</th><th>Path</th></tr></thead>
+          <tbody>
+            <tr><td>GET</td><td><code>/driver/config · /speed-limit · /events/nearby</code></td></tr>
+            <tr><td>POST</td><td><code>/driver/detect · /telemetry</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════ 16 — SECURITY / DEPLOY ════════ -->
+    <section class="chapter" id="ch16">
+      <div class="chapter__head">
+        <div class="chapter__num">16</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 16</div><h2>Security &amp; Deployment</h2></div>
+      </div>
+      <div class="card">
+        <h3>Security Layers</h3>
+        <table>
+          <thead><tr><th>Layer</th><th>Mechanism</th></tr></thead>
+          <tbody>
+            <tr><td>Console</td><td>JWT Bearer + RBAC</td></tr>
+            <tr><td>Rasid Drive</td><td>X-Device-Key per device</td></tr>
+            <tr><td>PostgreSQL / Redis</td><td>Docker internal network only</td></tr>
+          </tbody>
+        </table>
+        <h3>Deployment Steps</h3>
+        <pre class="code"><span class="c"># 1) configure env</span>
+cp .env.production.example .env
+
+<span class="c"># 2) deploy to server</span>
+./scripts/deploy_vps.sh
+<span class="c"># Gateway: http://IP:8080</span>
+
+<span class="c"># 3) build the in-vehicle app</span>
+cd mobile-app &amp;&amp; flutter build apk --release</pre>
+        <h3>Ports</h3>
+        <table>
+          <thead><tr><th>Port</th><th>Service</th></tr></thead>
+          <tbody>
+            <tr><td>8080</td><td>Gateway — UI + API + WebSocket</td></tr>
+            <tr><td>6001</td><td>Direct API / Swagger</td></tr>
+            <tr><td>6002–6003</td><td>MinIO</td></tr>
+            <tr><td>6004–6005</td><td>Grafana · Prometheus</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════ 17 — CONCLUSION ════════ -->
+    <section class="chapter" id="ch17">
+      <div class="chapter__head">
+        <div class="chapter__num">17</div>
+        <div class="chapter__titles"><div class="kicker">CHAPTER 17</div><h2>Conclusion</h2></div>
+      </div>
+      <div class="card">
+        <h3>What We Achieved</h3>
+        <ul>
+          <li>دورة MLOps كاملة: Ingestion ← Annotation ← Training ← Deploy ← Monitor ← Active Learning.</li>
+          <li>معالجة كشف مركزية على السيرفر تخدم كل المركبات بنموذج واحد.</li>
+          <li>خريطة ذكاء حيّة عبر Redis + WebSocket مع أسطول مركبات وتقارير.</li>
+          <li>جهاز <strong>Rasid Drive</strong> داخل السيارة بواجهة Cockpit احترافية.</li>
+          <li>طبقة <strong>AR Overlay</strong> بتتبّع تنبّؤي سلس وكرافيك مميّز.</li>
+        </ul>
+        <div class="endnote">
+          <b>RASID</b>
+          نرصد الطريق… قبل أن تصبح المشكلة حادثاً<br/>
+          NURAI · جامعة تكنولوجيا المعلومات والاتصالات · 2026
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════ A — GLOSSARY ════════ -->
+    <section class="chapter" id="gloss">
+      <div class="chapter__head">
+        <div class="chapter__num">A</div>
+        <div class="chapter__titles"><div class="kicker">APPENDIX A</div><h2>Glossary</h2></div>
+      </div>
+      <div class="card">
+        <dl class="gloss">
+          <dt>YOLO</dt><dd>نموذج ذكاء اصطناعي يكتشف الأجسام في الصورة بنظرة واحدة سريعة.</dd>
+          <dt>Inference</dt><dd>تمرير صورة عبر النموذج للحصول على نتيجة الكشف.</dd>
+          <dt>Bounding Box</dt><dd>المربّع المرسوم حول الجسم المكتشَف.</dd>
+          <dt>Confidence</dt><dd>درجة ثقة النموذج في صحّة الكشف.</dd>
+          <dt>NMS</dt><dd>إزالة الصناديق المتداخلة المكرّرة والإبقاء على الأفضل.</dd>
+          <dt>IoU</dt><dd>مقياس تداخل صندوقين يُستخدم في التتبّع وإزالة التكرار.</dd>
+          <dt>MLOps</dt><dd>إدارة نماذج الذكاء الاصطناعي كدورة عمل متكاملة.</dd>
+          <dt>Active Learning</dt><dd>تحسين النموذج بإرسال الحالات غير المؤكّدة للمراجعة البشرية.</dd>
+          <dt>PostGIS</dt><dd>إضافة لقاعدة البيانات تتيح المواقع والاستعلامات الجغرافية.</dd>
+          <dt>WebSocket</dt><dd>قناة اتصال لحظية ثنائية الاتجاه بين السيرفر والواجهة.</dd>
+          <dt>Redis Pub/Sub</dt><dd>نظام نشر/اشتراك لبثّ الرسائل لحظياً.</dd>
+          <dt>Flutter</dt><dd>إطار من Google لبناء التطبيقات بلغة Dart.</dd>
+          <dt>RBAC</dt><dd>التحكّم بالصلاحيات حسب دور المستخدم.</dd>
+          <dt>Headway</dt><dd>المسافة/الزمن الفاصل عن المركبة الأمامية.</dd>
+        </dl>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    securityLevel: 'loose',
+    fontFamily: 'IBM Plex Sans Arabic, sans-serif',
+    flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis', nodeSpacing: 46, rankSpacing: 58, padding: 14 },
+    sequence: { useMaxWidth: true, actorMargin: 60, messageMargin: 38, mirrorActors: false, noteFontWeight: '600' },
+    themeVariables: {
+      primaryColor: '#ccfbf1',
+      primaryBorderColor: '#0f766e',
+      primaryTextColor: '#0f172a',
+      lineColor: '#0f766e',
+      secondaryColor: '#ede9fe',
+      tertiaryColor: '#f8fafc',
+      fontSize: '15px',
+      fontFamily: 'IBM Plex Sans Arabic, sans-serif',
+      actorBkg: '#ccfbf1',
+      actorBorder: '#0f766e',
+      actorTextColor: '#0f172a',
+      signalColor: '#334155',
+      signalTextColor: '#0f172a',
+      noteBkgColor: '#fef9c3',
+      noteBorderColor: '#eab308',
+      sequenceNumberColor: '#ffffff'
+    }
+  });
+
+  const links = [...document.querySelectorAll('#toc a')];
+  const map = new Map(links.map(a => [a.getAttribute('href').slice(1), a]));
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const a = map.get(e.target.id);
+        if (a) { a.classList.add('active'); a.scrollIntoView({ block: 'nearest' }); }
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+  document.querySelectorAll('.chapter').forEach(c => observer.observe(c));
+</script>
+</body>
+</html>

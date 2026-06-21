@@ -7,7 +7,10 @@ abstract final class DetectionConfig {
   static const double overlayRefreshHz = 60;
 
   /// Minimum ms between local inference runs when pipeline is fast.
-  static const int localDetectFloorMs = 16;
+  static const int localDetectFloorMs = 8;
+
+  /// When ONNX is loaded, never fall back to slow cloud inference.
+  static const bool localOnlyWhenReady = true;
 
   /// Remove overlay box after N missed detection frames (0 = immediate).
   static const int maxTrackMissFrames = 1;

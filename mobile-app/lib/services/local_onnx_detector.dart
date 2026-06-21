@@ -26,14 +26,20 @@ class LocalOnnxDetector {
   String? _outputName;
   List<String> _classNames = [];
   int _inputSize = 640;
+  int _inputH = 640;
+  int _inputW = 640;
   String? loadError;
   Future<void>? _loadFuture;
   Future<LocalDetectResult>? _detectFuture;
   bool _loggedMeta = false;
+  Float64List? _rawBuf;
+  int _inferCount = 0;
 
   bool get isReady => _session != null && _classNames.isNotEmpty;
   bool get isLoading => _loadFuture != null;
   int get inputSize => _inputSize;
+  int get inputWidth => _inputW;
+  int get inputHeight => _inputH;
   List<String> get classNames => List.unmodifiable(_classNames);
 
   Future<void> load({
@@ -80,20 +86,76 @@ class LocalOnnxDetector {
       _classNames = classes;
 
       final ort = OnnxRuntime();
-      final options = OrtSessionOptions(
-        intraOpNumThreads: 3,
-        interOpNumThreads: 1,
-        providers: kIsWeb ? null : [OrtProvider.CPU],
-      );
-
-      _session = await ort.createSession(modelPath, options: options);
+      if (kIsWeb) {
+        _session = await ort.createSession(modelPath);
+      } else {
+        // XNNPACK first: a small 320 YOLO runs the whole graph on one fast
+        // CPU delegate, avoiding the partition transfers NNAPI incurs on the
+        // in-graph NMS ops (which it can't run → 3 partitions → slower).
+        final fast = OrtSessionOptions(
+          intraOpNumThreads: 4,
+          interOpNumThreads: 2,
+          providers: [
+            OrtProvider.XNNPACK,
+            OrtProvider.NNAPI,
+            OrtProvider.CPU,
+          ],
+        );
+        try {
+          _session = await ort.createSession(modelPath, options: fast);
+        } catch (_) {
+          final cpu = OrtSessionOptions(
+            intraOpNumThreads: 4,
+            providers: [OrtProvider.CPU],
+          );
+          _session = await ort.createSession(modelPath, options: cpu);
+        }
+      }
       _inputName = _session!.inputNames.isNotEmpty ? _session!.inputNames.first : 'images';
       _outputName = _pickOutputName(_session!.outputNames);
+      await _resolveInputShape();
       loadError = null;
     } catch (e) {
       loadError = 'فشل تحميل ONNX: $e';
       await dispose();
     }
+  }
+
+  /// Read the model's real input dims (NCHW) — manifest size is unreliable.
+  Future<void> _resolveInputShape() async {
+    final session = _session;
+    if (session == null) return;
+    try {
+      final info = await session.getInputInfo();
+      Map<String, dynamic>? imagesInfo;
+      for (final entry in info) {
+        if (entry['name'] == _inputName) {
+          imagesInfo = entry;
+          break;
+        }
+      }
+      imagesInfo ??= info.isNotEmpty ? info.first : null;
+      final rawShape = imagesInfo?['shape'];
+      if (rawShape is List && rawShape.length == 4) {
+        final dims = rawShape.map((e) => (e as num?)?.toInt() ?? -1).toList();
+        // NCHW: [batch, channels, height, width]
+        final h = dims[2];
+        final w = dims[3];
+        if (h > 0) _inputH = h;
+        if (w > 0) _inputW = w;
+        // Square fallback when one dim is dynamic.
+        if (h > 0 && w <= 0) _inputW = h;
+        if (w > 0 && h <= 0) _inputH = w;
+        _inputSize = _inputH > 0 ? _inputH : _inputSize;
+      }
+    } catch (e) {
+      debugPrint('getInputInfo failed, using manifest size $_inputSize: $e');
+      _inputH = _inputSize;
+      _inputW = _inputSize;
+    }
+    if (_inputH <= 0) _inputH = _inputSize;
+    if (_inputW <= 0) _inputW = _inputSize;
+    debugPrint('LocalOnnx input dims = ${_inputW}x$_inputH (manifest=$_inputSize)');
   }
 
   String _pickOutputName(List<String> names) {
@@ -105,6 +167,24 @@ class LocalOnnxDetector {
       }
     }
     return names.first;
+  }
+
+  Future<LocalDetectResult> detectFromPrep(
+    OnnxPrepResult prep, {
+    required double minConfidence,
+    double iouThreshold = 0.45,
+  }) async {
+    if (_detectFuture != null) return _detectFuture!;
+    _detectFuture = _inferPrep(
+      prep,
+      minConfidence: minConfidence,
+      iouThreshold: iouThreshold,
+    );
+    try {
+      return await _detectFuture!;
+    } finally {
+      _detectFuture = null;
+    }
   }
 
   Future<LocalDetectResult> detect(
@@ -131,6 +211,25 @@ class LocalOnnxDetector {
     required double minConfidence,
     required double iouThreshold,
   }) async {
+    final sw = Stopwatch()..start();
+    final prep = await compute(prepareOnnxInput, [jpegBytes, _inputW, _inputH]);
+    if (prep == null) {
+      return LocalDetectResult(boxes: const [], latencyMs: sw.elapsedMilliseconds);
+    }
+    return _inferPrep(
+      prep,
+      minConfidence: minConfidence,
+      iouThreshold: iouThreshold,
+      sw: sw,
+    );
+  }
+
+  Future<LocalDetectResult> _inferPrep(
+    OnnxPrepResult prep, {
+    required double minConfidence,
+    required double iouThreshold,
+    Stopwatch? sw,
+  }) async {
     final session = _session;
     final inputName = _inputName;
     final outputName = _outputName;
@@ -138,16 +237,12 @@ class LocalOnnxDetector {
       throw StateError(loadError ?? 'الموديل المحلي غير جاهز');
     }
 
-    final sw = Stopwatch()..start();
-
-    final prep = await compute(prepareOnnxInput, [jpegBytes, _inputSize]);
-    if (prep == null) {
-      return LocalDetectResult(boxes: const [], latencyMs: sw.elapsedMilliseconds);
-    }
+    final timer = sw ?? Stopwatch()..start();
+    if (sw == null) timer.start();
 
     final inputTensor = await OrtValue.fromList(
       prep.tensor,
-      [1, 3, _inputSize, _inputSize],
+      [1, 3, _inputH, _inputW],
     );
 
     Map<String, OrtValue> outputs;
@@ -165,7 +260,7 @@ class LocalOnnxDetector {
       for (final v in outputs.values) {
         await v.dispose();
       }
-      return LocalDetectResult(boxes: const [], latencyMs: sw.elapsedMilliseconds);
+      return LocalDetectResult(boxes: const [], latencyMs: timer.elapsedMilliseconds);
     }
 
     final flat = await output.asFlattenedList();
@@ -179,11 +274,19 @@ class LocalOnnxDetector {
       _loggedMeta = true;
       debugPrint(
         'LocalOnnx outputs=$outputName shape=$shape nc=${_classNames.length} '
-        'in=${_inputSize} gain=${prep.gain.toStringAsFixed(3)} img=${prep.origW}x${prep.origH}',
+        'in=$_inputSize gain=${prep.gain.toStringAsFixed(3)} img=${prep.origW}x${prep.origH}',
       );
     }
 
-    final raw = flat.map((e) => (e as num).toDouble()).toList();
+    // Reuse a Float64List buffer to avoid per-frame List allocation churn.
+    final n = flat.length;
+    if (_rawBuf == null || _rawBuf!.length != n) {
+      _rawBuf = Float64List(n);
+    }
+    final raw = _rawBuf!;
+    for (var i = 0; i < n; i++) {
+      raw[i] = (flat[i] as num).toDouble();
+    }
     final inferMin = math.max(0.08, minConfidence);
     final boxes = _decodeOutput(
       raw,
@@ -193,14 +296,17 @@ class LocalOnnxDetector {
       iouThreshold: iouThreshold,
     );
 
+    _inferCount++;
     if (boxes.isNotEmpty) {
       debugPrint(
-        'LocalOnnx hit ${boxes.length} @ ${boxes.first.confidence.toStringAsFixed(2)} '
-        '${boxes.first.className}',
+        'LocalOnnx ${boxes.length} @ ${boxes.first.confidence.toStringAsFixed(2)} '
+        '${timer.elapsedMilliseconds}ms',
       );
+    } else if (_inferCount % 20 == 0) {
+      debugPrint('LocalOnnx infer ${timer.elapsedMilliseconds}ms (empty)');
     }
 
-    return LocalDetectResult(boxes: boxes, latencyMs: sw.elapsedMilliseconds);
+    return LocalDetectResult(boxes: boxes, latencyMs: timer.elapsedMilliseconds);
   }
 
   Future<void> dispose() async {

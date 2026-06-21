@@ -97,9 +97,22 @@ class EfficientDetAdapter:
         return YOLOAdapter().predict(weights_path, image_path)
 
 
-def get_adapter(architecture: str):
+def resolve_yolo_weights(architecture: str, model_variant: str | None = None) -> str:
+    variant = (model_variant or "").strip().lower()
+    if architecture == "yolo11n" or variant == "n":
+        return "yolo11n.pt"
+    if architecture == "yolo11s" or variant == "s":
+        return "yolo11s.pt"
+    if architecture == "yolo11":
+        return f"yolo11{variant}.pt" if variant in ("n", "s") else "yolo11n.pt"
+    return "yolo11n.pt"
+
+
+def get_adapter(architecture: str, model_variant: str | None = None):
+    if architecture in ("yolo11", "yolo11n", "yolo11s"):
+        weights = resolve_yolo_weights(architecture, model_variant)
+        return YOLOAdapter(weights)
     mapping = {
-        "yolo11": YOLOAdapter("yolo11n.pt"),
         "yolov10": YOLOAdapter("yolov10n.pt"),
         "rt_detr": RTDETRAdapter(),
         "faster_rcnn": FasterRCNNAdapter(),

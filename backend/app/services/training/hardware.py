@@ -24,6 +24,16 @@ def cuda_available() -> bool:
 
 
 @lru_cache
+def mps_available() -> bool:
+    try:
+        import torch
+
+        return bool(torch.backends.mps.is_available())
+    except Exception:
+        return False
+
+
+@lru_cache
 def directml_available() -> bool:
     if platform.system() != "Windows":
         return False
@@ -48,12 +58,14 @@ def detect_hardware() -> dict[str, Any]:
     cpu_n = cpu_logical_count()
     has_cuda = cuda_available()
     has_dml = directml_available()
+    has_mps = mps_available()
     best = pick_device("auto", force_cpu=False)
     label = device_label(best)
     return {
         "cpu_threads": cpu_n,
         "cuda_available": has_cuda,
         "directml_available": has_dml,
+        "mps_available": has_mps,
         "platform": platform.system(),
         "processor": platform.processor() or "unknown",
         "best_device": normalize_device_name(best),
@@ -66,6 +78,8 @@ def normalize_device_name(device: Any) -> str:
         return "cpu"
     if device == "directml" or _is_directml_device(device):
         return "directml"
+    if device == "mps":
+        return "mps"
     if isinstance(device, int) or (isinstance(device, str) and device.isdigit()):
         return "cuda"
     return str(device)
@@ -79,6 +93,8 @@ def device_label(device: Any) -> str:
         return "Intel GPU (DirectML)"
     if name == "cuda":
         return "NVIDIA GPU (CUDA)"
+    if name == "mps":
+        return "Apple GPU (MPS)"
     return str(device)
 
 
@@ -93,7 +109,7 @@ def pick_device(requested: str = "auto", *, force_cpu: bool = False) -> Any:
     """
     Resolve device for Ultralytics / PyTorch.
 
-    Priority when auto: CUDA:0 > DirectML (Intel iGPU) > CPU.
+    Priority when auto: CUDA:0 > MPS (Apple) > DirectML (Intel iGPU) > CPU.
     """
     req = (requested or "auto").strip().lower()
     if force_cpu or req == "cpu":
@@ -101,9 +117,13 @@ def pick_device(requested: str = "auto", *, force_cpu: bool = False) -> Any:
     if req == "cuda" or req == "gpu" or req == "0":
         if cuda_available():
             return 0
+        if mps_available():
+            return "mps"
         if directml_available():
             return "directml"
         return "cpu"
+    if req == "mps":
+        return "mps" if mps_available() else "cpu"
     if req == "directml" or req == "igpu":
         if directml_available():
             return "directml"
@@ -111,6 +131,8 @@ def pick_device(requested: str = "auto", *, force_cpu: bool = False) -> Any:
     if req == "auto":
         if cuda_available():
             return 0
+        if mps_available():
+            return "mps"
         if directml_available():
             return "directml"
         return "cpu"
@@ -141,4 +163,9 @@ def ultralytics_device(device: Any) -> Any:
 
 
 def is_cpu_device(device: Any) -> bool:
-    return device == "cpu" or normalize_device_name(device) == "cpu"
+    name = normalize_device_name(device)
+    return name == "cpu"
+
+
+def is_mps_device(device: Any) -> bool:
+    return normalize_device_name(device) == "mps"

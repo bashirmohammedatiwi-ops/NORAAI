@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
 import '../utils/frame_compress.dart';
+import 'onnx_frame_prep.dart';
 
 /// Frame capture from [CameraController.startImageStream].
 ///
@@ -48,6 +49,30 @@ class CameraFrameBuffer {
       _snapshot = _FrameSnapshot.fromCameraImage(image);
     } catch (e) {
       debugPrint('CameraFrameBuffer snapshot failed: $e');
+    }
+  }
+
+  /// YUV → ONNX tensor directly (fast local path — no JPEG).
+  Future<OnnxPrepResult?> captureOnnxInput(int netW, int netH) async {
+    final snap = _snapshot;
+    if (snap == null || snap.yuvPayload == null) return null;
+
+    _captureBusy = true;
+    try {
+      return await compute(prepareOnnxFromYuvPayload, [
+        snap.yuvPayload![0],
+        snap.yuvPayload![1],
+        snap.yuvPayload![3],
+        snap.yuvPayload![4],
+        snap.yuvPayload![5],
+        netW,
+        netH,
+      ]);
+    } catch (e) {
+      debugPrint('captureOnnxInput failed: $e');
+      return null;
+    } finally {
+      _captureBusy = false;
     }
   }
 

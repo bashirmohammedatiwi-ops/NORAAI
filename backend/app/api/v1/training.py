@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +30,22 @@ from workers.celery_app import celery_app
 from workers.training.tasks import cancel_training_job, run_training_job
 
 router = APIRouter(tags=["training", "models"])
+
+
+def _normalize_training_architecture(architecture: str, config: dict) -> tuple[str, dict]:
+    """Map yolo11n/yolo11s UI values to stored architecture + model_variant."""
+    arch = (architecture or "yolo11").strip().lower()
+    variant = config.get("model_variant")
+    if arch == "yolo11n":
+        arch, variant = "yolo11", "n"
+    elif arch == "yolo11s":
+        arch, variant = "yolo11", "s"
+    if variant in ("n", "s"):
+        config = dict(config)
+        config["model_variant"] = variant
+    if arch not {a.value for a in ModelArchitecture}:
+        arch = "yolo11"
+    return arch, config
 
 
 async def _normalize_training_class_ids(
@@ -163,10 +179,12 @@ async def create_training_job(
                 detail="لا يوجد موديل مدرب للمتابعة. اختر «من الصفر» أو درّب موديلاً أولاً.",
             )
 
+    arch_value, config = _normalize_training_architecture(data.architecture, config)
+
     job = TrainingJob(
         project_id=project_id,
         name=data.name,
-        architecture=ModelArchitecture(data.architecture),
+        architecture=ModelArchitecture(arch_value),
         training_mode=TrainingMode(data.training_mode),
         model_definition_id=data.model_definition_id,
         dataset_version_id=data.dataset_version_id,
@@ -362,6 +380,62 @@ async def compare_model_artifacts(data: ModelCompareRequest, db: AsyncSession = 
     return await compare_models(db, data.model_ids)
 
 
+@router.post("/models/project/{project_id}/import", response_model=ModelArtifactResponse)
+async def import_project_model(
+    project_id: UUID,
+    weights_file: UploadFile = File(..., description="YOLO .pt weights"),
+    name: str = Form("Imported Model"),
+    architecture: str = Form("yolo11"),
+    model_variant: str = Form("n"),
+    classes: str = Form("", description="Comma-separated class names"),
+    promote: bool = Form(True),
+    onnx_file: UploadFile | None = File(None),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Import external trained weights (e.g. from Local Trainer) into the project."""
+    from app.models import Project
+    from app.services.models.import_model import import_model_artifact
+    from app.services.models.registry import assign_model_numbers
+
+    if not weights_file.filename or not weights_file.filename.lower().endswith(".pt"):
+        raise HTTPException(status_code=400, detail="Upload a .pt weights file")
+
+    weights_bytes = await weights_file.read()
+    onnx_bytes: bytes | None = None
+    if onnx_file and onnx_file.filename:
+        onnx_bytes = await onnx_file.read()
+
+    class_list = [c.strip() for c in classes.split(",") if c.strip()]
+    arch_value, _ = _normalize_training_architecture(architecture, {"model_variant": model_variant})
+
+    try:
+        artifact = await import_model_artifact(
+            db,
+            project_id,
+            weights_bytes=weights_bytes,
+            name=name,
+            architecture=arch_value,
+            model_variant=model_variant if model_variant in ("n", "s") else "n",
+            classes=class_list,
+            promote=promote,
+            onnx_bytes=onnx_bytes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    result = await db.execute(
+        select(ModelArtifact).where(ModelArtifact.project_id == project_id)
+    )
+    numbers = assign_model_numbers(list(result.scalars().all()))
+    project = await db.get(Project, project_id)
+    return ModelArtifactResponse.from_artifact(
+        artifact,
+        model_number=numbers.get(artifact.id, 0),
+        is_active=project.active_model_artifact_id == artifact.id if project else False,
+    )
+
+
 @router.get("/projects/{project_id}/active-model")
 async def project_active_model(project_id: UUID, db: AsyncSession = Depends(get_db)):
     status = await get_active_model_status(db, project_id)
@@ -440,11 +514,12 @@ async def retrain_project_model(
         config["class_ids"] = normalized_class_ids
 
     config = _apply_retrain_overrides(config, overrides)
+    arch_value, config = _normalize_training_architecture(architecture, config)
 
     job = TrainingJob(
         project_id=project_id,
         name="Retrain Main Model",
-        architecture=ModelArchitecture(architecture),
+        architecture=ModelArchitecture(arch_value),
         training_mode=TrainingMode.SINGLE_GPU,
         dataset_version_id=UUID(head_version_id) if isinstance(head_version_id, str) else head_version_id,
         hpo_enabled=False,

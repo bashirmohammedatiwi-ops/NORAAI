@@ -49,6 +49,14 @@ class SpeedViolationRules {
       fallbackLimitKmh: (json['fallback_limit_kmh'] as num?)?.toDouble() ?? 80,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'enabled': enabled,
+        'tolerance_kmh': toleranceKmh,
+        'grace_seconds': graceSeconds,
+        'cooldown_seconds': cooldownSeconds,
+        'fallback_limit_kmh': fallbackLimitKmh,
+      };
 }
 
 class ServerConfig {
@@ -133,6 +141,29 @@ class ServerConfig {
                 .toList() ??
             [],
       );
+
+  Map<String, dynamic> toJson() => {
+        'model_ready': modelReady,
+        'detection_enabled': detectionEnabled,
+        'inference_mode': inferenceMode,
+        'min_confidence': minConfidence,
+        'scan_fps': scanFps,
+        'speed_violation': speedViolation.toJson(),
+        'model_version': modelVersion,
+        'model_sha256': modelSha256,
+        'model_name': modelName,
+        'message': message,
+        'road_speed_enabled': roadSpeedEnabled,
+        'capture_max_width': captureMaxWidth,
+        'jpeg_quality': jpegQuality,
+        'scan_interval_ms': scanIntervalMs,
+        'scan_interval_fast_ms': scanIntervalFastMs,
+        'speed_fast_kmh': speedFastKmh,
+        'project_classes': projectClasses,
+        'alert_types': alertTypes,
+        'model_classes': modelClasses,
+        'classes': classes,
+      };
 }
 
 Color classColor(String name) {

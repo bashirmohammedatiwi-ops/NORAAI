@@ -86,7 +86,7 @@ def run_training_job(job_id: str):
         job.config = config
         session.commit()
         config["device"] = resolve_training_device(config)
-        adapter = get_adapter(job.architecture.value)
+        adapter = get_adapter(job.architecture.value, config.get("model_variant"))
 
         def cancel_check() -> bool:
             return _job_was_cancelled(session, job_id)

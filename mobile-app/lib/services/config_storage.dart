@@ -2,12 +2,14 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/detection.dart';
 import '../models/driver_config.dart';
 
 class ConfigStorage {
   static const _key = 'norai_flutter_config';
   static const _modelVersionKey = 'norai_model_version';
   static const _modelShaKey = 'norai_model_sha256';
+  static const _serverCfgKey = 'norai_server_config';
 
   static Future<DriverConfig?> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -47,6 +49,22 @@ class ConfigStorage {
     }
     if (sha256 != null) {
       await prefs.setString(_modelShaKey, sha256);
+    }
+  }
+
+  static Future<void> saveServerConfig(ServerConfig config) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_serverCfgKey, jsonEncode(config.toJson()));
+  }
+
+  static Future<ServerConfig?> loadServerConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_serverCfgKey);
+    if (raw == null) return null;
+    try {
+      return ServerConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
     }
   }
 }

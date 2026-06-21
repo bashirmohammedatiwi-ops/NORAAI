@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rasid Local Trainer</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Rasid Local Trainer</h1>
+      <p>تدريب YOLO11 محلياً على Mac · رفع ZIP معنون · تصدير PT / ONNX</p>
+    </div>
+    <span class="badge" id="hw-badge">—</span>
+  </header>
+
+  <main class="layout">
+    <section class="card">
+      <h2><span class="num">1</span> Classes</h2>
+      <div class="field grid2">
+        <div>
+          <label>Class name</label>
+          <input id="class-name" placeholder="pothole, crack, accident…" />
+        </div>
+        <div style="display:flex;align-items:flex-end">
+          <button class="btn btn-primary" id="btn-add-class">Add class</button>
+        </div>
+      </div>
+      <div class="pills" id="class-list"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="num">2</span> Import labeled ZIP (YOLO)</h2>
+      <p style="font-size:0.85rem;color:#64748b;margin:0 0 12px">
+        ZIP with <code>images/</code> + <code>labels/</code> or <code>labels-yolo/</code> · optional <code>data.yaml</code>
+      </p>
+      <input type="file" id="zip-input" accept=".zip" />
+      <div id="preview-warn" class="alert hidden"></div>
+      <div id="mapping" style="margin-top:12px"></div>
+      <div class="field" style="margin-top:12px">
+        <label>Validation split</label>
+        <input id="val-split" type="number" min="0.05" max="0.4" step="0.05" value="0.15" />
+      </div>
+      <button class="btn btn-primary" id="btn-import">Import dataset</button>
+      <div id="import-result" class="alert hidden" style="margin-top:12px"></div>
+      <div id="dataset-info" style="margin-top:16px"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="num">3</span> Training</h2>
+      <input type="hidden" id="train-dataset-id" />
+      <div class="grid2">
+        <div class="field">
+          <label>Model</label>
+          <select id="model-variant">
+            <option value="n">YOLO11n (nano — faster)</option>
+            <option value="s">YOLO11s (small — more accurate)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Continue from</label>
+          <select id="fine-tune-model"></select>
+          <small id="fine-tune-hint" style="color:#64748b"></small>
+        </div>
+        <div class="field">
+          <label>Epochs</label>
+          <input id="epochs" type="number" value="30" min="5" max="200" />
+        </div>
+        <div class="field">
+          <label>Batch size</label>
+          <input id="batch-size" type="number" value="8" min="1" max="64" />
+        </div>
+        <div class="field">
+          <label>Image size</label>
+          <input id="image-size" type="number" value="640" min="320" max="1280" step="32" />
+        </div>
+        <div class="field">
+          <label>Learning rate</label>
+          <input id="lr" type="number" value="0.01" step="0.001" />
+        </div>
+        <div class="field">
+          <label>Patience</label>
+          <input id="patience" type="number" value="10" min="3" max="50" />
+        </div>
+        <div class="field">
+          <label>Optimizer</label>
+          <select id="optimizer">
+            <option>AdamW</option>
+            <option>SGD</option>
+            <option>Adam</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Augmentation</label>
+          <select id="augmentation">
+            <option value="light">Light</option>
+            <option value="medium">Medium</option>
+            <option value="heavy">Heavy</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Scheduler</label>
+          <select id="scheduler">
+            <option value="cosine">Cosine</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Device</label>
+          <select id="device">
+            <option value="auto">Auto (MPS / CUDA / CPU)</option>
+            <option value="mps">Apple GPU (MPS)</option>
+            <option value="cpu">CPU</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Model name (optional)</label>
+          <input id="model-name" placeholder="road-v1" />
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-primary" id="btn-train">Start training</button>
+        <button class="btn btn-danger" id="btn-cancel" disabled>Cancel</button>
+      </div>
+
+      <!-- Live training dashboard -->
+      <div id="train-dashboard" class="train-dashboard hidden">
+        <div class="dash-head">
+          <div>
+            <span class="phase-badge" id="phase-badge">—</span>
+            <b id="train-status">—</b>
+          </div>
+          <div class="dash-meta">
+            <span id="meta-device">—</span>
+            <span id="meta-elapsed">0:00</span>
+            <span id="meta-eta">ETA —</span>
+          </div>
+        </div>
+
+        <div class="progress-labels">
+          <span>Overall <b id="progress-pct">0%</b></span>
+          <span>Epoch <b id="train-epoch">0 / 0</b> · <span id="epoch-pct">0%</span></span>
+          <span>Batch <b id="batch-info">0 / 0</b> · <span id="batch-speed">—</span></span>
+        </div>
+        <div class="progress-wrap progress-lg"><div class="progress-bar" id="progress-bar"></div></div>
+        <div class="progress-wrap progress-sm"><div class="progress-bar progress-bar--epoch" id="epoch-bar"></div></div>
+
+        <div class="metric-grid" id="metric-cards">
+          <div class="metric-card"><span class="metric-label">mAP50-95</span><span class="metric-value" id="m-map">—</span></div>
+          <div class="metric-card"><span class="metric-label">mAP50</span><span class="metric-value" id="m-map50">—</span></div>
+          <div class="metric-card"><span class="metric-label">Precision</span><span class="metric-value" id="m-precision">—</span></div>
+          <div class="metric-card"><span class="metric-label">Recall</span><span class="metric-value" id="m-recall">—</span></div>
+          <div class="metric-card"><span class="metric-label">F1</span><span class="metric-value" id="m-f1">—</span></div>
+          <div class="metric-card"><span class="metric-label">Loss</span><span class="metric-value" id="m-loss">—</span></div>
+        </div>
+
+        <div class="charts-grid">
+          <div class="chart-box"><h3>Loss</h3><canvas id="chart-loss"></canvas></div>
+          <div class="chart-box"><h3>mAP (accuracy)</h3><canvas id="chart-map"></canvas></div>
+          <div class="chart-box"><h3>Precision &amp; Recall</h3><canvas id="chart-pr"></canvas></div>
+          <div class="chart-box"><h3>F1 Score</h3><canvas id="chart-f1"></canvas></div>
+        </div>
+
+        <div class="log" id="train-log"></div>
+      </div>
+      <p id="train-idle-hint" class="idle-hint">ابدأ التدريب لعرض المخططات والمقاييس الحية.</p>
+    </section>
+
+    <section class="card">
+      <h2><span class="num">4</span> Trained models · Export</h2>
+      <div id="models-list"></div>
+    </section>
+  </main>
+  <script src="/static/charts.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
@@ -30,6 +31,7 @@ import '../services/speed_estimator.dart';
 import '../services/speed_monitor.dart';
 import '../config/app_config.dart';
 import '../config/detection_config.dart';
+import '../config/offline_detection.dart';
 import '../utils/event_meta.dart';
 import '../utils/frame_compress.dart';
 import '../utils/image_compress.dart';
@@ -37,7 +39,7 @@ import '../utils/map_geo.dart';
 import '../utils/map_styles.dart';
 import '../utils/platform_support.dart';
 
-const appVersion = '3.10.6';
+const appVersion = '3.12.0';
 
 enum SyncPhase { idle, connecting, syncingConfig, syncingModel, ready, error }
 
@@ -131,8 +133,11 @@ class DriveSession extends ChangeNotifier {
 
   int get vibrationLevel => roadVibration.levelPercent;
 
+  /// Config for detection — cached server config or offline defaults.
+  ServerConfig? get effectiveCfg => serverCfg;
+
   double get displayMinConfidence {
-    final cfg = serverCfg;
+    final cfg = effectiveCfg;
     if (cfg == null) return 0.4;
     return scheduler.displayMinConfidence(cfg);
   }
@@ -176,7 +181,7 @@ class DriveSession extends ChangeNotifier {
   void start() {
     headingService.start();
     roadVibration.start(_notifyThrottled);
-    unawaited(_loadModelCache().then((_) => ensureLocalOnnx()));
+    unawaited(_bootstrapOffline());
     startGps();
     unawaited(_safeSyncAll());
     _configTimer = Timer.periodic(const Duration(seconds: 20), (_) => unawaited(_safeSyncConfig()));
@@ -187,7 +192,7 @@ class DriveSession extends ChangeNotifier {
 
   /// AR overlay active — keeps tracker animating between inference frames.
   bool get overlayScanning =>
-      serverCfg?.detectionEnabled == true && camera != null && camera!.value.isInitialized;
+      effectiveCfg?.detectionEnabled == true && camera != null && camera!.value.isInitialized;
 
   Future<void> _safeSyncAll() async {
     try {
@@ -251,6 +256,51 @@ class DriveSession extends ChangeNotifier {
     final cache = await ConfigStorage.loadModelCache();
     cachedModelVersion = cache.version;
     cachedModelSha256 = cache.sha256;
+  }
+
+  Future<void> _bootstrapOffline() async {
+    await _loadModelCache();
+
+    final cachedCfg = await ConfigStorage.loadServerConfig();
+    if (cachedCfg != null) {
+      serverCfg = cachedCfg;
+      classMeta = buildClassMetaFromServer(cachedCfg.projectClasses, cachedCfg.alertTypes);
+      _speedMonitor = SpeedViolationMonitor(cachedCfg.speedViolation);
+      modelStatus = localOnnx.isReady
+          ? 'محلي ONNX ⚡ · ${cachedModelVersion ?? "—"}'
+          : 'جاهز محلياً · ${cachedModelVersion ?? "—"}';
+      syncPhase = SyncPhase.ready;
+    }
+
+    if (serverCfg == null && await _hasLocalModelOnDisk()) {
+      final classes = await _manifestClasses();
+      serverCfg = OfflineDetection.config(classes: classes);
+      classMeta = buildClassMetaFromServer(serverCfg!.projectClasses, serverCfg!.alertTypes);
+      _speedMonitor = SpeedViolationMonitor(serverCfg!.speedViolation);
+      modelStatus = 'اكتشاف محلي — بدون إنترنت';
+      syncPhase = SyncPhase.ready;
+    }
+
+    _localOnnxPending = true;
+    unawaited(ensureLocalOnnx());
+    notifyListeners();
+  }
+
+  Future<bool> _hasLocalModelOnDisk() async {
+    final path = await ApiService.modelFilePath();
+    final manifest = await ApiService.modelManifestPath();
+    return await File(path).exists() && await File(manifest).exists();
+  }
+
+  Future<List<String>> _manifestClasses() async {
+    try {
+      final manifest = await ApiService.modelManifestPath();
+      final raw = await File(manifest).readAsString();
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      return (json['classes'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<void> syncAll() async {
@@ -371,16 +421,16 @@ class DriveSession extends ChangeNotifier {
       notifyListeners();
 
       // Let preview stabilize before image stream (prevents native crashes).
-      await Future<void>.delayed(const Duration(milliseconds: 600));
+      await Future<void>.delayed(const Duration(milliseconds: 350));
       if (camera != controller || !controller.value.isInitialized) return;
 
       await _frameBuffer.attach(controller);
-      await Future<void>.delayed(const Duration(milliseconds: 400));
+      await Future<void>.delayed(const Duration(milliseconds: 250));
       if (camera == controller && controller.value.isInitialized) {
-        if (!localOnnx.isReady && cfg?.modelReady == true) {
+        if (!localOnnx.isReady) {
           unawaited(ensureLocalOnnx());
         }
-        scheduleNextDetect(600);
+        scheduleNextDetect(280);
       }
     } catch (e) {
       cameraError = kIsWeb
@@ -425,6 +475,7 @@ class DriveSession extends ChangeNotifier {
     try {
       final cfg = await api.fetchConfig();
       serverCfg = cfg;
+      await ConfigStorage.saveServerConfig(cfg);
       online = true;
       connectionError = null;
       _failures = 0;
@@ -491,6 +542,17 @@ class DriveSession extends ChangeNotifier {
       }
       notifyListeners();
     } on ApiException catch (e) {
+      if (serverCfg == null) {
+        final cached = await ConfigStorage.loadServerConfig();
+        if (cached != null) {
+          serverCfg = cached;
+          classMeta = buildClassMetaFromServer(cached.projectClasses, cached.alertTypes);
+          _speedMonitor = SpeedViolationMonitor(cached.speedViolation);
+        } else if (await _hasLocalModelOnDisk()) {
+          final classes = await _manifestClasses();
+          serverCfg = OfflineDetection.config(classes: classes);
+        }
+      }
       _onConnectionFailed(e.displayMessage);
     } catch (e) {
       _onConnectionFailed(ApiException.fromError(e).displayMessage);
@@ -870,11 +932,11 @@ class DriveSession extends ChangeNotifier {
     _detectTimer = Timer(Duration(milliseconds: delayMs), () async {
       final started = DateTime.now();
       await runDetect();
-      final cfg = serverCfg;
+      final cfg = effectiveCfg;
       final pos = position;
       final useLocalLoop = usesLocalInference;
       if (cfg == null || (!useLocalLoop && pos == null)) {
-        scheduleNextDetect(1000);
+        scheduleNextDetect(800);
         return;
       }
       final speed = speedKmh ?? 0.0;
@@ -889,14 +951,14 @@ class DriveSession extends ChangeNotifier {
   }
 
   Future<void> runDetect() async {
-    final cfg = serverCfg;
+    final cfg = effectiveCfg;
     final cam = camera;
     final pos = position;
     if (cfg == null || cam == null || !cam.value.isInitialized) return;
     if (!cfg.detectionEnabled || detectBusy || cameraStarting) return;
 
     final readyAt = _cameraReadyAt;
-    if (readyAt != null && DateTime.now().difference(readyAt).inMilliseconds < 200) {
+    if (readyAt != null && DateTime.now().difference(readyAt).inMilliseconds < 150) {
       return;
     }
 
@@ -909,55 +971,82 @@ class DriveSession extends ChangeNotifier {
     try {
       detectError = null;
       final preferLocal = usesLocalInference;
-      final maxW = preferLocal
-          ? scheduler.localCaptureWidth(localOnnx.inputSize)
-          : scheduler.captureWidth(cfg, lastLatencyMs: lastLatencyMs);
-      final q = preferLocal
-          ? scheduler.localJpegQuality()
-          : scheduler.jpegQuality(cfg, lastLatencyMs: lastLatencyMs);
-      final displayMin = scheduler.displayMinConfidence(cfg);
-
-      Uint8List? frameBytes;
-      if (!kIsWeb && _frameBuffer.isAttached) {
-        frameBytes = await _frameBuffer.captureJpeg(maxWidth: maxW, quality: q);
-      } else {
-        frameBytes = await _captureTakePicture(cam, maxW, q);
-      }
-      if (frameBytes == null) {
-        _detectFailures++;
-        detectError = 'تعذّر التقاط إطار — ${_detectFailures >= 3 ? "أعد فتح الكاميرا" : "إعادة المحاولة..."}';
-        return;
-      }
-      _detectFailures = 0;
-
-      final canServer = online && pos != null && cfg.modelReady;
-      final canLocal = preferLocal;
       List<DetectionBox> boxes = [];
       int? latency;
       bool usedServerInfer = false;
 
-      if (canLocal) {
+      if (preferLocal) {
         try {
           final inferMin = scheduler.localInferMinConfidence(cfg);
           final localMin = scheduler.localDisplayMinConfidence(cfg);
-          final local = await localOnnx.detect(
-            frameBytes,
-            minConfidence: inferMin,
-          );
+          LocalDetectResult local;
+
+          if (!kIsWeb && _frameBuffer.isAttached) {
+            final prep = await _frameBuffer.captureOnnxInput(
+              localOnnx.inputWidth,
+              localOnnx.inputHeight,
+            );
+            if (prep != null) {
+              local = await localOnnx.detectFromPrep(
+                prep,
+                minConfidence: inferMin,
+              );
+            } else {
+              final frameBytes = await _frameBuffer.captureJpeg(
+                maxWidth: localOnnx.inputSize,
+                quality: scheduler.localJpegQuality(),
+              );
+              if (frameBytes == null) {
+                _detectFailures++;
+                detectError = 'تعذّر التقاط إطار — أعد فتح الكاميرا';
+                return;
+              }
+              local = await localOnnx.detect(frameBytes, minConfidence: inferMin);
+            }
+          } else {
+            final frameBytes = await _captureTakePicture(
+              cam,
+              localOnnx.inputSize,
+              scheduler.localJpegQuality(),
+            );
+            if (frameBytes == null) {
+              _detectFailures++;
+              detectError = 'تعذّر التقاط إطار';
+              return;
+            }
+            local = await localOnnx.detect(frameBytes, minConfidence: inferMin);
+          }
+
           boxes = local.boxes
               .where((d) => d.confidence >= localMin && d.bbox.length >= 4)
               .toList();
           latency = local.latencyMs;
+          _detectFailures = 0;
+          _localInferFailures = 0;
         } catch (e, st) {
           debugPrint('Local ONNX detect failed: $e\n$st');
           _localInferFailures++;
-          if (_localInferFailures >= 2) {
+          if (_localInferFailures >= 3) {
             _localInferBroken = true;
           }
         }
       }
 
-      if (boxes.isEmpty && canServer) {
+      final skipCloud = DetectionConfig.localOnlyWhenReady && usesLocalInference;
+      final canServer = !skipCloud && online && pos != null && cfg.modelReady;
+
+      Uint8List? frameBytes;
+      if (canServer && boxes.isEmpty) {
+        final maxW = scheduler.captureWidth(cfg, lastLatencyMs: lastLatencyMs);
+        final q = scheduler.jpegQuality(cfg, lastLatencyMs: lastLatencyMs);
+        if (!kIsWeb && _frameBuffer.isAttached) {
+          frameBytes = await _frameBuffer.captureJpeg(maxWidth: maxW, quality: q);
+        } else {
+          frameBytes = await _captureTakePicture(cam, maxW, q);
+        }
+      }
+
+      if (boxes.isEmpty && canServer && frameBytes != null) {
         final gps = pos!;
         final sw = Stopwatch()..start();
         final result = await api.detectFrameBytes(
@@ -970,6 +1059,7 @@ class DriveSession extends ChangeNotifier {
           minConfidence: cfg.minConfidence,
         );
         latency = result.latencyMs ?? sw.elapsedMilliseconds;
+        final displayMin = scheduler.displayMinConfidence(cfg);
         boxes = result.detections
             .where((d) => d.confidence >= displayMin && d.bbox.length >= 4)
             .toList();
@@ -984,11 +1074,13 @@ class DriveSession extends ChangeNotifier {
       if (latency != null) lastLatencyMs = latency;
 
       if (detections.isEmpty && detectError == null) {
-        if (!canServer && pos == null) {
+        if (preferLocal && !localOnnx.isReady) {
+          detectError = 'جاري تحميل الموديل المحلي...';
+        } else if (!preferLocal && !canServer && pos == null) {
           detectError = 'انتظر GPS للاكتشاف السحابي';
-        } else if (!canServer && !online) {
-          detectError = 'لا يوجد اتصال — الاكتشاف السحابي غير متاح';
-        } else if (_localInferBroken && canServer && !usedServerInfer) {
+        } else if (!preferLocal && !canServer && !online) {
+          detectError = 'لا يوجد اتصال';
+        } else if (_localInferBroken && !skipCloud) {
           detectError = 'الموديل المحلي معطّل — جاري التحويل للسيرفر';
         }
       }
