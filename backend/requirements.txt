@@ -19,7 +19,7 @@ imagehash==4.3.1
 numpy==1.26.4
 torch==2.5.1
 torchvision==0.20.1
-ultralytics==8.3.49
+ultralytics @ git+https://github.com/sunsmarterjie/yolov12.git@01a22c0603e0eaa6d9bd62120a391e744d92cea2
 optuna==4.1.0
 prometheus-client==0.21.1
 httpx==0.28.1
