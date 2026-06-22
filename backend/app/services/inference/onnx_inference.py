@@ -133,7 +133,7 @@ def _decode_yolo_output(
             continue
         candidates.append(
             {
-                "class_name": class_names[best_idx],
+                "class": class_names[best_idx],
                 "confidence": best_score,
                 "bbox": [x1, y1, x2, y2],
                 "x1": x1,
@@ -165,7 +165,8 @@ def run_onnx_detection_sync(
     import onnxruntime as ort
 
     t0 = time.perf_counter()
-    conf = min_confidence if min_confidence is not None else 0.25
+    threshold = max(0.01, min(0.99, float(min_confidence if min_confidence is not None else 0.01)))
+    infer_conf = min(threshold, 0.01)
     imgsz = inference_imgsz or 640
     stretch = resize_mode.lower() == "stretch"
 
@@ -181,21 +182,24 @@ def run_onnx_detection_sync(
     raw_boxes = _decode_yolo_output(
         outputs[0],
         class_names,
-        min_confidence=conf,
+        min_confidence=infer_conf,
         orig_w=orig_w,
         orig_h=orig_h,
         imgsz=imgsz,
         stretch=stretch,
     )
 
-    detections: list[dict] = []
     all_candidates = list(raw_boxes)
+    detections: list[dict] = []
     for candidate in raw_boxes:
-        norm = normalize_class_name(candidate["class_name"])
+        norm = normalize_class_name(candidate["class"])
         if norm not in allowed_norm:
+            continue
+        if float(candidate.get("confidence") or 0) < threshold:
             continue
         detections.append(candidate)
 
+    best_conf = max((float(c.get("confidence") or 0) for c in all_candidates), default=0.0)
     latency_ms = int((time.perf_counter() - t0) * 1000)
     meta = {
         "latency_ms": latency_ms,
@@ -203,5 +207,10 @@ def run_onnx_detection_sync(
         "inference_imgsz": imgsz,
         "resize_mode": "stretch" if stretch else "letterbox",
         "all_candidates": all_candidates,
+        "confidence_threshold": threshold,
+        "raw_detection_count": len(all_candidates),
+        "best_confidence": best_conf,
+        "model_class_names": class_names,
+        "pipeline": "onnx_simple",
     }
     return detections, None, meta
