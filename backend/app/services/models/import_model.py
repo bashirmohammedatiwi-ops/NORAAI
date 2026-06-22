@@ -104,6 +104,13 @@ async def import_model_artifact(
         await promote_as_active_model(db, project_id, artifact_id)
         await ensure_live_deployment(db, project_id, artifact_id)
         artifact.lifecycle = ModelLifecycle.PRODUCTION
+        if onnx_bytes:
+            from app.services.mobile.driver_deploy import sync_driver_model
+
+            try:
+                await sync_driver_model(db, project, artifact_id, promote_active=False)
+            except Exception:
+                pass  # mobile sync can be retried from dashboard
 
     await db.commit()
     await db.refresh(artifact)

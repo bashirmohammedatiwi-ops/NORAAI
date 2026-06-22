@@ -35,6 +35,16 @@ class LocalOnnxDetector {
   Float64List? _rawBuf;
   int _inferCount = 0;
   bool _resizeStretch = false;
+  bool _cpuOnly = false;
+  String? _modelPath;
+
+  static bool _looksLikeRoboflow(List<String> classes) {
+    final keys = classes.map((c) => c.toLowerCase().replaceAll(' ', '_')).toSet();
+    return keys.contains('pothole') ||
+        keys.contains('manhole') ||
+        keys.contains('asfalt_zemin') ||
+        keys.contains('speedbreaker');
+  }
 
   bool get isReady => _session != null && _classNames.isNotEmpty;
   bool get isLoading => _loadFuture != null;
@@ -66,6 +76,8 @@ class LocalOnnxDetector {
     await dispose();
     loadError = null;
     _loggedMeta = false;
+    _cpuOnly = false;
+    _modelPath = modelPath;
 
     if (!await File(modelPath).exists()) {
       loadError = 'ملف الموديل غير موجود — زامِن من شاشة الموديل';
@@ -87,10 +99,24 @@ class LocalOnnxDetector {
       _inputSize = (manifest['image_size'] as num?)?.toInt() ?? 640;
       _classNames = classes;
       _resizeStretch = (manifest['resize_mode'] as String?)?.toLowerCase() == 'stretch';
+      if (!_resizeStretch && _looksLikeRoboflow(classes)) {
+        _resizeStretch = true;
+        debugPrint('LocalOnnx: Roboflow classes detected — using stretch preprocess');
+      }
 
       final ort = OnnxRuntime();
       if (kIsWeb) {
         _session = await ort.createSession(modelPath);
+      } else if (_resizeStretch) {
+        // Roboflow ONNX graphs often fail on NNAPI/XNNPACK delegates on Android.
+        _session = await ort.createSession(
+          modelPath,
+          options: OrtSessionOptions(
+            intraOpNumThreads: 4,
+            providers: [OrtProvider.CPU],
+          ),
+        );
+        _cpuOnly = true;
       } else {
         // XNNPACK first: a small 320 YOLO runs the whole graph on one fast
         // CPU delegate, avoiding the partition transfers NNAPI incurs on the
@@ -112,6 +138,7 @@ class LocalOnnxDetector {
             providers: [OrtProvider.CPU],
           );
           _session = await ort.createSession(modelPath, options: cpu);
+          _cpuOnly = true;
         }
       }
       _inputName = _session!.inputNames.isNotEmpty ? _session!.inputNames.first : 'images';
@@ -251,6 +278,19 @@ class LocalOnnxDetector {
     Map<String, OrtValue> outputs;
     try {
       outputs = await session.run({inputName: inputTensor});
+    } catch (e) {
+      if (!_cpuOnly && _modelPath != null) {
+        debugPrint('LocalOnnx run failed on delegates, retrying CPU-only: $e');
+        await _reloadCpuSession();
+        final cpuSession = _session;
+        if (cpuSession != null) {
+          outputs = await cpuSession.run({inputName: inputTensor});
+        } else {
+          rethrow;
+        }
+      } else {
+        rethrow;
+      }
     } finally {
       await inputTensor.dispose();
     }
@@ -312,6 +352,29 @@ class LocalOnnxDetector {
     return LocalDetectResult(boxes: boxes, latencyMs: timer.elapsedMilliseconds);
   }
 
+  Future<void> _reloadCpuSession() async {
+    final path = _modelPath;
+    if (path == null) return;
+    final old = _session;
+    _session = null;
+    if (old != null) {
+      try {
+        await old.close();
+      } catch (_) {}
+    }
+    final ort = OnnxRuntime();
+    _session = await ort.createSession(
+      path,
+      options: OrtSessionOptions(
+        intraOpNumThreads: 4,
+        providers: [OrtProvider.CPU],
+      ),
+    );
+    _cpuOnly = true;
+    _inputName = _session!.inputNames.isNotEmpty ? _session!.inputNames.first : 'images';
+    _outputName = _pickOutputName(_session!.outputNames);
+  }
+
   Future<void> dispose() async {
     final session = _session;
     _session = null;
@@ -319,6 +382,8 @@ class LocalOnnxDetector {
     _outputName = null;
     _classNames = [];
     _resizeStretch = false;
+    _cpuOnly = false;
+    _modelPath = null;
     _loggedMeta = false;
     if (session != null) {
       try {
@@ -404,6 +469,18 @@ class LocalOnnxDetector {
       final w = _at(data, channelsLast, numRows, numCh, 2, i);
       final h = _at(data, channelsLast, numRows, numCh, 3, i);
 
+      var bestScore = 0.0;
+      var bestClass = 0;
+      for (var c = 0; c < useNc; c++) {
+        final raw = _at(data, channelsLast, numRows, numCh, 4 + c, i);
+        final score = _classScore(raw);
+        if (score > bestScore) {
+          bestScore = score;
+          bestClass = c;
+        }
+      }
+      if (bestScore < minConfidence) continue;
+
       // Roboflow stretch resize — boxes are in net pixel space (no letterbox).
       if (prep.stretch) {
         final x1 = ((cx - w / 2) / prep.netW).clamp(0.0, 1.0);
@@ -427,18 +504,6 @@ class LocalOnnxDetector {
       // Ultralytics letterbox: subtract pad from center before scaling.
       cx -= prep.padLeft;
       cy -= prep.padTop;
-
-      var bestScore = 0.0;
-      var bestClass = 0;
-      for (var c = 0; c < useNc; c++) {
-        final raw = _at(data, channelsLast, numRows, numCh, 4 + c, i);
-        final score = _classScore(raw);
-        if (score > bestScore) {
-          bestScore = score;
-          bestClass = c;
-        }
-      }
-      if (bestScore < minConfidence) continue;
 
       final left = (cx - w / 2) / gain;
       final top = (cy - h / 2) / gain;

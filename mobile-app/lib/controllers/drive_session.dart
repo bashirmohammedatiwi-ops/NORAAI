@@ -120,6 +120,7 @@ class DriveSession extends ChangeNotifier {
   int _detectFailures = 0;
   int _localInferFailures = 0;
   bool _localInferBroken = false;
+  Timer? _localRecoveryTimer;
 
   List<DetectionBox> detections = [];
   List<LiveAlert> liveAlerts = [];
@@ -158,6 +159,24 @@ class DriveSession extends ChangeNotifier {
 
   bool get prefersOnDeviceModel =>
       supportsLocalInference && serverCfg?.modelReady == true;
+
+  void _resetLocalInferState() {
+    _localRecoveryTimer?.cancel();
+    _localRecoveryTimer = null;
+    _localInferBroken = false;
+    _localInferFailures = 0;
+  }
+
+  void _scheduleLocalRecovery() {
+    _localRecoveryTimer?.cancel();
+    _localRecoveryTimer = Timer(const Duration(seconds: 45), () {
+      _localInferBroken = false;
+      _localInferFailures = 0;
+      _localOnnxPending = true;
+      unawaited(ensureLocalOnnx());
+      _notifyThrottled();
+    });
+  }
 
   void _notifyThrottled() {
     final now = DateTime.now();
@@ -621,6 +640,7 @@ class DriveSession extends ChangeNotifier {
         _lastModelSyncFailAt = null;
         syncPhase = SyncPhase.ready;
         connectionError = null;
+        _resetLocalInferState();
         if (result.path != null) {
           _localOnnxPending = true;
           unawaited(ensureLocalOnnx());
@@ -665,8 +685,7 @@ class DriveSession extends ChangeNotifier {
       await localOnnx.load(modelPath: path, manifestPath: manifest);
       if (localOnnx.isReady) {
         _localOnnxPending = false;
-        _localInferBroken = false;
-        _localInferFailures = 0;
+        _resetLocalInferState();
         modelStatus = 'محلي ONNX ⚡ · ${cachedModelVersion ?? serverCfg?.modelVersion ?? "—"}';
         _notifyThrottled();
       }
@@ -679,6 +698,7 @@ class DriveSession extends ChangeNotifier {
   }
 
   Future<void> syncModelNow() async {
+    _resetLocalInferState();
     final cfg = serverCfg;
     if (cfg == null) {
       await syncConfig(forceModelSync: true);
@@ -1029,6 +1049,9 @@ class DriveSession extends ChangeNotifier {
           _localInferFailures++;
           if (_localInferFailures >= 3) {
             _localInferBroken = true;
+            _localOnnxPending = true;
+            unawaited(localOnnx.dispose());
+            _scheduleLocalRecovery();
           }
         }
       }
@@ -1081,8 +1104,10 @@ class DriveSession extends ChangeNotifier {
           detectError = 'انتظر GPS للاكتشاف السحابي';
         } else if (!preferLocal && !canServer && !online) {
           detectError = 'لا يوجد اتصال';
-        } else if (_localInferBroken && !skipCloud) {
+        } else if (_localInferBroken && !skipCloud && !usedServerInfer) {
           detectError = 'الموديل المحلي معطّل — جاري التحويل للسيرفر';
+        } else if (usedServerInfer) {
+          detectError = null;
         }
       }
 

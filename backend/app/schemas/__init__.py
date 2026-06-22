@@ -539,6 +539,7 @@ class DriverModelManifest(BaseModel):
     sha256: str
     format: str = "onnx"
     image_size: int
+    resize_mode: str = "letterbox"
     nc: int
     classes: list[str]
     model_size_mb: float | None = None

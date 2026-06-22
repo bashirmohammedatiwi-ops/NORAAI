@@ -96,6 +96,9 @@ def _config_message(project_classes, artifact, model_ready: bool) -> str | None:
         return "Model weights are not ready. Complete training on the dashboard."
     allowed = allowed_detection_classes(project_classes, artifact)
     if not allowed:
+        metrics = artifact.metrics or {}
+        if metrics.get("imported") and model_class_names(artifact):
+            return None
         if not project_classes:
             return "Add detection classes in the dashboard first."
         return "Model classes do not match dashboard classes. Retrain the model."
@@ -143,7 +146,12 @@ async def driver_config(device: FleetDevice = Depends(get_fleet_device), db: Asy
             pass
 
     inference_mode = str(mobile_cfg.get("inference_mode") or "server")
-    detection_on = bool(mobile_cfg.get("detection_enabled", True)) and model_ready and bool(allowed)
+    model_names = model_class_names(artifact) if artifact else []
+    detection_on = (
+        bool(mobile_cfg.get("detection_enabled", True))
+        and model_ready
+        and bool(allowed or model_names)
+    )
 
     settings = get_settings()
     return DriverConfigResponse(
@@ -265,7 +273,10 @@ async def driver_model_manifest(
     try:
         if stored and stored.get("sha256"):
             _, sha256, byte_len = ensure_mobile_onnx_meta(artifact)
-            manifest = stored
+            manifest = dict(stored)
+            if not manifest.get("resize_mode"):
+                metrics = artifact.metrics or {}
+                manifest["resize_mode"] = str(metrics.get("resize_mode") or "letterbox")
             if not manifest.get("model_bytes") and byte_len > 0:
                 manifest = build_model_manifest(artifact, sha256, onnx_byte_len=byte_len)
         else:
@@ -281,6 +292,7 @@ async def driver_model_manifest(
         sha256=manifest["sha256"],
         format=manifest["format"],
         image_size=manifest["image_size"],
+        resize_mode=manifest.get("resize_mode", "letterbox"),
         nc=manifest["nc"],
         classes=manifest["classes"],
         model_size_mb=manifest.get("model_size_mb"),
