@@ -213,6 +213,8 @@ async def run_detection(
             if not onnx_data or len(onnx_data) < 10_000:
                 return [], "ONNX model file missing or invalid.", {}
 
+            metrics = artifact.metrics or {}
+            resize_mode = str(metrics.get("resize_mode") or "stretch")
             return await asyncio.to_thread(
                 run_onnx_detection_sync,
                 onnx_data,
@@ -221,6 +223,7 @@ async def run_detection(
                 allowed_norm,
                 min_confidence=min_confidence,
                 inference_imgsz=inference_imgsz,
+                resize_mode=resize_mode,
             )
 
         weights_data = get_weights_bytes(
