@@ -19,7 +19,9 @@ from app.services.driver.project_classes import (
     normalize_class_name,
 )
 from app.services.driver.rdd_classes import RDD_CLASS_TO_EVENT, rdd_label_ar
+from app.services.driver.roboflow_classes import ROBOFLOW_CLASS_TO_EVENT, roboflow_label_ar
 from app.services.models.active_model import get_active_model
+from app.services.models.artifact_weights import artifact_has_onnx, is_onnx_only_artifact
 
 # YOLO / dataset alias -> road event type
 CLASS_TO_EVENT: dict[str, RoadEventType] = {
@@ -28,6 +30,8 @@ CLASS_TO_EVENT: dict[str, RoadEventType] = {
     "حفر": RoadEventType.POTHOLE,
     "حفرة": RoadEventType.POTHOLE,
     "pothole": RoadEventType.POTHOLE,
+    "manhole": RoadEventType.POTHOLE,
+    "speedbreaker": RoadEventType.ROAD_CRACK,
     "accident": RoadEventType.ACCIDENT,
     "vehicle_damage": RoadEventType.ACCIDENT,
     "accident_damage": RoadEventType.ACCIDENT,
@@ -81,6 +85,8 @@ def map_class_to_event(class_name: str) -> RoadEventType | None:
         return RoadEventType(key)
     if key in RDD_CLASS_TO_EVENT:
         return RDD_CLASS_TO_EVENT[key]
+    if key in ROBOFLOW_CLASS_TO_EVENT:
+        return ROBOFLOW_CLASS_TO_EVENT[key]
     return CLASS_TO_EVENT.get(key)
 
 
@@ -89,7 +95,7 @@ def build_alert_types(project_classes: list) -> list[dict]:
     alerts: list[dict] = []
     for cls in project_classes:
         event_type = map_class_to_event(cls.name)
-        ar_label = rdd_label_ar(cls.name) or cls.name
+        ar_label = rdd_label_ar(cls.name) or roboflow_label_ar(cls.name) or cls.name
         alerts.append({
             "type": event_type.value if event_type else normalize_class_name(cls.name),
             "label": cls.name,
@@ -200,6 +206,23 @@ async def run_detection(
     inference_imgsz = resolve_inference_imgsz(artifact, settings, manual_test=fast_path)
 
     try:
+        if is_onnx_only_artifact(artifact):
+            from app.services.inference.onnx_inference import run_onnx_detection_sync
+
+            onnx_data = download_bytes(artifact.minio_onnx_key)
+            if not onnx_data or len(onnx_data) < 10_000:
+                return [], "ONNX model file missing or invalid.", {}
+
+            return await asyncio.to_thread(
+                run_onnx_detection_sync,
+                onnx_data,
+                image_bytes,
+                class_names,
+                allowed_norm,
+                min_confidence=min_confidence,
+                inference_imgsz=inference_imgsz,
+            )
+
         weights_data = get_weights_bytes(
             artifact.minio_weights_key,
             lambda: download_bytes(artifact.minio_weights_key),
@@ -230,6 +253,8 @@ async def preload_project_model(db: AsyncSession, project_id: uuid.UUID) -> bool
     if not is_production_model(artifact):
         return False
     assert artifact is not None
+    if is_onnx_only_artifact(artifact):
+        return artifact_has_onnx(artifact)
     try:
         weights_data = get_weights_bytes(
             artifact.minio_weights_key,

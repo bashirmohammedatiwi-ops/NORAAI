@@ -985,6 +985,7 @@ class DriveSession extends ChangeNotifier {
             final prep = await _frameBuffer.captureOnnxInput(
               localOnnx.inputWidth,
               localOnnx.inputHeight,
+              stretch: localOnnx.resizeStretch,
             );
             if (prep != null) {
               local = await localOnnx.detectFromPrep(

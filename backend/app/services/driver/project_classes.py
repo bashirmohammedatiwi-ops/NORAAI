@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ClassLabel, ModelArtifact
 from app.services.driver.rdd_classes import rdd_class_color
+from app.services.driver.roboflow_classes import roboflow_class_color
+from app.services.models.artifact_weights import artifact_has_onnx, artifact_has_pt_weights
 
 
 def normalize_class_name(name: str) -> str:
@@ -50,7 +52,11 @@ async def ensure_project_classes(
         key = normalize_class_name(name)
         if key in known:
             continue
-        color = rdd_class_color(name) or default_colors[added % len(default_colors)]
+        color = (
+            rdd_class_color(name)
+            or roboflow_class_color(name)
+            or default_colors[added % len(default_colors)]
+        )
         db.add(ClassLabel(project_id=project_id, name=name, color=color))
         known.add(key)
         added += 1
@@ -70,13 +76,15 @@ async def get_project_classes(db: AsyncSession, project_id: uuid.UUID) -> list[C
 
 
 def is_production_model(artifact: ModelArtifact | None) -> bool:
-    """True when artifact has real trained weights (not mock training)."""
-    if not artifact or not artifact.minio_weights_key:
+    """True when artifact has real trained weights or deployable ONNX (not mock training)."""
+    if not artifact:
         return False
     metrics = artifact.metrics or {}
     if metrics.get("mock"):
         return False
-    return True
+    if artifact_has_pt_weights(artifact):
+        return True
+    return artifact_has_onnx(artifact)
 
 
 def model_class_names(artifact: ModelArtifact) -> list[str]:

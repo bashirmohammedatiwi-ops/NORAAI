@@ -13,6 +13,8 @@ _ALIASES: dict[str, str] = {
     "damage": "حوادث",
     "pothole": "حفر",
     "potholes": "حفر",
+    "manhole": "حفر",
+    "speedbreaker": "حفر",
 }
 
 

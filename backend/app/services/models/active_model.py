@@ -315,6 +315,7 @@ async def get_active_model_status(db: AsyncSession, project_id: uuid.UUID) -> di
         "can_fine_tune": bool(
             artifact
             and not (artifact.metrics or {}).get("mock")
+            and not (artifact.metrics or {}).get("onnx_only")
             and artifact.architecture in ("yolo11", "yolo12", "yolov10", "rt_detr")
         ),
         "recommended_preset": _recommended_training_preset(artifact),

@@ -20,9 +20,37 @@ const _defaults = <String, EventMeta>{
   'pothole': EventMeta(
     labelAr: 'حفرة',
     label: 'Pothole',
-    color: Color(0xFFF97316),
+    color: Color(0xFFC7FC00),
     icon: '🕳',
     mapPriority: 3,
+  ),
+  'manhole': EventMeta(
+    labelAr: 'بالوعة',
+    label: 'Manhole',
+    color: Color(0xFFFE0056),
+    icon: '⭕',
+    mapPriority: 4,
+  ),
+  'speedbreaker': EventMeta(
+    labelAr: 'مطب',
+    label: 'Speedbreaker',
+    color: Color(0xFFFF8000),
+    icon: '⛰',
+    mapPriority: 6,
+  ),
+  'asfalt_zemin': EventMeta(
+    labelAr: 'أسفلت',
+    label: 'Asphalt',
+    color: Color(0xFF8622FF),
+    icon: '🛣',
+    mapPriority: 50,
+  ),
+  'parke_zemin': EventMeta(
+    labelAr: 'بلاط',
+    label: 'Pavers',
+    color: Color(0xFF00FFCE),
+    icon: '🧱',
+    mapPriority: 51,
   ),
   'd40': EventMeta(
     labelAr: 'حفرة',
@@ -89,7 +117,7 @@ const _defaults = <String, EventMeta>{
   ),
 };
 
-const highlightTypes = {'pothole', 'accident', 'road_closed', 'd40'};
+const highlightTypes = {'pothole', 'accident', 'road_closed', 'd40', 'manhole', 'speedbreaker'};
 
 /// RDD2022 road damage codes → Arabic display labels.
 const rddClassLabelsAr = <String, String>{
@@ -100,12 +128,23 @@ const rddClassLabelsAr = <String, String>{
   'repair': 'منطقة مُصلحة',
 };
 
+const roboflowClassLabelsAr = <String, String>{
+  'pothole': 'حفرة',
+  'manhole': 'بالوعة',
+  'speedbreaker': 'مطب',
+  'asfalt_zemin': 'أسفلت',
+  'parke_zemin': 'بلاط',
+};
+
 String classDisplayLabel(String className, [Map<String, EventMeta>? classMeta]) {
   if (classMeta != null) {
     final meta = classMeta[className] ?? classMeta[className.toLowerCase()];
     if (meta != null) return meta.labelAr;
   }
-  return rddClassLabelsAr[className.toLowerCase()] ?? className;
+  final key = className.toLowerCase();
+  return rddClassLabelsAr[key] ??
+      roboflowClassLabelsAr[key] ??
+      className;
 }
 
 Map<String, EventMeta> buildClassMetaFromServer(

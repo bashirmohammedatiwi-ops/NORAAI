@@ -14,6 +14,7 @@ class OnnxPrepResult {
     required this.origH,
     required this.netW,
     required this.netH,
+    this.stretch = false,
   });
 
   final Float32List tensor;
@@ -24,20 +25,22 @@ class OnnxPrepResult {
   final int origH;
   final int netW;
   final int netH;
+  final bool stretch;
 }
 
-/// JPEG fallback — args: [bytes, netW, netH]. top-level for [compute].
+/// JPEG fallback — args: [bytes, netW, netH, stretch?]. top-level for [compute].
 OnnxPrepResult? prepareOnnxInput(List<dynamic> args) {
   final bytes = args[0] as Uint8List;
   final netW = args[1] as int;
   final netH = args.length > 2 ? args[2] as int : netW;
+  final stretch = args.length > 3 ? args[3] as bool : false;
   final decoded = img.decodeImage(bytes);
   if (decoded == null) return null;
-  return _letterboxFromRgb(decoded, netW, netH);
+  return stretch ? _stretchFromRgb(decoded, netW, netH) : _letterboxFromRgb(decoded, netW, netH);
 }
 
 /// Fast path: YUV420 camera buffer → tensor in one pass (no JPEG).
-/// args: [width, height, planeBytes, bytesPerRow, bytesPerPixel, netW, netH]
+/// args: [width, height, planeBytes, bytesPerRow, bytesPerPixel, netW, netH, stretch?]
 OnnxPrepResult? prepareOnnxFromYuvPayload(List<dynamic> args) {
   final width = args[0] as int;
   final height = args[1] as int;
@@ -46,8 +49,21 @@ OnnxPrepResult? prepareOnnxFromYuvPayload(List<dynamic> args) {
   final bytesPerPixel = (args[4] as List).cast<int>();
   final netW = args[5] as int;
   final netH = args.length > 6 ? args[6] as int : netW;
+  final stretch = args.length > 7 ? args[7] as bool : false;
 
   if (planeBytes.length < 3) return null;
+
+  if (stretch) {
+    return _stretchFromYuv(
+      width: width,
+      height: height,
+      planeBytes: planeBytes,
+      bytesPerRow: bytesPerRow,
+      bytesPerPixel: bytesPerPixel,
+      netW: netW,
+      netH: netH,
+    );
+  }
 
   final gain = math.min(netH / height, netW / width);
   final newW = (width * gain).round();
@@ -160,4 +176,68 @@ OnnxPrepResult _letterboxFromRgb(img.Image src, int netW, int netH) {
     netW: netW,
     netH: netH,
   );
+}
+
+OnnxPrepResult _stretchFromRgb(img.Image src, int netW, int netH) {
+  final origW = src.width;
+  final origH = src.height;
+  final resized = img.copyResize(src, width: netW, height: netH, interpolation: img.Interpolation.linear);
+  final tensor = Float32List(3 * netW * netH);
+  final plane = netW * netH;
+  var i = 0;
+  for (var y = 0; y < netH; y++) {
+    for (var x = 0; x < netW; x++) {
+      final p = resized.getPixel(x, y);
+      tensor[i] = p.r / 255.0;
+      tensor[i + plane] = p.g / 255.0;
+      tensor[i + 2 * plane] = p.b / 255.0;
+      i++;
+    }
+  }
+  return OnnxPrepResult(
+    tensor: tensor,
+    gain: 1.0,
+    padTop: 0,
+    padLeft: 0,
+    origW: origW,
+    origH: origH,
+    netW: netW,
+    netH: netH,
+    stretch: true,
+  );
+}
+
+OnnxPrepResult _stretchFromYuv({
+  required int width,
+  required int height,
+  required List<Uint8List> planeBytes,
+  required List<int> bytesPerRow,
+  required List<int> bytesPerPixel,
+  required int netW,
+  required int netH,
+}) {
+  final rgb = img.Image(width: width, height: height);
+  final yPlane = planeBytes[0];
+  final uPlane = planeBytes[1];
+  final vPlane = planeBytes[2];
+  final yRow = bytesPerRow[0];
+  final uRow = bytesPerRow[1];
+  final uvPixel = bytesPerPixel[1];
+  for (var sy = 0; sy < height; sy++) {
+    for (var sx = 0; sx < width; sx++) {
+      final yIndex = sy * yRow + sx;
+      final uvIndex = (sy >> 1) * uRow + (sx >> 1) * uvPixel;
+      if (yIndex >= yPlane.length || uvIndex >= uPlane.length || uvIndex >= vPlane.length) {
+        continue;
+      }
+      final yVal = yPlane[yIndex] & 0xff;
+      final uVal = uPlane[uvIndex] & 0xff;
+      final vVal = vPlane[uvIndex] & 0xff;
+      final r = (yVal + 1.402 * (vVal - 128)).round().clamp(0, 255);
+      final g = (yVal - 0.344136 * (uVal - 128) - 0.714136 * (vVal - 128)).round().clamp(0, 255);
+      final b = (yVal + 1.772 * (uVal - 128)).round().clamp(0, 255);
+      rgb.setPixelRgba(sx, sy, r, g, b, 255);
+    }
+  }
+  return _stretchFromRgb(rgb, netW, netH);
 }

@@ -389,28 +389,37 @@ async def compare_model_artifacts(data: ModelCompareRequest, db: AsyncSession = 
 @router.post("/models/project/{project_id}/import", response_model=ModelArtifactResponse)
 async def import_project_model(
     project_id: UUID,
-    weights_file: UploadFile = File(..., description="YOLO .pt weights"),
     name: str = Form("Imported Model"),
     architecture: str = Form("yolo11"),
     model_variant: str = Form("n"),
     classes: str = Form("", description="Comma-separated class names"),
     promote: bool = Form(True),
-    onnx_file: UploadFile | None = File(None),
+    source: str = Form("import"),
+    resize_mode: str = Form("letterbox"),
+    weights_file: UploadFile | None = File(None, description="YOLO .pt weights"),
+    onnx_file: UploadFile | None = File(None, description="ONNX model (Roboflow / mobile)"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Import external trained weights (e.g. from Local Trainer) into the project."""
+    """Import external trained weights (.pt) and/or ONNX into the project."""
     from app.models import Project
     from app.services.models.import_model import import_model_artifact
     from app.services.models.registry import assign_model_numbers
 
-    if not weights_file.filename or not weights_file.filename.lower().endswith(".pt"):
-        raise HTTPException(status_code=400, detail="Upload a .pt weights file")
+    weights_bytes: bytes | None = None
+    if weights_file and weights_file.filename:
+        if not weights_file.filename.lower().endswith(".pt"):
+            raise HTTPException(status_code=400, detail="Weights file must be .pt")
+        weights_bytes = await weights_file.read()
 
-    weights_bytes = await weights_file.read()
     onnx_bytes: bytes | None = None
     if onnx_file and onnx_file.filename:
+        if not onnx_file.filename.lower().endswith(".onnx"):
+            raise HTTPException(status_code=400, detail="ONNX file must be .onnx")
         onnx_bytes = await onnx_file.read()
+
+    if not weights_bytes and not onnx_bytes:
+        raise HTTPException(status_code=400, detail="Upload a .pt or .onnx file")
 
     class_list = [c.strip() for c in classes.split(",") if c.strip()]
     arch_value, _ = _normalize_training_architecture(architecture, {"model_variant": model_variant})
@@ -426,6 +435,8 @@ async def import_project_model(
             classes=class_list,
             promote=promote,
             onnx_bytes=onnx_bytes,
+            source=source,
+            resize_mode=resize_mode if resize_mode in ("letterbox", "stretch") else "letterbox",
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

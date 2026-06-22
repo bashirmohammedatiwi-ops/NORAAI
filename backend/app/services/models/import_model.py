@@ -1,4 +1,4 @@
-"""Import external YOLO weights (.pt) into the platform registry."""
+"""Import external YOLO weights (.pt) or ONNX into the platform registry."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from app.core.minio_client import upload_bytes
 from app.models import ModelArtifact, ModelLifecycle, Project
 from app.services.driver.project_classes import ensure_project_classes
 from app.services.models.active_model import ensure_live_deployment, promote_as_active_model
+from app.services.models.artifact_weights import ONNX_ONLY_PREFIX
 
 
 def _validate_weights_bytes(data: bytes) -> None:
@@ -23,27 +24,44 @@ def _validate_weights_bytes(data: bytes) -> None:
         raise ValueError("الملف لا يبدو ملف PyTorch (.pt) صالح")
 
 
+def _validate_onnx_bytes(data: bytes) -> None:
+    if not data or len(data) < 10_000:
+        raise ValueError("ملف ONNX فارغ أو صغير جداً")
+
+
 async def import_model_artifact(
     db: AsyncSession,
     project_id: uuid.UUID,
     *,
-    weights_bytes: bytes,
+    weights_bytes: bytes | None = None,
     name: str,
     architecture: str = "yolo11",
     model_variant: str = "n",
     classes: list[str],
     promote: bool = True,
     onnx_bytes: bytes | None = None,
+    source: str = "import",
+    resize_mode: str = "letterbox",
 ) -> ModelArtifact:
     project = await db.get(Project, project_id)
     if not project:
         raise ValueError("Project not found")
 
-    _validate_weights_bytes(weights_bytes)
+    if not weights_bytes and not onnx_bytes:
+        raise ValueError("ارفع ملف .pt أو .onnx على الأقل")
+
+    if weights_bytes:
+        _validate_weights_bytes(weights_bytes)
+    if onnx_bytes:
+        _validate_onnx_bytes(onnx_bytes)
 
     artifact_id = uuid.uuid4()
-    minio_key = f"projects/{project_id}/models/imported/{artifact_id}.pt"
-    upload_bytes(minio_key, weights_bytes, "application/octet-stream")
+    minio_key: str
+    if weights_bytes:
+        minio_key = f"projects/{project_id}/models/imported/{artifact_id}.pt"
+        upload_bytes(minio_key, weights_bytes, "application/octet-stream")
+    else:
+        minio_key = f"{ONNX_ONLY_PREFIX}{artifact_id}"
 
     onnx_key: str | None = None
     if onnx_bytes:
@@ -51,7 +69,8 @@ async def import_model_artifact(
         upload_bytes(onnx_key, onnx_bytes, "application/octet-stream")
 
     clean_classes = [c.strip() for c in classes if c and str(c).strip()]
-    size_mb = len(weights_bytes) / (1024 * 1024)
+    payload_bytes = weights_bytes or onnx_bytes or b""
+    size_mb = len(payload_bytes) / (1024 * 1024)
 
     artifact = ModelArtifact(
         id=artifact_id,
@@ -68,6 +87,10 @@ async def import_model_artifact(
             "imported_at": datetime.now(timezone.utc).isoformat(),
             "model_variant": model_variant,
             "metrics_source": "import",
+            "source": source,
+            "onnx_only": weights_bytes is None and onnx_bytes is not None,
+            "resize_mode": resize_mode,
+            "image_size": 640,
         },
         gpu_used="import",
         model_size_mb=size_mb,

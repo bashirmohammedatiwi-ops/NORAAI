@@ -34,6 +34,7 @@ class LocalOnnxDetector {
   bool _loggedMeta = false;
   Float64List? _rawBuf;
   int _inferCount = 0;
+  bool _resizeStretch = false;
 
   bool get isReady => _session != null && _classNames.isNotEmpty;
   bool get isLoading => _loadFuture != null;
@@ -41,6 +42,7 @@ class LocalOnnxDetector {
   int get inputWidth => _inputW;
   int get inputHeight => _inputH;
   List<String> get classNames => List.unmodifiable(_classNames);
+  bool get resizeStretch => _resizeStretch;
 
   Future<void> load({
     required String modelPath,
@@ -84,6 +86,7 @@ class LocalOnnxDetector {
 
       _inputSize = (manifest['image_size'] as num?)?.toInt() ?? 640;
       _classNames = classes;
+      _resizeStretch = (manifest['resize_mode'] as String?)?.toLowerCase() == 'stretch';
 
       final ort = OnnxRuntime();
       if (kIsWeb) {
@@ -212,7 +215,7 @@ class LocalOnnxDetector {
     required double iouThreshold,
   }) async {
     final sw = Stopwatch()..start();
-    final prep = await compute(prepareOnnxInput, [jpegBytes, _inputW, _inputH]);
+    final prep = await compute(prepareOnnxInput, [jpegBytes, _inputW, _inputH, _resizeStretch]);
     if (prep == null) {
       return LocalDetectResult(boxes: const [], latencyMs: sw.elapsedMilliseconds);
     }
@@ -315,6 +318,7 @@ class LocalOnnxDetector {
     _inputName = null;
     _outputName = null;
     _classNames = [];
+    _resizeStretch = false;
     _loggedMeta = false;
     if (session != null) {
       try {
@@ -400,7 +404,27 @@ class LocalOnnxDetector {
       final w = _at(data, channelsLast, numRows, numCh, 2, i);
       final h = _at(data, channelsLast, numRows, numCh, 3, i);
 
-      // Ultralytics: subtract pad from center before scaling (pad = top, left).
+      // Roboflow stretch resize — boxes are in net pixel space (no letterbox).
+      if (prep.stretch) {
+        final x1 = ((cx - w / 2) / prep.netW).clamp(0.0, 1.0);
+        final y1 = ((cy - h / 2) / prep.netH).clamp(0.0, 1.0);
+        final x2 = ((cx + w / 2) / prep.netW).clamp(0.0, 1.0);
+        final y2 = ((cy + h / 2) / prep.netH).clamp(0.0, 1.0);
+        if (x2 <= x1 || y2 <= y1) continue;
+        final area = (x2 - x1) * (y2 - y1);
+        if (area < 0.0002 || area > 0.95) continue;
+        candidates.add(_Cand(
+          className: _classNames[bestClass],
+          confidence: bestScore,
+          x1: x1,
+          y1: y1,
+          x2: x2,
+          y2: y2,
+        ));
+        continue;
+      }
+
+      // Ultralytics letterbox: subtract pad from center before scaling.
       cx -= prep.padLeft;
       cy -= prep.padTop;
 

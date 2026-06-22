@@ -53,7 +53,7 @@ class CameraFrameBuffer {
   }
 
   /// YUV → ONNX tensor directly (fast local path — no JPEG).
-  Future<OnnxPrepResult?> captureOnnxInput(int netW, int netH) async {
+  Future<OnnxPrepResult?> captureOnnxInput(int netW, int netH, {bool stretch = false}) async {
     final snap = _snapshot;
     if (snap == null || snap.yuvPayload == null) return null;
 
@@ -67,6 +67,7 @@ class CameraFrameBuffer {
         snap.yuvPayload![5],
         netW,
         netH,
+        stretch,
       ]);
     } catch (e) {
       debugPrint('captureOnnxInput failed: $e');

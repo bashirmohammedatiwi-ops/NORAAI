@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.minio_client import download_bytes, object_size, open_object, upload_bytes
 from app.models import ModelArtifact, Project
 from app.services.driver.project_classes import is_production_model, model_class_names
+from app.services.models.artifact_weights import is_onnx_only_artifact
 from app.services.mobile.config import get_mobile_config, patch_mobile_config
 from app.services.models.active_model import promote_as_active_model
 
@@ -151,6 +152,9 @@ def ensure_mobile_onnx_bytes(artifact: ModelArtifact) -> tuple[bytes, str]:
         except Exception:
             pass
 
+    if is_onnx_only_artifact(artifact):
+        raise ValueError("ONNX model file is missing or invalid")
+
     weights_bytes = download_bytes(artifact.minio_weights_key)
     if not weights_bytes or len(weights_bytes) < 100_000:
         raise ValueError("Model weights are missing or invalid")
@@ -171,6 +175,7 @@ def build_model_manifest(
 ) -> dict:
     metrics = artifact.metrics or {}
     image_size = int(metrics.get("image_size") or 640)
+    resize_mode = str(metrics.get("resize_mode") or "letterbox")
     classes = model_class_names(artifact)
     version = sha256[:16]
     if onnx_byte_len is not None and onnx_byte_len > 0:
@@ -185,6 +190,7 @@ def build_model_manifest(
         "sha256": sha256,
         "format": "onnx",
         "image_size": image_size,
+        "resize_mode": resize_mode,
         "nc": len(classes),
         "classes": classes,
         "model_size_mb": size_mb,
