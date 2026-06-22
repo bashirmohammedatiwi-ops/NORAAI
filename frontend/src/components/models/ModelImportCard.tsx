@@ -74,7 +74,8 @@ export function ModelImportCard({ projectId, classNames = [], onImported }: Prop
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <p className="text-muted-foreground text-xs">
-          ارفع <code>.pt</code> خارجي (مثل RDD2022 YOLO12s). اختياري: <code>.onnx</code> — وإلا يُصدّر السيرفر تلقائياً عند المزامنة للهاتف.
+          ارفع <code>.pt</code> واختياري <code>.onnx</code>. الكلاسات يجب أن تبقى رموز RDD:
+          D00=شق طولي، D10=شق عرضي، D20=تشققات، D40=حفرة، Repair=مُصلح
         </p>
         <div>
           <label className="text-xs text-muted-foreground">Weights (.pt)</label>

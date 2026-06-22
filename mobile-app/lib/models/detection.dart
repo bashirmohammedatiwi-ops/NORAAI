@@ -169,9 +169,11 @@ class ServerConfig {
 Color classColor(String name) {
   final n = name.toLowerCase();
   if (n.contains('accident') || n.contains('حادث')) return const Color(0xFFEF4444);
-  if (n.contains('pothole') || n.contains('حفر') || n.contains('حفرة')) {
+  if (n.contains('pothole') || n.contains('حفر') || n.contains('حفرة') || n == 'd40') {
     return const Color(0xFFF97316);
   }
+  if (n == 'd00' || n == 'd10' || n == 'd20') return const Color(0xFFEAB308);
+  if (n == 'repair') return const Color(0xFF64748B);
   if (n.contains('closed') || n.contains('مغلق')) return const Color(0xFFDC2626);
   if (n.contains('violation') || n.contains('مخالف')) return const Color(0xFFEAB308);
   return const Color(0xFF22C55E);

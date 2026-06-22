@@ -8,6 +8,7 @@ import '../config/detection_config.dart';
 import '../models/detection.dart';
 import '../services/detection_tracker.dart';
 import '../theme/app_colors.dart';
+import '../utils/event_meta.dart';
 import '../utils/preview_layout.dart';
 
 class DetectionOverlay extends StatefulWidget {
@@ -378,9 +379,10 @@ class _ArDetectPainter extends CustomPainter {
     required Color color,
     required double opacity,
   }) {
+    final displayName = classDisplayLabel(t.className);
     final label = isLead
-        ? '◉ ${headwayDistanceM!.round()}م · ${t.className}'
-        : '${t.className}  ${(t.confidence * 100).round()}%';
+        ? '◉ ${headwayDistanceM!.round()}م · $displayName'
+        : '$displayName  ${(t.confidence * 100).round()}%';
 
     final tp = TextPainter(
       text: TextSpan(

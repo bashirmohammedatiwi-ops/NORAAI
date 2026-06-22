@@ -18,6 +18,7 @@ from app.services.driver.project_classes import (
     is_production_model,
     normalize_class_name,
 )
+from app.services.driver.rdd_classes import RDD_CLASS_TO_EVENT, rdd_label_ar
 from app.services.models.active_model import get_active_model
 
 # YOLO / dataset alias -> road event type
@@ -78,6 +79,8 @@ def map_class_to_event(class_name: str) -> RoadEventType | None:
     key = normalize_class_name(class_name)
     if key in {e.value for e in RoadEventType}:
         return RoadEventType(key)
+    if key in RDD_CLASS_TO_EVENT:
+        return RDD_CLASS_TO_EVENT[key]
     return CLASS_TO_EVENT.get(key)
 
 
@@ -86,10 +89,11 @@ def build_alert_types(project_classes: list) -> list[dict]:
     alerts: list[dict] = []
     for cls in project_classes:
         event_type = map_class_to_event(cls.name)
+        ar_label = rdd_label_ar(cls.name) or cls.name
         alerts.append({
             "type": event_type.value if event_type else normalize_class_name(cls.name),
             "label": cls.name,
-            "label_ar": cls.name,
+            "label_ar": ar_label,
             "color": cls.color or "#64748b",
             "class_name": cls.name,
         })

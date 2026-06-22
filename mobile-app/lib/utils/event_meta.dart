@@ -24,6 +24,41 @@ const _defaults = <String, EventMeta>{
     icon: '🕳',
     mapPriority: 3,
   ),
+  'd40': EventMeta(
+    labelAr: 'حفرة',
+    label: 'D40 Pothole',
+    color: Color(0xFFF97316),
+    icon: '🕳',
+    mapPriority: 3,
+  ),
+  'd00': EventMeta(
+    labelAr: 'شق طولي',
+    label: 'D00',
+    color: Color(0xFFCA8A04),
+    icon: '〰',
+    mapPriority: 40,
+  ),
+  'd10': EventMeta(
+    labelAr: 'شق عرضي',
+    label: 'D10',
+    color: Color(0xFFEAB308),
+    icon: '➖',
+    mapPriority: 41,
+  ),
+  'd20': EventMeta(
+    labelAr: 'تشققات متشابكة',
+    label: 'D20',
+    color: Color(0xFF84CC16),
+    icon: '🕸',
+    mapPriority: 42,
+  ),
+  'repair': EventMeta(
+    labelAr: 'منطقة مُصلحة',
+    label: 'Repair',
+    color: Color(0xFF64748B),
+    icon: '🔧',
+    mapPriority: 50,
+  ),
   'accident': EventMeta(
     labelAr: 'حادث',
     label: 'Accident',
@@ -54,7 +89,24 @@ const _defaults = <String, EventMeta>{
   ),
 };
 
-const highlightTypes = {'pothole', 'accident', 'road_closed'};
+const highlightTypes = {'pothole', 'accident', 'road_closed', 'd40'};
+
+/// RDD2022 road damage codes → Arabic display labels.
+const rddClassLabelsAr = <String, String>{
+  'd00': 'شق طولي',
+  'd10': 'شق عرضي',
+  'd20': 'تشققات متشابكة',
+  'd40': 'حفرة',
+  'repair': 'منطقة مُصلحة',
+};
+
+String classDisplayLabel(String className, [Map<String, EventMeta>? classMeta]) {
+  if (classMeta != null) {
+    final meta = classMeta[className] ?? classMeta[className.toLowerCase()];
+    if (meta != null) return meta.labelAr;
+  }
+  return rddClassLabelsAr[className.toLowerCase()] ?? className;
+}
 
 Map<String, EventMeta> buildClassMetaFromServer(
   List<Map<String, dynamic>> projectClasses,
