@@ -39,9 +39,9 @@ export function ModelImportCard({ projectId, classNames = [], onImported }: Prop
   const ptRef = useRef<HTMLInputElement>(null);
   const onnxRef = useRef<HTMLInputElement>(null);
   const [importKind, setImportKind] = useState<ImportKind>('roboflow');
-  const [name, setName] = useState(ROBOFLOW_PRESET.name);
+  const [name, setName] = useState<string>(ROBOFLOW_PRESET.name);
   const [variant, setVariant] = useState('n');
-  const [classes, setClasses] = useState(ROBOFLOW_PRESET.classes);
+  const [classes, setClasses] = useState<string>(ROBOFLOW_PRESET.classes);
   const [promote, setPromote] = useState(true);
   const [loading, setLoading] = useState(false);
 
