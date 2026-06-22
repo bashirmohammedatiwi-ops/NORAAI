@@ -7,15 +7,18 @@ cd "$PROJECT_DIR"
 
 NO_CACHE=""
 FORCE_GIT=""
+API_ONLY=""
 for arg in "$@"; do
   case "$arg" in
     --no-cache) NO_CACHE="--no-cache" ;;
     --force) FORCE_GIT="1" ;;
+    --api-only) API_ONLY="1" ;;
     -h|--help)
-      echo "Usage: $0 [--no-cache] [--force]"
-      echo "  default    Rebuild using Docker layer cache (recommended — saves ~5-10 GB per update)"
-      echo "  --no-cache Force full rebuild (use only if UI changes do not appear)"
-      echo "  --force    Discard ALL local git changes and match origin/main (fixes pull conflicts on VPS)"
+      echo "Usage: $0 [--no-cache] [--force] [--api-only]"
+      echo "  default      Rebuild using Docker layer cache (recommended — saves ~5-10 GB per update)"
+      echo "  --api-only   Backend code only — skip gateway rebuild (~1-3 min vs 10-30 min)"
+      echo "  --no-cache   Force full rebuild (use only if UI changes do not appear)"
+      echo "  --force      Discard ALL local git changes and match origin/main (fixes pull conflicts on VPS)"
       exit 0
       ;;
   esac
@@ -59,7 +62,12 @@ if grep -q '^COMPOSE_PROJECT_NAME=' .env 2>/dev/null; then
 fi
 
 echo "Rebuilding gateway + backend (Docker cache: $([ -n "$NO_CACHE" ] && echo off || echo on))..."
-docker compose -f docker-compose.prod.yml build $NO_CACHE gateway api
+if [ "$API_ONLY" = "1" ]; then
+  echo "(--api-only: skipping gateway / frontend rebuild)"
+  docker compose -f docker-compose.prod.yml build $NO_CACHE api
+else
+  docker compose -f docker-compose.prod.yml build $NO_CACHE gateway api
+fi
 
 if grep -qE '^TRAINING_DOCKERFILE=Dockerfile\.gpu' .env 2>/dev/null; then
   echo "GPU training image detected — rebuilding worker-training..."
