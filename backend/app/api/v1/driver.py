@@ -46,9 +46,12 @@ from app.services.driver.detection import (
 from app.services.driver.speed_limit import get_road_speed_limit
 from app.services.driver.project_classes import (
     allowed_detection_classes,
+    ensure_project_classes,
     get_project_classes,
     is_production_model,
     model_class_names,
+    normalize_class_name,
+    normalize_classes_used,
 )
 from app.services.models.active_model import get_active_model
 
@@ -84,8 +87,6 @@ async def _publish_events(project_id: UUID, events: list[RoadEvent]) -> None:
 
 
 def _config_message(project_classes, artifact, model_ready: bool) -> str | None:
-    if not project_classes:
-        return "Add detection classes in the dashboard first."
     if not artifact:
         return (
             "No trained model found. Open Models in the dashboard, train the unified model, "
@@ -95,6 +96,8 @@ def _config_message(project_classes, artifact, model_ready: bool) -> str | None:
         return "Model weights are not ready. Complete training on the dashboard."
     allowed = allowed_detection_classes(project_classes, artifact)
     if not allowed:
+        if not project_classes:
+            return "Add detection classes in the dashboard first."
         return "Model classes do not match dashboard classes. Retrain the model."
     return None
 
@@ -111,6 +114,17 @@ async def driver_config(device: FleetDevice = Depends(get_fleet_device), db: Asy
     )
     project_classes = await get_project_classes(db, device.project_id)
     model_ready = is_production_model(artifact)
+    if model_ready and artifact:
+        metrics = artifact.metrics or {}
+        if metrics.get("imported"):
+            model_names = normalize_classes_used(artifact.classes_used)
+            if model_names:
+                project_names = {normalize_class_name(c.name) for c in project_classes}
+                missing = any(normalize_class_name(n) not in project_names for n in model_names)
+                if missing:
+                    project_classes = await ensure_project_classes(
+                        db, device.project_id, model_names
+                    )
     allowed = allowed_detection_classes(project_classes, artifact) if model_ready else []
     message = _config_message(project_classes, artifact, model_ready)
 

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.minio_client import upload_bytes
 from app.models import ModelArtifact, ModelLifecycle, Project
+from app.services.driver.project_classes import ensure_project_classes
 from app.services.models.active_model import ensure_live_deployment, promote_as_active_model
 
 
@@ -73,6 +74,8 @@ async def import_model_artifact(
     )
     db.add(artifact)
     await db.flush()
+
+    await ensure_project_classes(db, project_id, clean_classes)
 
     if promote:
         await promote_as_active_model(db, project_id, artifact_id)

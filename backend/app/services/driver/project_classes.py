@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ClassLabel, ModelArtifact
+from app.services.driver.rdd_classes import rdd_class_color
 
 
 def normalize_class_name(name: str) -> str:
@@ -28,6 +29,34 @@ def normalize_classes_used(raw: object) -> list[str]:
             return [part.strip() for part in text.split(",") if part.strip()]
         return [text]
     return []
+
+
+async def ensure_project_classes(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    class_names: list[str],
+) -> list[ClassLabel]:
+    """Create dashboard ClassLabel rows for model classes that are not in the project yet."""
+    if not class_names:
+        return await get_project_classes(db, project_id)
+    existing = await get_project_classes(db, project_id)
+    known = {normalize_class_name(c.name) for c in existing}
+    default_colors = ("#3B82F6", "#F97316", "#22C55E", "#EAB308", "#8B5CF6", "#64748B")
+    added = 0
+    for raw in class_names:
+        name = raw.strip()
+        if not name:
+            continue
+        key = normalize_class_name(name)
+        if key in known:
+            continue
+        color = rdd_class_color(name) or default_colors[added % len(default_colors)]
+        db.add(ClassLabel(project_id=project_id, name=name, color=color))
+        known.add(key)
+        added += 1
+    if added:
+        await db.flush()
+    return await get_project_classes(db, project_id) if added else existing
 
 
 async def get_project_classes(db: AsyncSession, project_id: uuid.UUID) -> list[ClassLabel]:
@@ -67,4 +96,10 @@ def allowed_detection_classes(
     for name in names:
         if normalize_class_name(name) in project_names:
             allowed.append(name)
+    if allowed:
+        return allowed
+    # Imported external weights (e.g. RDD YOLO12) — model labels may not exist in dashboard yet.
+    metrics = artifact.metrics or {}
+    if metrics.get("imported"):
+        return list(names)
     return allowed
