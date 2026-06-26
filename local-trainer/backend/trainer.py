@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import shutil
 import threading
 import time
 import uuid
@@ -34,7 +35,46 @@ _state: dict[str, Any] = {
     "eta_seconds": 0,
     "batches_per_min": 0.0,
     "log": [],
+    "plots": {},
 }
+
+
+# Ultralytics writes these under train/ when plots=True
+PLOT_CANDIDATES: list[tuple[str, str]] = [
+    ("results", "results.png"),
+    ("confusion_matrix", "confusion_matrix_normalized.png"),
+    ("confusion_matrix_raw", "confusion_matrix.png"),
+    ("pr_curve", "BoxPR_curve.png"),
+    ("pr_curve_alt", "PR_curve.png"),
+    ("f1_curve", "BoxF1_curve.png"),
+    ("p_curve", "BoxP_curve.png"),
+    ("r_curve", "BoxR_curve.png"),
+]
+
+
+def _collect_training_plots(train_dir: Path, model_output: Path) -> dict[str, str]:
+    """Copy YOLO result images into model plots/ for the UI."""
+    plots_dir = model_output / "plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    collected: dict[str, str] = {}
+    for key, filename in PLOT_CANDIDATES:
+        src = train_dir / filename
+        if not src.is_file():
+            continue
+        dest = plots_dir / filename
+        shutil.copy2(src, dest)
+        collected[key] = filename
+    return collected
+
+
+def get_model_plot_path(model_id: str, filename: str) -> Path | None:
+    """Resolve a plot image for a trained model."""
+    base = model_dir(model_id)
+    for sub in ("plots", "train"):
+        path = base / sub / filename
+        if path.is_file():
+            return path
+    return None
 
 
 def _append_log(msg: str) -> None:
@@ -224,6 +264,7 @@ def start_training(
             "eta_seconds": 0,
             "batches_per_min": 0.0,
             "log": [],
+            "plots": {},
         })
 
     thread = threading.Thread(
@@ -438,6 +479,8 @@ def _run_training(
         metrics = _read_best_metrics(csv_path)
         duration = int(time.time() - start)
         history = get_training_state().get("epoch_history", [])
+        train_dir = output_dir / "train"
+        plots = _collect_training_plots(train_dir, output_dir)
 
         save_model_meta({
             "id": model_id,
@@ -447,6 +490,7 @@ def _run_training(
             "class_names": dataset.get("class_names", []),
             "metrics": metrics,
             "epoch_history": history,
+            "plots": plots,
             "duration_seconds": duration,
             "device": device,
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -461,6 +505,7 @@ def _run_training(
             message="Training completed",
             metrics=metrics,
             model_id=model_id,
+            plots=plots,
             elapsed_seconds=duration,
             eta_seconds=0,
         )

@@ -208,10 +208,12 @@ async def run_detection(
     try:
         if is_onnx_only_artifact(artifact):
             from app.services.inference.onnx_inference import run_onnx_detection_sync
+            from app.services.models.artifact_weights import resolve_onnx_bytes
 
-            onnx_data = download_bytes(artifact.minio_onnx_key)
-            if not onnx_data or len(onnx_data) < 10_000:
-                return [], "ONNX model file missing or invalid.", {}
+            try:
+                onnx_data, _ = await asyncio.to_thread(resolve_onnx_bytes, artifact)
+            except ValueError as exc:
+                return [], str(exc), {}
 
             metrics = artifact.metrics or {}
             resize_mode = str(metrics.get("resize_mode") or "stretch")

@@ -219,6 +219,8 @@ def mobile_infer_confidence(min_confidence: float) -> float:
     user = max(0.01, min(0.99, float(min_confidence)))
     if user >= 0.45:
         return user
+    if user <= 0.15:
+        return user
     scheduled = max(0.22, min(0.50, user * 0.82))
     return max(scheduled * 0.88, 0.20)
 
@@ -258,11 +260,14 @@ def pick_anchor_class(
         if key in SURFACE_CLASS_KEYS and sc > surface_score:
             surface_score = sc
 
-    if roboflow and cy_norm >= 0.38:
+    if roboflow and cy_norm >= 0.35:
         top_key = normalize_class_key(class_names[best_idx])
-        if top_key in SURFACE_CLASS_KEYS and bump_score >= 0.035:
+        # RASID PT/ONNX: surface tiles often beat speedbreaker on the same anchor — prefer bump in road zone.
+        if top_key in SURFACE_CLASS_KEYS and bump_score >= 0.025:
             best_idx, best_score = bump_idx, bump_score
-        elif bump_score > best_score and bump_score >= 0.04:
+        elif bump_score >= 0.04 and bump_score >= surface_score * 0.45:
+            best_idx, best_score = bump_idx, bump_score
+        elif bump_score > best_score and bump_score >= 0.03:
             best_idx, best_score = bump_idx, bump_score
 
     return best_idx, best_score
@@ -279,6 +284,91 @@ def normalize_bump_class(class_name: str, class_names: list[str]) -> str:
             if normalize_class_key(c) == "speedbreaker":
                 return c
     return class_name
+
+
+def bump_display_class(class_names: list[str]) -> str:
+    names = {normalize_class_key(c) for c in class_names}
+    if "speedbreaker" in names:
+        for c in class_names:
+            if normalize_class_key(c) == "speedbreaker":
+                return c
+    if "pothole" in names:
+        for c in class_names:
+            if normalize_class_key(c) == "pothole":
+                return c
+    return "Pothole"
+
+
+def merge_phone_bump_aux(
+    primary: list[dict],
+    aux: list[dict],
+    primary_classes: list[str],
+) -> list[dict]:
+    """Merge main-model Pothole hits into RASID results — matches phone VPS model."""
+    target = bump_display_class(primary_classes)
+    merged: list[dict] = []
+
+    for det in primary:
+        key = normalize_class_key(det.get("class", ""))
+        bb = det.get("bbox") or []
+        if key in SURFACE_CLASS_KEYS and len(bb) >= 4 and float(bb[3]) > 0.45:
+            continue
+        merged.append(det)
+
+    for det in aux:
+        key = normalize_class_key(det.get("class", ""))
+        if key not in ("pothole", "pothile"):
+            continue
+        bb = det.get("bbox") or []
+        if len(bb) < 4 or float(bb[3]) < 0.45:
+            continue
+        area = (float(bb[2]) - float(bb[0])) * (float(bb[3]) - float(bb[1]))
+        if area < 0.00015:
+            continue
+        merged.append(
+            {
+                **det,
+                "class": target,
+                "label_ar": label_ar(target),
+                "aux_from": "main-model",
+            }
+        )
+
+    nms_in: list[dict] = []
+    for det in merged:
+        bb = det.get("bbox") or [0, 0, 0, 0]
+        nms_in.append(
+            {
+                **det,
+                "x1": float(bb[0]),
+                "y1": float(bb[1]),
+                "x2": float(bb[2]),
+                "y2": float(bb[3]),
+            }
+        )
+    kept = nms(nms_in, iou_thresh=0.45)[:80]
+    for det in kept:
+        det.pop("x1", None)
+        det.pop("y1", None)
+        det.pop("x2", None)
+        det.pop("y2", None)
+    return kept
+
+
+_AUX_PHONE_MODEL: "ModelSession | None" = None
+
+
+def get_phone_aux_model() -> "ModelSession | None":
+    """Cached main-model — same ONNX the mobile app syncs from VPS."""
+    global _AUX_PHONE_MODEL
+    path = ROOT / "models" / "pretrained" / "mobile" / "main-model.onnx"
+    if not path.is_file():
+        return None
+    if _AUX_PHONE_MODEL is None:
+        _AUX_PHONE_MODEL = ModelSession()
+    if not _AUX_PHONE_MODEL.is_loaded or _AUX_PHONE_MODEL.model_path != str(path):
+        _AUX_PHONE_MODEL.load(path)
+    return _AUX_PHONE_MODEL
 
 
 def prepare_input(image_bytes: bytes, imgsz: int, *, stretch: bool) -> tuple[np.ndarray, int, int, dict]:
@@ -409,9 +499,27 @@ def decode_yolo_output(
             h *= imgsz
         scores = data[i, 4 : 4 + use_nc]
         cy_norm = (cy / imgsz) if stretch else (cy - pad_top) / gain / max(orig_h, 1)
-        best_idx, best_score = pick_anchor_class(
-            scores, class_names, cy_norm=float(cy_norm), roboflow=roboflow,
-        )
+        if roboflow and cy_norm >= 0.35:
+            bump_pick_idx = -1
+            bump_pick_score = 0.0
+            for c in range(use_nc):
+                key = normalize_class_key(class_names[c])
+                if key not in BUMP_CLASS_KEYS:
+                    continue
+                sc = class_score(float(scores[c]))
+                if sc > bump_pick_score:
+                    bump_pick_score = sc
+                    bump_pick_idx = c
+            if bump_pick_idx >= 0 and bump_pick_score >= decode_floor:
+                best_idx, best_score = bump_pick_idx, bump_pick_score
+            else:
+                best_idx, best_score = pick_anchor_class(
+                    scores, class_names, cy_norm=float(cy_norm), roboflow=roboflow,
+                )
+        else:
+            best_idx, best_score = pick_anchor_class(
+                scores, class_names, cy_norm=float(cy_norm), roboflow=roboflow,
+            )
         cname = class_names[best_idx] if best_idx < len(class_names) else f"class_{best_idx}"
         if best_score < decode_floor:
             continue
@@ -677,13 +785,34 @@ class ModelSession:
                 pass
         return [f"class_{i}" for i in range(5)]
 
-    def detect(self, image_bytes: bytes, min_confidence: float, *, iou_thresh: float | None = None) -> tuple[list[dict], int]:
+    def detect(
+        self,
+        image_bytes: bytes,
+        min_confidence: float,
+        *,
+        iou_thresh: float | None = None,
+        phone_aux: bool = True,
+    ) -> tuple[list[dict], int]:
         if not self.is_loaded:
             raise RuntimeError("Model not loaded")
         iou = iou_thresh if iou_thresh is not None else self.iou_thresh
         if self.backend == "pt":
-            return self._detect_pt(image_bytes, min_confidence, iou_thresh=iou)
-        return self._detect_onnx(image_bytes, min_confidence, iou_thresh=iou)
+            boxes, latency_ms = self._detect_pt(image_bytes, min_confidence, iou_thresh=iou)
+        else:
+            boxes, latency_ms = self._detect_onnx(image_bytes, min_confidence, iou_thresh=iou)
+
+        if phone_aux and looks_like_roboflow(self.class_names):
+            aux = get_phone_aux_model()
+            if aux is not None and aux.model_path != self.model_path:
+                aux_boxes, aux_ms = aux.detect(
+                    image_bytes,
+                    min_confidence,
+                    iou_thresh=iou,
+                    phone_aux=False,
+                )
+                boxes = merge_phone_bump_aux(boxes, aux_boxes, self.class_names)
+                latency_ms = max(latency_ms, aux_ms)
+        return boxes, latency_ms
 
     def _detect_onnx(self, image_bytes: bytes, min_confidence: float, *, iou_thresh: float = 0.45) -> tuple[list[dict], int]:
         if self.session is None or not self.input_name or not self.output_name:
@@ -846,11 +975,12 @@ def scan_models(models_dir: Path) -> list[dict]:
             if sidecar.exists():
                 entry["has_sidecar"] = True
             items.append(entry)
-    # Mobile driver model first in the picker
+  # RASID Roboflow PT first (dashboard / Roboflow export), then mobile ONNX
     items.sort(
         key=lambda e: (
-            0 if "main-model" in e.get("name", "") and e.get("format") == "onnx" else 1,
+            0 if "pothole-manhole" in e.get("name", "") and e.get("format") == "pt" else 1,
             0 if "rasid-drive" in e.get("name", "") and e.get("format") == "onnx" else 1,
+            0 if "main-model" in e.get("name", "") and e.get("format") == "onnx" else 1,
             1 if e.get("format") == "pt" else 0,
             e["name"],
         )
@@ -1006,6 +1136,16 @@ def main() -> None:
     models_dir = Path(args.models_dir)
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     httpd.models_dir = models_dir  # type: ignore[attr-defined]
+
+    if not args.model:
+        for candidate in (
+            models_dir / "roboflow" / "pothole-manhole-2_v2.pt",
+            models_dir / "mobile" / "rasid-drive.onnx",
+            models_dir / "mobile" / "main-model.onnx",
+        ):
+            if candidate.is_file():
+                args.model = str(candidate)
+                break
 
     if args.model:
         manifest = None

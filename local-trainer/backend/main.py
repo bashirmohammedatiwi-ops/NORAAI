@@ -18,6 +18,7 @@ from backend.hardware import detect_hardware
 from backend.storage import (
     add_class,
     delete_class,
+    delete_all_datasets,
     delete_dataset,
     get_active_dataset_id,
     get_dataset,
@@ -26,7 +27,7 @@ from backend.storage import (
     list_models,
     model_dir,
 )
-from backend.trainer import export_model, get_training_state, request_cancel, start_training
+from backend.trainer import export_model, get_model_plot_path, get_training_state, request_cancel, start_training
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
@@ -106,6 +107,12 @@ async def dataset_remove(dataset_id: str):
     return {"deleted": True}
 
 
+@app.delete("/api/datasets")
+async def datasets_clear_all():
+    count = delete_all_datasets()
+    return {"deleted_count": count}
+
+
 @app.post("/api/dataset/preview")
 async def dataset_preview(file: UploadFile = File(...)):
     upload_id = str(uuid.uuid4())
@@ -143,11 +150,18 @@ async def models_list():
     return list_models()
 
 
+@app.get("/api/models/{model_id}/plots/{filename}")
+async def model_plot_image(model_id: str, filename: str):
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(400, "Invalid filename")
+    path = get_model_plot_path(model_id, filename)
+    if not path:
+        raise HTTPException(404, "Plot not found")
+    return FileResponse(path, media_type="image/png")
+
+
 @app.get("/api/models/{model_id}")
 async def model_detail(model_id: str):
-    from backend.storage import model_dir
-    import json
-
     meta_path = model_dir(model_id) / "meta.json"
     if not meta_path.exists():
         raise HTTPException(404, "Model not found")

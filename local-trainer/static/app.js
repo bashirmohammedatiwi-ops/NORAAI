@@ -54,6 +54,47 @@ function showDashboard(active) {
   document.getElementById('train-idle-hint').classList.toggle('hidden', active);
 }
 
+function plotUrl(modelId, filename) {
+  return `/api/models/${modelId}/plots/${encodeURIComponent(filename)}?t=${Date.now()}`;
+}
+
+function showYoloPlots(modelId, plots = {}) {
+  const section = document.getElementById('yolo-plots');
+  if (!section || !modelId || !plots || !Object.keys(plots).length) {
+    if (section) section.classList.add('hidden');
+    return;
+  }
+  const resultsFile = plots.results;
+  const confusion = plots.confusion_matrix || plots.confusion_matrix_raw;
+  const pr = plots.pr_curve || plots.pr_curve_alt;
+  const imgResults = document.getElementById('plot-results');
+  const imgConf = document.getElementById('plot-confusion');
+  const imgPr = document.getElementById('plot-pr-curve');
+
+  if (resultsFile && imgResults) {
+    imgResults.src = plotUrl(modelId, resultsFile);
+    imgResults.closest('.plot-card')?.classList.remove('hidden');
+  } else {
+    imgResults?.closest('.plot-card')?.classList.add('hidden');
+  }
+
+  if (confusion && imgConf) {
+    imgConf.src = plotUrl(modelId, confusion);
+    imgConf.closest('.plot-card')?.classList.remove('hidden');
+  } else {
+    imgConf?.closest('.plot-card')?.classList.add('hidden');
+  }
+
+  if (pr && imgPr) {
+    imgPr.src = plotUrl(modelId, pr);
+    imgPr.closest('.plot-card')?.classList.remove('hidden');
+  } else {
+    imgPr?.closest('.plot-card')?.classList.add('hidden');
+  }
+
+  section.classList.remove('hidden');
+}
+
 function updateMetricCards(metrics = {}) {
   document.getElementById('m-map').textContent = fmtPct(metrics.map50_95);
   document.getElementById('m-map50').textContent = fmtPct(metrics.map50);
@@ -96,6 +137,10 @@ function updateTrainingUI(s) {
 
   document.getElementById('btn-train').disabled = running;
   document.getElementById('btn-cancel').disabled = !running;
+
+  if (s.status === 'completed' && s.model_id && s.plots) {
+    showYoloPlots(s.model_id, s.plots);
+  }
 }
 
 async function loadHardware() {
@@ -133,7 +178,8 @@ async function loadDatasets() {
   const data = await api('/api/datasets');
   const el = document.getElementById('dataset-info');
   if (!data.datasets?.length) {
-    el.innerHTML = '<p style="color:#64748b">No dataset imported yet.</p>';
+    el.innerHTML = '<p style="color:#64748b">لا يوجد داتاسيت — ارفع ZIP معنون للبدء من جديد.</p>';
+    document.getElementById('train-dataset-id').value = '';
     return;
   }
   const active = data.datasets.find((d) => d.id === data.active_dataset_id) || data.datasets[0];
@@ -233,6 +279,7 @@ async function loadModels() {
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="viewModelCharts('${m.id}')">Charts</button>
+        <button class="btn btn-outline" onclick="viewYoloPlots('${m.id}')">YOLO plots</button>
         <a class="btn btn-outline" href="/api/models/${m.id}/download?format=pt">PT</a>
         <a class="btn btn-outline" href="/api/models/${m.id}/download?format=onnx">ONNX</a>
         <button class="btn btn-outline" onclick="setFineTune('${m.id}')">Fine-tune</button>
@@ -243,9 +290,21 @@ async function loadModels() {
     models.map((m) => `<option value="${m.id}">${m.name}</option>`).join('');
 }
 
+async function clearAllDatasets() {
+  if (!confirm('مسح كل الداتاسيت المستوردة؟ لا يمكن التراجع.')) return;
+  const res = await api('/api/datasets', { method: 'DELETE' });
+  uploadId = null;
+  preview = null;
+  document.getElementById('zip-input').value = '';
+  document.getElementById('preview-warn').classList.add('hidden');
+  document.getElementById('mapping').innerHTML = '';
+  document.getElementById('import-result').classList.add('hidden');
+  await loadDatasets();
+  alert(`تم مسح ${res.deleted_count || 0} داتاسيت. جاهز لرفع ZIP جديد.`);
+}
+
 async function viewModelCharts(modelId) {
-  const models = await api('/api/models');
-  const m = models.find((x) => x.id === modelId);
+  const m = await api(`/api/models/${modelId}`);
   if (!m?.epoch_history?.length) {
     alert('No epoch history for this model');
     return;
@@ -254,6 +313,19 @@ async function viewModelCharts(modelId) {
   updateMetricCards(m.metrics);
   if (typeof updateCharts === 'function') updateCharts(m.epoch_history);
   document.getElementById('train-status').textContent = `Model: ${m.name}`;
+  setPhaseBadge('completed');
+  showYoloPlots(modelId, m.plots || {});
+}
+
+async function viewYoloPlots(modelId) {
+  const m = await api(`/api/models/${modelId}`);
+  if (!m?.plots || !Object.keys(m.plots).length) {
+    alert('لا توجد مخططات YOLO — أعد التدريب مع plots مفعّل');
+    return;
+  }
+  showDashboard(true);
+  showYoloPlots(modelId, m.plots);
+  document.getElementById('train-status').textContent = `YOLO plots · ${m.name}`;
   setPhaseBadge('completed');
 }
 
@@ -264,6 +336,7 @@ function setFineTune(id) {
 
 async function startTrain() {
   if (typeof initCharts === 'function') initCharts();
+  document.getElementById('yolo-plots')?.classList.add('hidden');
   const body = {
     dataset_id: document.getElementById('train-dataset-id').value,
     model_variant: document.getElementById('model-variant').value,
@@ -314,6 +387,7 @@ document.getElementById('zip-input').addEventListener('change', (e) => {
 });
 document.getElementById('btn-add-class').addEventListener('click', addClass);
 document.getElementById('btn-import').addEventListener('click', importDataset);
+document.getElementById('btn-clear-datasets').addEventListener('click', clearAllDatasets);
 document.getElementById('btn-train').addEventListener('click', startTrain);
 document.getElementById('btn-cancel').addEventListener('click', cancelTrain);
 

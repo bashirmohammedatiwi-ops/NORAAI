@@ -143,3 +143,15 @@ def delete_dataset(dataset_id: str) -> bool:
     if get_active_dataset_id() == dataset_id:
         _write_json(ACTIVE_DATASET_FILE, {})
     return True
+
+
+def delete_all_datasets() -> int:
+    """Remove every imported dataset and clear active selection."""
+    count = 0
+    if DATASETS_DIR.exists():
+        for p in list(DATASETS_DIR.iterdir()):
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+                count += 1
+    _write_json(ACTIVE_DATASET_FILE, {})
+    return count

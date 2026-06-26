@@ -268,3 +268,47 @@ input, select, textarea {
   background: #f1f5f9;
   color: var(--ink);
 }
+.btn-sm { padding: 6px 12px; font-size: 0.82rem; margin-inline-start: 8px; }
+.yolo-plots {
+  margin: 16px 0;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+}
+.plots-title {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+.plots-hint {
+  margin: 0 0 12px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.plots-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.plot-card--wide { grid-column: 1 / -1; }
+.plot-card {
+  margin: 0;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  overflow: hidden;
+}
+.plot-card figcaption {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.plot-card img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 8px;
+  background: #fff;
+}
+@media (max-width: 768px) { .plots-grid { grid-template-columns: 1fr; } .plot-card--wide { grid-column: auto; } }

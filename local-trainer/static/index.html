@@ -44,6 +44,7 @@
         <input id="val-split" type="number" min="0.05" max="0.4" step="0.05" value="0.15" />
       </div>
       <button class="btn btn-primary" id="btn-import">Import dataset</button>
+      <button class="btn btn-danger btn-sm" id="btn-clear-datasets" type="button">مسح كل الداتاسيت</button>
       <div id="import-result" class="alert hidden" style="margin-top:12px"></div>
       <div id="dataset-info" style="margin-top:16px"></div>
     </section>
@@ -66,7 +67,7 @@
         </div>
         <div class="field">
           <label>Epochs</label>
-          <input id="epochs" type="number" value="30" min="5" max="200" />
+          <input id="epochs" type="number" value="100" min="5" max="300" />
         </div>
         <div class="field">
           <label>Batch size</label>
@@ -162,6 +163,25 @@
           <div class="chart-box"><h3>mAP (accuracy)</h3><canvas id="chart-map"></canvas></div>
           <div class="chart-box"><h3>Precision &amp; Recall</h3><canvas id="chart-pr"></canvas></div>
           <div class="chart-box"><h3>F1 Score</h3><canvas id="chart-f1"></canvas></div>
+        </div>
+
+        <div id="yolo-plots" class="yolo-plots hidden">
+          <h3 class="plots-title">نتائج YOLO (Ultralytics)</h3>
+          <p class="plots-hint">مخططات التدريب · مصفوفة الالتباس · منحنى Precision-Recall</p>
+          <div class="plots-grid">
+            <figure class="plot-card plot-card--wide">
+              <figcaption>مقاييس التدريب (results)</figcaption>
+              <img id="plot-results" alt="Training results" />
+            </figure>
+            <figure class="plot-card">
+              <figcaption>مصفوفة الالتباس</figcaption>
+              <img id="plot-confusion" alt="Confusion matrix" />
+            </figure>
+            <figure class="plot-card">
+              <figcaption>منحنى Precision-Recall</figcaption>
+              <img id="plot-pr-curve" alt="PR curve" />
+            </figure>
+          </div>
         </div>
 
         <div class="log" id="train-log"></div>
