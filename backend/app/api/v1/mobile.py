@@ -24,6 +24,7 @@ from app.schemas import (
     DriverModelManifest,
 )
 from app.services.driver.project_classes import is_production_model
+from app.services.models.artifact_weights import artifact_storage_status
 from app.services.mobile.config import get_mobile_config, patch_mobile_config
 from app.services.mobile.driver_deploy import resolve_driver_artifact, sync_driver_model
 from app.services.models.registry import assign_model_numbers
@@ -211,6 +212,7 @@ async def list_mobile_deployable_models(project_id: UUID, db: AsyncSession = Dep
             "map50_95": (a.metrics or {}).get("map50_95"),
             "classes": a.classes_used or [],
             "created_at": a.created_at.isoformat() if a.created_at else None,
+            **artifact_storage_status(a),
         }
         for a in artifacts
         if is_production_model(a)

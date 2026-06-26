@@ -16,7 +16,13 @@ from sqlalchemy.orm import Session
 from app.core.minio_client import download_bytes, object_size, open_object, upload_bytes
 from app.models import ModelArtifact, Project
 from app.services.driver.project_classes import is_production_model, model_class_names
-from app.services.models.artifact_weights import is_onnx_only_artifact
+from app.services.models.artifact_weights import (
+    MIN_ONNX_BYTES,
+    is_onnx_only_artifact,
+    repair_artifact_storage_keys,
+    resolve_onnx_bytes,
+    resolve_weights_bytes,
+)
 from app.services.mobile.config import get_mobile_config, patch_mobile_config
 from app.services.models.active_model import promote_as_active_model
 
@@ -65,7 +71,7 @@ def _sha256_bytes(data: bytes) -> str:
 
 
 def _validate_onnx_bytes(data: bytes) -> None:
-    if not data or len(data) < 10_000:
+    if not data or len(data) < MIN_ONNX_BYTES:
         raise ValueError("ملف ONNX فارغ أو صغير جداً — فشل التصدير من أوزان .pt")
 
 
@@ -156,21 +162,21 @@ def ensure_mobile_onnx_bytes(artifact: ModelArtifact) -> tuple[bytes, str]:
     except Exception:
         pass
 
-    if artifact.minio_onnx_key:
-        try:
-            data = download_bytes(artifact.minio_onnx_key)
-            if data and len(data) > 10_000:
-                upload_bytes(onnx_key, data, "application/octet-stream")
-                return data, _sha256_bytes(data)
-        except Exception:
-            pass
+    try:
+        data, source_key = resolve_onnx_bytes(artifact)
+        if source_key != onnx_key:
+            upload_bytes(onnx_key, data, "application/octet-stream")
+        return data, _sha256_bytes(data)
+    except ValueError:
+        pass
 
     if is_onnx_only_artifact(artifact):
-        raise ValueError("ONNX model file is missing or invalid")
+        raise ValueError(
+            "ملف ONNX غير موجود في التخزين. "
+            "أعد استيراد الموديل (.onnx) من صفحة الموديل الموحد."
+        )
 
-    weights_bytes = download_bytes(artifact.minio_weights_key)
-    if not weights_bytes or len(weights_bytes) < 100_000:
-        raise ValueError("Model weights are missing or invalid")
+    weights_bytes, _ = resolve_weights_bytes(artifact)
 
     metrics = artifact.metrics or {}
     model_variant = str(metrics.get("model_variant") or "").strip() or None
@@ -233,6 +239,9 @@ async def sync_driver_model(
         raise ValueError("Model not found in this project")
     if not is_production_model(artifact):
         raise ValueError("Selected model has no valid trained weights")
+
+    if await asyncio.to_thread(repair_artifact_storage_keys, artifact):
+        await db.flush()
 
     onnx_bytes, sha256 = await asyncio.to_thread(ensure_mobile_onnx_bytes, artifact)
     _validate_onnx_bytes(onnx_bytes)

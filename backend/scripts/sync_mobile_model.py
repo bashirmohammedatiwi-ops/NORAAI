@@ -67,7 +67,6 @@ async def run_sync(
             promote_active=promote_active,
         )
         await db.commit()
-
         print("Mobile sync OK")
         print(f"  artifact: {manifest['artifact_id']}")
         print(f"  version:  {manifest['version']}")
