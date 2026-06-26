@@ -94,6 +94,20 @@ const _defaults = <String, EventMeta>{
     icon: '💥',
     mapPriority: 1,
   ),
+  'moderate': EventMeta(
+    labelAr: 'حادث — متوسط',
+    label: 'Moderate accident',
+    color: Color(0xFFEF4444),
+    icon: '💥',
+    mapPriority: 1,
+  ),
+  'severe': EventMeta(
+    labelAr: 'حادث — خطير',
+    label: 'Severe accident',
+    color: Color(0xFFDC2626),
+    icon: '🚨',
+    mapPriority: 1,
+  ),
   'road_closed': EventMeta(
     labelAr: 'طريق مغلق',
     label: 'Road closed',
@@ -117,7 +131,7 @@ const _defaults = <String, EventMeta>{
   ),
 };
 
-const highlightTypes = {'pothole', 'accident', 'road_closed', 'd40', 'manhole', 'speedbreaker'};
+const highlightTypes = {'pothole', 'accident', 'road_closed', 'd40', 'manhole', 'speedbreaker', 'moderate', 'severe'};
 
 /// RDD2022 road damage codes → Arabic display labels.
 const rddClassLabelsAr = <String, String>{

@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
@@ -108,15 +107,27 @@ class LocalOnnxDetector {
       if (kIsWeb) {
         _session = await ort.createSession(modelPath);
       } else if (_resizeStretch) {
-        // Roboflow ONNX graphs often fail on NNAPI/XNNPACK delegates on Android.
-        _session = await ort.createSession(
-          modelPath,
-          options: OrtSessionOptions(
-            intraOpNumThreads: 4,
-            providers: [OrtProvider.CPU],
-          ),
-        );
-        _cpuOnly = true;
+        // Roboflow: try XNNPACK first (often 2–4× faster than CPU-only).
+        try {
+          _session = await ort.createSession(
+            modelPath,
+            options: OrtSessionOptions(
+              intraOpNumThreads: 4,
+              interOpNumThreads: 2,
+              providers: [OrtProvider.XNNPACK, OrtProvider.CPU],
+            ),
+          );
+        } catch (e) {
+          debugPrint('LocalOnnx stretch XNNPACK failed, CPU-only: $e');
+          _session = await ort.createSession(
+            modelPath,
+            options: OrtSessionOptions(
+              intraOpNumThreads: 4,
+              providers: [OrtProvider.CPU],
+            ),
+          );
+          _cpuOnly = true;
+        }
       } else {
         // XNNPACK first: a small 320 YOLO runs the whole graph on one fast
         // CPU delegate, avoiding the partition transfers NNAPI incurs on the
@@ -145,6 +156,7 @@ class LocalOnnxDetector {
       _outputName = _pickOutputName(_session!.outputNames);
       await _resolveInputShape();
       loadError = null;
+      await warmup();
     } catch (e) {
       loadError = 'فشل تحميل ONNX: $e';
       await dispose();
@@ -202,7 +214,7 @@ class LocalOnnxDetector {
   Future<LocalDetectResult> detectFromPrep(
     OnnxPrepResult prep, {
     required double minConfidence,
-    double iouThreshold = 0.45,
+    double iouThreshold = 0.55,
   }) async {
     if (_detectFuture != null) return _detectFuture!;
     _detectFuture = _inferPrep(
@@ -221,7 +233,7 @@ class LocalOnnxDetector {
     Uint8List jpegBytes, {
     required double minConfidence,
     int rotationDegrees = 0,
-    double iouThreshold = 0.45,
+    double iouThreshold = 0.55,
   }) async {
     if (_detectFuture != null) return _detectFuture!;
     _detectFuture = _detectImpl(
@@ -330,7 +342,7 @@ class LocalOnnxDetector {
     for (var i = 0; i < n; i++) {
       raw[i] = (flat[i] as num).toDouble();
     }
-    final inferMin = math.max(0.08, minConfidence);
+    final inferMin = math.max(minConfidence * 0.88, 0.20);
     final boxes = _decodeOutput(
       raw,
       shape,
@@ -373,6 +385,32 @@ class LocalOnnxDetector {
     _cpuOnly = true;
     _inputName = _session!.inputNames.isNotEmpty ? _session!.inputNames.first : 'images';
     _outputName = _pickOutputName(_session!.outputNames);
+  }
+
+  Future<void> warmup() async {
+    if (!isReady) return;
+    try {
+      final n = 3 * _inputH * _inputW;
+      final dummy = Float32List(n);
+      for (var i = 0; i < n; i++) {
+        dummy[i] = 0.45;
+      }
+      final prep = OnnxPrepResult(
+        tensor: dummy,
+        gain: 1.0,
+        padTop: 0,
+        padLeft: 0,
+        origW: _inputW,
+        origH: _inputH,
+        netW: _inputW,
+        netH: _inputH,
+        stretch: _resizeStretch,
+      );
+      await _inferPrep(prep, minConfidence: 0.99, iouThreshold: 0.5);
+      debugPrint('LocalOnnx warmup OK (${_inputW}x$_inputH stretch=$_resizeStretch)');
+    } catch (e) {
+      debugPrint('LocalOnnx warmup skipped: $e');
+    }
   }
 
   Future<void> dispose() async {
@@ -529,7 +567,7 @@ class LocalOnnxDetector {
       ));
     }
 
-    return _toBoxes(_nms(candidates, iouThreshold).take(50).toList());
+    return _toBoxes(_nms(candidates, iouThreshold).take(8).toList());
   }
 
   List<DetectionBox> _decodeEnd2End(
@@ -590,7 +628,7 @@ class LocalOnnxDetector {
       ));
     }
 
-    return _toBoxes(_nms(candidates, iouThreshold).take(50).toList());
+    return _toBoxes(_nms(candidates, iouThreshold).take(8).toList());
   }
 
   static double _at(

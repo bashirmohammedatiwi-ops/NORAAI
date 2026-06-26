@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import tempfile
@@ -63,14 +64,26 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _export_onnx_from_weights(weights_bytes: bytes, architecture: str, output_path: str) -> None:
+def _validate_onnx_bytes(data: bytes) -> None:
+    if not data or len(data) < 10_000:
+        raise ValueError("ملف ONNX فارغ أو صغير جداً — فشل التصدير من أوزان .pt")
+
+
+def _export_onnx_from_weights(
+    weights_bytes: bytes,
+    architecture: str,
+    output_path: str,
+    *,
+    model_variant: str | None = None,
+) -> None:
     from ml.training.adapters import get_adapter
 
     with tempfile.TemporaryDirectory() as tmp:
         weights_path = str(Path(tmp) / "weights.pt")
         Path(weights_path).write_bytes(weights_bytes)
-        adapter = get_adapter(architecture or "yolo11")
+        adapter = get_adapter(architecture or "yolo11", model_variant)
         adapter.export_onnx(weights_path, output_path)
+        _validate_onnx_bytes(Path(output_path).read_bytes())
 
 
 def load_stored_mobile_manifest(artifact: ModelArtifact) -> dict | None:
@@ -159,11 +172,20 @@ def ensure_mobile_onnx_bytes(artifact: ModelArtifact) -> tuple[bytes, str]:
     if not weights_bytes or len(weights_bytes) < 100_000:
         raise ValueError("Model weights are missing or invalid")
 
+    metrics = artifact.metrics or {}
+    model_variant = str(metrics.get("model_variant") or "").strip() or None
+
     with tempfile.TemporaryDirectory() as tmp:
         out_path = str(Path(tmp) / "model.onnx")
-        _export_onnx_from_weights(weights_bytes, artifact.architecture or "yolo11", out_path)
+        _export_onnx_from_weights(
+            weights_bytes,
+            artifact.architecture or "yolo11",
+            out_path,
+            model_variant=model_variant,
+        )
         data = Path(out_path).read_bytes()
 
+    _validate_onnx_bytes(data)
     upload_bytes(onnx_key, data, "application/octet-stream")
     return data, _sha256_bytes(data)
 
@@ -212,7 +234,8 @@ async def sync_driver_model(
     if not is_production_model(artifact):
         raise ValueError("Selected model has no valid trained weights")
 
-    onnx_bytes, sha256 = ensure_mobile_onnx_bytes(artifact)
+    onnx_bytes, sha256 = await asyncio.to_thread(ensure_mobile_onnx_bytes, artifact)
+    _validate_onnx_bytes(onnx_bytes)
     manifest = build_model_manifest(artifact, sha256, onnx_byte_len=len(onnx_bytes))
     upload_bytes(
         mobile_manifest_key(project.id, artifact.id),
@@ -221,7 +244,8 @@ async def sync_driver_model(
     )
 
     project.driver_model_artifact_id = artifact.id
-    await promote_as_active_model(db, project.id, artifact.id)
+    if promote_active:
+        await promote_as_active_model(db, project.id, artifact.id)
 
     mobile_cfg = get_mobile_config(project)
     mobile_cfg["deployment"] = {

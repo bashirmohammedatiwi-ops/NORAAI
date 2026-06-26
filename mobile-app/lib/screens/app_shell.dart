@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../controllers/drive_session.dart';
@@ -11,6 +10,7 @@ import 'home_hub_screen.dart';
 import 'drive_screen.dart';
 import 'maps_app_screen.dart';
 import 'model_info_screen.dart';
+import '../features/emergency/widgets/emergency_response_sheet.dart';
 import '../models/driver_config.dart';
 import '../utils/responsive.dart';
 
@@ -93,10 +93,18 @@ class _AppShellState extends State<AppShell> {
 
     return DriveSessionScope(
       notifier: _session,
-      child: Scaffold(
+      child: ListenableBuilder(
+        listenable: _session,
+        builder: (context, _) {
+          final s = _session;
+          final showGlobalEmergency = s.showEmergencySheet && _tab != 1 && _tab != 5;
+          return Scaffold(
         backgroundColor: AppColors.bgDeep,
         extendBody: false,
-        body: landscape
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            landscape
             ? Row(
                 children: [
                   NavigationRail(
@@ -118,6 +126,29 @@ class _AppShellState extends State<AppShell> {
                 ],
               )
             : _buildBody(),
+            if (showGlobalEmergency)
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: s.dismissEmergencyPanel,
+                  child: Container(color: Colors.black54),
+                ),
+              ),
+            if (showGlobalEmergency)
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: EmergencyResponseSheet(
+                  hospitals: s.nearbyHospitals,
+                  selectedHospital: s.selectedHospital,
+                  routingInProgress: s.hospitalRouting,
+                  routeSummary: s.hospitalRouteSummary,
+                  accidentDetected: s.accidentEmergencyActive,
+                  onDismiss: s.dismissEmergencyPanel,
+                  onSelectHospital: (h) => s.navigateToHospital(h, context),
+                  onClearRoute: s.clearHospitalRoute,
+                ),
+              ),
+          ],
+        ),
         bottomNavigationBar: landscape
             ? null
             : NavigationBar(
@@ -155,6 +186,8 @@ class _AppShellState extends State<AppShell> {
                   ),
                 ],
               ),
+      );
+        },
       ),
     );
   }

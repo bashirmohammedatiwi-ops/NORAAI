@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -28,6 +29,7 @@ from app.services.mobile.driver_deploy import resolve_driver_artifact, sync_driv
 from app.services.models.registry import assign_model_numbers
 
 router = APIRouter(prefix="/mobile", tags=["mobile"])
+logger = logging.getLogger(__name__)
 
 
 def _device_meta(device: FleetDevice) -> dict:
@@ -125,6 +127,16 @@ async def sync_model_to_mobile_app(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception(
+            "sync-model failed project=%s artifact=%s",
+            project_id,
+            body.model_artifact_id,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"فشل رفع الموديل للتطبيق: {exc}",
+        ) from exc
 
     await db.commit()
     return SyncDriverModelResponse(
@@ -132,14 +144,16 @@ async def sync_model_to_mobile_app(
         manifest=DriverModelManifest(
             artifact_id=UUID(manifest["artifact_id"]),
             model_name=manifest["model_name"],
-            architecture=manifest["architecture"],
+            architecture=str(manifest.get("architecture") or "yolo11"),
             version=manifest["version"],
             sha256=manifest["sha256"],
             format=manifest["format"],
             image_size=manifest["image_size"],
+            resize_mode=str(manifest.get("resize_mode") or "letterbox"),
             nc=manifest["nc"],
             classes=manifest["classes"],
             model_size_mb=manifest.get("model_size_mb"),
+            model_bytes=manifest.get("model_bytes"),
             updated_at=manifest["updated_at"],
             download_url=f"/api/v1/driver/model/download",
         ),

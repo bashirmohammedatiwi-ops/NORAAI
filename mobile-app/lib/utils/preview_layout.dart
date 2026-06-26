@@ -25,6 +25,7 @@ class PreviewLayout {
   }
 }
 
+/// Matches [CameraPreviewFit] layout math so overlay boxes align with the video.
 PreviewLayout computePreviewLayout({
   required Size parentSize,
   required Size previewSize,
@@ -68,14 +69,12 @@ PreviewLayout computePreviewLayout({
     }
   }
 
-  final displayW = fit == BoxFit.cover ? maxW : renderW;
-  final displayH = fit == BoxFit.cover ? maxH : renderH;
-  final left = (maxW - displayW) / 2;
-  final top = (maxH - displayH) / 2;
+  final left = (maxW - renderW) / 2;
+  final top = (maxH - renderH) / 2;
 
   return PreviewLayout(
     parentSize: parentSize,
-    videoRect: Rect.fromLTWH(left, top, displayW, displayH),
+    videoRect: Rect.fromLTWH(left, top, renderW, renderH),
     previewAspect: previewAspect,
   );
 }

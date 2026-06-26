@@ -55,6 +55,9 @@ runs/
 /tmp/training/
 
 # Downloaded sample datasets
+datasets/traffic-accident-yolo11x/*
+!datasets/traffic-accident-yolo11x/.gitkeep
+!datasets/traffic-accident-yolo11x/DATASET.md
 data/_download_cache/
 data/pothole_samples/pothole_*.*
 data/pothole_samples/*.jpg

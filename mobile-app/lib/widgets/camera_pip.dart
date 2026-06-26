@@ -16,8 +16,6 @@ class CameraPip extends StatelessWidget {
     this.cameraOk = true,
     this.bottomOffset = 24,
     this.fullWidth = false,
-    this.headwayDistanceM,
-    this.leadVehicleClass,
   });
 
   final CameraController controller;
@@ -29,8 +27,6 @@ class CameraPip extends StatelessWidget {
   final bool cameraOk;
   final double bottomOffset;
   final bool fullWidth;
-  final double? headwayDistanceM;
-  final String? leadVehicleClass;
 
   @override
   Widget build(BuildContext context) {
@@ -55,19 +51,12 @@ class CameraPip extends StatelessWidget {
   }
 
   Widget _buildContent() {
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border.all(
-          color: cameraOk ? const Color(0xFF2DD4BF) : const Color(0xFFEF4444),
-          width: 2.5,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: (cameraOk ? const Color(0xFF2DD4BF) : const Color(0xFFEF4444)).withValues(alpha: 0.25),
-            blurRadius: 16,
-            spreadRadius: 1,
-          ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white24),
+        boxShadow: const [
+          BoxShadow(color: Colors.black45, blurRadius: 12, offset: Offset(0, 4)),
         ],
       ),
       child: ClipRRect(
@@ -80,10 +69,7 @@ class CameraPip extends StatelessWidget {
                 controller: controller,
                 detections: detections,
                 minConfidence: minConfidence,
-                scanning: scanning,
                 fit: BoxFit.cover,
-                headwayDistanceM: headwayDistanceM,
-                leadVehicleClass: leadVehicleClass,
               )
             else
               const ColoredBox(

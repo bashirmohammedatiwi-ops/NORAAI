@@ -4,6 +4,7 @@ import '../config/detection_config.dart';
 import '../controllers/drive_session.dart';
 import '../theme/app_colors.dart';
 import '../utils/responsive.dart';
+import '../features/emergency/widgets/emergency_response_sheet.dart';
 import '../widgets/alert_sheet.dart';
 import '../widgets/camera_stack.dart';
 import '../widgets/drive_cockpit.dart';
@@ -65,11 +66,7 @@ class _DriveScreenState extends State<DriveScreen> {
                   controller: s.camera!,
                   detections: s.detections,
                   minConfidence: minConf,
-                  scanning: s.overlayScanning,
-                  fit: BoxFit.cover,
-                  headwayDistanceM: s.followingDistance.distanceM,
-                  leadVehicleClass: s.followingDistance.leadClass,
-                  localInference: s.usesLocalInference,
+                  fit: BoxFit.contain,
                 )
               else
                 _cameraLoading(s.cameraError),
@@ -132,12 +129,34 @@ class _DriveScreenState extends State<DriveScreen> {
                 mapZoom: s.mapZoom,
                 mapStyle: s.mapStyle,
                 trail: s.positionTrail,
+                routePoints: s.hospitalRoute,
+                hospitals: (s.showEmergencySheet || s.selectedHospital != null)
+                    ? s.nearbyHospitals
+                    : const [],
+                selectedHospital: s.selectedHospital,
                 speedLimit: s.roadSpeed.cached.limit,
                 speedKmh: s.speedKmh,
                 nearbyEvents: s.nearbyEvents,
                 classMeta: s.classMeta,
                 onMapMoved: s.onMapMoved,
                 showEventMarkers: DetectionConfig.mapEventReporting,
+              ),
+              if (s.hospitalRouteSummary != null && !s.showEmergencySheet)
+                Positioned(
+                  top: 10,
+                  left: 10,
+                  right: 10,
+                  child: _routeBanner(s.hospitalRouteSummary!, s.clearHospitalRoute),
+                ),
+              Positioned(
+                bottom: 10,
+                left: 10,
+                child: CockpitIconButton(
+                  icon: Icons.local_hospital_rounded,
+                  active: s.showEmergencySheet,
+                  activeColor: AppColors.danger,
+                  onTap: () => s.openEmergencyPanel(fromAccident: false),
+                ),
               ),
               Positioned(
                 bottom: 10,
@@ -168,7 +187,9 @@ class _DriveScreenState extends State<DriveScreen> {
 
         return Scaffold(
           backgroundColor: AppColors.bgDeep,
-          body: landscape
+          body: Stack(
+            children: [
+              landscape
               ? Column(
                   children: [
                     Expanded(
@@ -205,6 +226,29 @@ class _DriveScreenState extends State<DriveScreen> {
                     cockpit,
                   ],
                 ),
+            if (s.showEmergencySheet)
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: s.dismissEmergencyPanel,
+                  child: Container(color: Colors.black54),
+                ),
+              ),
+            if (s.showEmergencySheet)
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: EmergencyResponseSheet(
+                  hospitals: s.nearbyHospitals,
+                  selectedHospital: s.selectedHospital,
+                  routingInProgress: s.hospitalRouting,
+                  routeSummary: s.hospitalRouteSummary,
+                  accidentDetected: s.accidentEmergencyActive,
+                  onDismiss: s.dismissEmergencyPanel,
+                  onSelectHospital: (h) => s.navigateToHospital(h, context),
+                  onClearRoute: s.clearHospitalRoute,
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -231,6 +275,34 @@ class _DriveScreenState extends State<DriveScreen> {
           ] else
             const CircularProgressIndicator(color: AppColors.accent),
         ],
+      ),
+    );
+  }
+
+  Widget _routeBanner(String summary, VoidCallback onClear) {
+    return Material(
+      color: const Color(0xFF0F172A).withValues(alpha: 0.92),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.navigation_rounded, color: AppColors.accentBright, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'مسار المستشفى · $summary',
+                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+              ),
+            ),
+            IconButton(
+              onPressed: onClear,
+              icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 18),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            ),
+          ],
+        ),
       ),
     );
   }

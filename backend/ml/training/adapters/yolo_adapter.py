@@ -550,24 +550,64 @@ class YOLOAdapter:
         }
 
     def export_onnx(self, weights_path: str, output_path: str) -> str:
+        weights = Path(weights_path)
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+
+        def _find_exported() -> Path | None:
+            candidates: list[Path] = [weights.with_suffix(".onnx")]
+            for pattern in ("*_end2end.onnx", "*.onnx"):
+                candidates.extend(weights.parent.glob(pattern))
+            seen: set[str] = set()
+            ordered = sorted(
+                (p for p in candidates if p.is_file()),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            for path in ordered:
+                key = str(path.resolve())
+                if key in seen:
+                    continue
+                seen.add(key)
+                if path.stat().st_size > 10_000:
+                    return path
+            return None
+
         try:
             from ultralytics import YOLO
-            model = YOLO(weights_path)
-            # End-to-end ONNX (NMS in graph) — easier on-device decode for mobile.
-            model.export(
-                format="onnx",
-                simplify=True,
-                dynamic=False,
-                imgsz=640,
-                nms=True,
-            )
-            onnx_path = weights_path.replace(".pt", ".onnx")
-            if os.path.exists(onnx_path):
-                Path(onnx_path).rename(output_path)
-            return output_path
-        except Exception:
-            Path(output_path).write_bytes(b"mock_onnx")
-            return output_path
+        except ImportError as exc:
+            raise ValueError("Ultralytics is not installed on the server") from exc
+
+        model = YOLO(str(weights))
+        last_err: Exception | None = None
+        for simplify in (True, False):
+            try:
+                exported = model.export(
+                    format="onnx",
+                    simplify=simplify,
+                    dynamic=False,
+                    imgsz=640,
+                    nms=True,
+                )
+                src: Path | None = None
+                if exported:
+                    candidate = Path(str(exported))
+                    if candidate.is_file() and candidate.stat().st_size > 10_000:
+                        src = candidate
+                if src is None:
+                    src = _find_exported()
+                if src is None:
+                    raise ValueError("ONNX export did not produce a model file")
+                if src.resolve() != out.resolve():
+                    out.write_bytes(src.read_bytes())
+                if not out.is_file() or out.stat().st_size < 10_000:
+                    raise ValueError("ONNX export produced an empty or invalid file")
+                return str(out)
+            except Exception as exc:
+                last_err = exc
+                continue
+
+        raise ValueError(f"ONNX export failed: {last_err}") from last_err
 
     def predict(
         self,

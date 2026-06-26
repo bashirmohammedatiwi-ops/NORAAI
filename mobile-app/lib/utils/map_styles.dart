@@ -1,4 +1,5 @@
 enum MapStyle {
+  drive,
   waze,
   navigation,
   streets,
@@ -10,6 +11,8 @@ enum MapStyle {
 extension MapStyleConfig on MapStyle {
   String get labelAr {
     switch (this) {
+      case MapStyle.drive:
+        return 'قيادة';
       case MapStyle.waze:
         return 'ويز';
       case MapStyle.navigation:
@@ -27,10 +30,10 @@ extension MapStyleConfig on MapStyle {
 
   String get urlTemplate {
     switch (this) {
-      case MapStyle.waze:
-        return 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+      case MapStyle.drive:
       case MapStyle.navigation:
         return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+      case MapStyle.waze:
       case MapStyle.streets:
         return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
       case MapStyle.dark:
@@ -55,7 +58,7 @@ extension MapStyleConfig on MapStyle {
   }
 
   String? get labelOverlayTemplate {
-    if (this == MapStyle.satellite) {
+    if (this == MapStyle.satellite || this == MapStyle.drive) {
       return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png';
     }
     return null;

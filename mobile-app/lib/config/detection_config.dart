@@ -1,17 +1,19 @@
-/// Detection & map reporting toggles.
+/// إعدادات الاكتشاف — بسيطة وثابتة.
 abstract final class DetectionConfig {
-  /// Push detections to server / show hazard pins on map — disabled for AR focus.
   static const bool mapEventReporting = false;
-
-  /// Target overlay refresh (Hz).
-  static const double overlayRefreshHz = 60;
-
-  /// Minimum ms between local inference runs when pipeline is fast.
-  static const int localDetectFloorMs = 8;
-
-  /// When ONNX is loaded, never fall back to slow cloud inference.
+  static const bool offlineFastPreprocess = true;
   static const bool localOnlyWhenReady = true;
 
-  /// Remove overlay box after N missed detection frames (0 = immediate).
-  static const int maxTrackMissFrames = 1;
+  /// فترة افتراضية بين إطارات الاكتشاف المحلي (ms).
+  static const int localDetectIntervalMs = 20;
+
+  /// أقل تأخير بين دورات الاكتشاف المحلي (ms).
+  static const int localDetectFloorMs = 4;
+
+  /// معالجة YUV على نفس الخيط للإطارات الصغيرة (بدون [compute]).
+  static const int inlinePreprocessMaxPixels = 400000;
+
+  static const bool accidentEmergencyEnabled = true;
+  static const double accidentEmergencyMinConfidence = 0.45;
+  static const int accidentEmergencyCooldownSec = 90;
 }

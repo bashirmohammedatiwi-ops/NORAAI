@@ -124,6 +124,13 @@ class HomeHubScreen extends StatelessWidget {
                       onTap: () => onOpenTab(3),
                     ),
                     AppTile(
+                      icon: Icons.local_hospital_rounded,
+                      label: 'طوارئ بغداد',
+                      subtitle: '911 · مستشفيات · مسار',
+                      color: AppColors.danger,
+                      onTap: () => s.openEmergencyPanel(),
+                    ),
+                    AppTile(
                       icon: Icons.cloud_sync_rounded,
                       label: 'مزامنة',
                       subtitle: s.syncingModel
@@ -132,6 +139,13 @@ class HomeHubScreen extends StatelessWidget {
                       color: AppColors.warning,
                       badge: s.syncingModel ? '…' : null,
                       onTap: s.syncingModel ? null : () => s.syncModelNow(),
+                    ),
+                    AppTile(
+                      icon: Icons.camera_alt_rounded,
+                      label: 'كاميرا 2x',
+                      subtitle: s.camera2x ? 'مفعلة' : 'معطلة',
+                      color: s.camera2x ? AppColors.accentBright : AppColors.grey,
+                      onTap: s.toggleCamera2x,
                     ),
                   ]),
                 ),

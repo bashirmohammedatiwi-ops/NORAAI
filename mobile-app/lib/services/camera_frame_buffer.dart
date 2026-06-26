@@ -2,12 +2,14 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
+import '../config/detection_config.dart';
 import '../utils/frame_compress.dart';
 import 'onnx_frame_prep.dart';
 
 /// Frame capture from [CameraController.startImageStream].
 ///
 /// Never retain [CameraImage] outside the stream callback — copy bytes immediately.
+/// Always keeps the latest frame (never drops updates while inference runs).
 class CameraFrameBuffer {
   _FrameSnapshot? _snapshot;
   bool _attached = false;
@@ -43,8 +45,6 @@ class CameraFrameBuffer {
   }
 
   void _onCameraImage(CameraImage image) {
-    if (_captureBusy) return;
-
     try {
       _snapshot = _FrameSnapshot.fromCameraImage(image);
     } catch (e) {
@@ -52,23 +52,40 @@ class CameraFrameBuffer {
     }
   }
 
+  List<dynamic> _yuvArgs(_FrameSnapshot snap, int netW, int netH, bool stretch, bool fast) {
+    return [
+      snap.yuvPayload![0],
+      snap.yuvPayload![1],
+      snap.yuvPayload![3],
+      snap.yuvPayload![4],
+      snap.yuvPayload![5],
+      netW,
+      netH,
+      stretch,
+      fast,
+    ];
+  }
+
   /// YUV → ONNX tensor directly (fast local path — no JPEG).
-  Future<OnnxPrepResult?> captureOnnxInput(int netW, int netH, {bool stretch = false}) async {
+  Future<OnnxPrepResult?> captureOnnxInput(
+    int netW,
+    int netH, {
+    bool stretch = false,
+    bool fast = false,
+  }) async {
+    if (_captureBusy) return null;
+
     final snap = _snapshot;
     if (snap == null || snap.yuvPayload == null) return null;
 
     _captureBusy = true;
     try {
-      return await compute(prepareOnnxFromYuvPayload, [
-        snap.yuvPayload![0],
-        snap.yuvPayload![1],
-        snap.yuvPayload![3],
-        snap.yuvPayload![4],
-        snap.yuvPayload![5],
-        netW,
-        netH,
-        stretch,
-      ]);
+      final args = _yuvArgs(snap, netW, netH, stretch, fast);
+      final pixels = snap.pixelCount;
+      if (pixels <= DetectionConfig.inlinePreprocessMaxPixels) {
+        return prepareOnnxFromYuvPayload(args);
+      }
+      return await compute(prepareOnnxFromYuvPayload, args);
     } catch (e) {
       debugPrint('captureOnnxInput failed: $e');
       return null;
@@ -78,6 +95,8 @@ class CameraFrameBuffer {
   }
 
   Future<Uint8List?> captureJpeg({int maxWidth = 640, int quality = 72}) async {
+    if (_captureBusy) return null;
+
     final snap = _snapshot;
     if (snap == null) return null;
 
@@ -102,21 +121,28 @@ class _FrameSnapshot {
   _FrameSnapshot._({
     this.jpegBytes,
     this.yuvPayload,
+    this.pixelCount = 0,
   });
 
   final Uint8List? jpegBytes;
   final List<dynamic>? yuvPayload;
+  final int pixelCount;
 
   factory _FrameSnapshot.fromCameraImage(CameraImage image) {
     final group = image.format.group;
     final planes = image.planes;
+    final pixels = image.width * image.height;
 
     if (group == ImageFormatGroup.jpeg && planes.isNotEmpty) {
-      return _FrameSnapshot._(jpegBytes: Uint8List.fromList(planes[0].bytes));
+      return _FrameSnapshot._(
+        jpegBytes: Uint8List.fromList(planes[0].bytes),
+        pixelCount: pixels,
+      );
     }
 
     final planeBytes = planes.map((p) => Uint8List.fromList(p.bytes)).toList();
     return _FrameSnapshot._(
+      pixelCount: pixels,
       yuvPayload: <dynamic>[
         image.width,
         image.height,

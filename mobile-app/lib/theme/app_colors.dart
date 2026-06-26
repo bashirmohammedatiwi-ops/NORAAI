@@ -25,6 +25,7 @@ abstract final class AppColors {
   static const info = Color(0xFF3B82F6);
   static const purple = Color(0xFF8B5CF6);
   static const orange = Color(0xFFF97316);
+  static const grey = Color(0xFF6B7280);
 
   static const gradientHero = [Color(0xFF0D4F4A), Color(0xFF0F766E), Color(0xFF14B8A6)];
   static const gradientMesh = [Color(0xFF0A0F1C), Color(0xFF0F172A), Color(0xFF0A1628)];

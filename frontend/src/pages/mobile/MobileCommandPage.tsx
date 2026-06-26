@@ -127,10 +127,15 @@ export default function MobileCommandPage() {
     if (!projectId || !selectedModelId) return;
     setSyncing(true);
     try {
-      await api.post(`/api/v1/mobile/project/${projectId}/sync-model`, {
-        model_artifact_id: selectedModelId,
-        promote_as_active: promoteActive,
-      });
+      await api.post(
+        `/api/v1/mobile/project/${projectId}/sync-model`,
+        {
+          model_artifact_id: selectedModelId,
+          promote_as_active: promoteActive,
+        },
+        undefined,
+        600_000,
+      );
       await loadAll();
       window.alert('تم رفع الموديل ومزامنته مع تطبيق الهاتف');
     } catch (e) {

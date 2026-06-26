@@ -1,90 +1,38 @@
-import 'dart:math' as math;
-
+import '../config/detection_config.dart';
 import '../models/detection.dart';
 
-/// Balances upload size, inference speed, and detection accuracy.
+/// جدولة بسيطة — فترة محلية تتكيف مع زمن الاستنتاج.
 class DetectScheduler {
-  static const int _minIntervalMs = 120;
-  static const int _maxIntervalMs = 2200;
-  static const int _minCaptureWidth = 640;
-  static const int _maxCaptureWidth = 1024;
+  double displayMinConfidence(ServerConfig cfg) =>
+      cfg.minConfidence.clamp(0.25, 0.95);
+
+  double localInferMinConfidence(ServerConfig cfg) =>
+      (cfg.minConfidence * 0.82).clamp(0.22, 0.50);
+
+  double localDisplayMinConfidence(ServerConfig cfg) =>
+      cfg.minConfidence.clamp(0.28, 0.55);
+
+  int localIntervalMs({int? lastLatencyMs}) {
+    if (lastLatencyMs == null) return DetectionConfig.localDetectIntervalMs;
+    if (lastLatencyMs < 20) return 12;
+    if (lastLatencyMs < 35) return 16;
+    if (lastLatencyMs < 55) return 22;
+    if (lastLatencyMs < 90) return 33;
+    if (lastLatencyMs < 140) return 50;
+    if (lastLatencyMs < 220) return 70;
+    return 90;
+  }
 
   int nextIntervalMs(ServerConfig cfg, double speedKmh, {int? lastLatencyMs}) {
-    final fast = speedKmh >= cfg.speedFastKmh;
-    var ms = fast ? cfg.scanIntervalFastMs : cfg.scanIntervalMs;
-    if (cfg.scanFps > 0) {
-      final fromFps = (1000 / cfg.scanFps).round();
-      ms = fast ? (ms < fromFps ? ms : fromFps) : fromFps;
-    }
-
-    if (lastLatencyMs != null) {
-      if (lastLatencyMs < 300) {
-        ms = (ms * 0.5).round();
-      } else if (lastLatencyMs < 500) {
-        ms = (ms * 0.62).round();
-      } else if (lastLatencyMs < 750) {
-        ms = (ms * 0.78).round();
-      } else if (lastLatencyMs > 1600) {
-        ms = (ms * 1.35).round();
-      } else if (lastLatencyMs > 1000) {
-        ms = (ms * 1.15).round();
-      }
-    }
-
-    return ms.clamp(_minIntervalMs, _maxIntervalMs);
+    final ms = speedKmh >= cfg.speedFastKmh ? cfg.scanIntervalFastMs : cfg.scanIntervalMs;
+    return ms.clamp(200, 3000);
   }
 
-  /// Adaptive JPEG width — prioritize readable detail for the model.
-  int captureWidth(ServerConfig cfg, {int? lastLatencyMs}) {
-    final base = cfg.captureMaxWidth.clamp(_minCaptureWidth, 1280);
-    if (lastLatencyMs == null) {
-      return base.clamp(_minCaptureWidth, _maxCaptureWidth);
-    }
-    if (lastLatencyMs < 400) {
-      return base.clamp(768, _maxCaptureWidth);
-    }
-    if (lastLatencyMs < 700) {
-      return base.clamp(_minCaptureWidth, 896);
-    }
-    if (lastLatencyMs < 1100) {
-      return base.clamp(640, 768);
-    }
-    return _minCaptureWidth;
-  }
+  int captureWidth(ServerConfig cfg, {int? lastLatencyMs}) =>
+      cfg.captureMaxWidth.clamp(640, 960);
 
-  int jpegQuality(ServerConfig cfg, {int? lastLatencyMs}) {
-    final q = (cfg.jpegQuality * 100).round();
-    if (lastLatencyMs != null && lastLatencyMs > 1100) {
-      return q.clamp(72, 82);
-    }
-    return q.clamp(78, 90);
-  }
+  int jpegQuality(ServerConfig cfg, {int? lastLatencyMs}) =>
+      (cfg.jpegQuality * 100).round().clamp(75, 88);
 
-  /// Display threshold — permissive so valid boxes are not hidden on phone.
-  double displayMinConfidence(ServerConfig cfg) =>
-      (cfg.minConfidence * 0.78).clamp(0.15, cfg.minConfidence);
-
-  /// Raw ONNX decode threshold — match server conf band.
-  double localInferMinConfidence(ServerConfig cfg) =>
-      math.max(0.08, cfg.minConfidence * 0.2);
-
-  /// Display filter for on-device boxes (slightly below server threshold).
-  double localDisplayMinConfidence(ServerConfig cfg) =>
-      (cfg.minConfidence * 0.65).clamp(0.12, cfg.minConfidence);
-
-  /// On-device ONNX — target 15–30 FPS effective.
-  int localIntervalMs({int? lastLatencyMs}) {
-    if (lastLatencyMs == null) return 40;
-    if (lastLatencyMs < 45) return 25;
-    if (lastLatencyMs < 70) return 33;
-    if (lastLatencyMs < 110) return 50;
-    if (lastLatencyMs < 180) return 75;
-    if (lastLatencyMs < 280) return 100;
-    return 140;
-  }
-
-  /// YUV fast path uses model input size directly — no extra JPEG resize.
-  int localCaptureWidth(int modelInputSize) => modelInputSize.clamp(640, 640);
-
-  int localJpegQuality() => 85;
+  int localJpegQuality() => 78;
 }

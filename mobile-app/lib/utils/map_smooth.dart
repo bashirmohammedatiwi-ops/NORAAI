@@ -13,8 +13,8 @@ LatLng lerpLatLng(LatLng from, LatLng to, double t) {
 
 double lerpAngleDeg(double from, double to, double t) {
   var delta = to - from;
-  while (delta > 180) delta -= 360;
-  while (delta < -180) delta += 360;
+  while (delta > 180) { delta -= 360; }
+  while (delta < -180) { delta += 360; }
   return from + delta * t;
 }
 

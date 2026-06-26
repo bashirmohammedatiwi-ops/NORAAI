@@ -7,6 +7,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../features/emergency/models/hospital.dart';
+import '../features/emergency/services/hospital_repository.dart';
 import '../models/nearby_event.dart';
 import '../theme/app_colors.dart';
 import '../utils/event_meta.dart';
@@ -29,6 +31,9 @@ class DriveMapView extends StatefulWidget {
     this.mapZoom = 16,
     this.mapStyle = MapStyle.waze,
     this.trail = const [],
+    this.routePoints = const [],
+    this.hospitals = const [],
+    this.selectedHospital,
     this.speedLimit = 80,
     this.speedKmh,
     this.onMapMoved,
@@ -45,6 +50,9 @@ class DriveMapView extends StatefulWidget {
   final double mapZoom;
   final MapStyle mapStyle;
   final List<LatLng> trail;
+  final List<LatLng> routePoints;
+  final List<HospitalWithDistance> hospitals;
+  final Hospital? selectedHospital;
   final double speedLimit;
   final double? speedKmh;
   final List<NearbyEvent> nearbyEvents;
@@ -155,6 +163,8 @@ class _DriveMapViewState extends State<DriveMapView> with SingleTickerProviderSt
 
     final routeBlue = const Color(0xFF33A8FF);
     final routeGlow = const Color(0xFF4FC3FF);
+    final navOrange = const Color(0xFFFF6B35);
+    final navGlow = const Color(0xFFFF8C42);
 
     final retina = widget.mapStyle.useRetina && MediaQuery.devicePixelRatioOf(context) > 1.5;
 
@@ -183,6 +193,7 @@ class _DriveMapViewState extends State<DriveMapView> with SingleTickerProviderSt
               userAgentPackageName: 'com.norai.norai_drive',
               maxZoom: widget.mapStyle.maxZoom.toDouble(),
               retinaMode: retina,
+              tileDisplay: const TileDisplay.fadeIn(duration: Duration(milliseconds: 120)),
             ),
             if (widget.mapStyle.labelOverlayTemplate != null)
               TileLayer(
@@ -191,6 +202,23 @@ class _DriveMapViewState extends State<DriveMapView> with SingleTickerProviderSt
                 userAgentPackageName: 'com.norai.norai_drive',
                 maxZoom: widget.mapStyle.maxZoom.toDouble(),
                 retinaMode: retina,
+              ),
+            if (widget.routePoints.length >= 2)
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: widget.routePoints,
+                    strokeWidth: 12,
+                    color: navOrange.withValues(alpha: 0.25),
+                  ),
+                  Polyline(
+                    points: widget.routePoints,
+                    strokeWidth: 7,
+                    color: navGlow.withValues(alpha: 0.95),
+                    borderColor: Colors.white.withValues(alpha: 0.7),
+                    borderStrokeWidth: 2.5,
+                  ),
+                ],
               ),
             if (widget.trail.length >= 2)
               PolylineLayer(
@@ -238,6 +266,20 @@ class _DriveMapViewState extends State<DriveMapView> with SingleTickerProviderSt
               ),
             MarkerLayer(
               markers: [
+                ...widget.hospitals.map((item) {
+                  final h = item.hospital;
+                  final selected = widget.selectedHospital?.id == h.id;
+                  return Marker(
+                    point: LatLng(h.latitude, h.longitude),
+                    width: selected ? 52 : 44,
+                    height: selected ? 58 : 50,
+                    child: _HospitalPin(
+                      selected: selected,
+                      hasTrauma: h.hasTrauma,
+                      distanceLabel: item.distanceM > 0 ? item.distanceLabel : null,
+                    ),
+                  );
+                }),
                 ...nearest.map((e) {
                   final meta = getEventMeta(e.eventType, widget.classMeta);
                   final hot = highlightTypes.contains(e.eventType);
@@ -465,4 +507,55 @@ class _PinTailPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _PinTailPainter old) => old.color != color;
+}
+
+class _HospitalPin extends StatelessWidget {
+  const _HospitalPin({
+    required this.selected,
+    required this.hasTrauma,
+    this.distanceLabel,
+  });
+
+  final bool selected;
+  final bool hasTrauma;
+  final String? distanceLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = hasTrauma ? AppColors.danger : const Color(0xFF10B981);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: selected ? color : Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: color, width: selected ? 3 : 2),
+            boxShadow: [
+              BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: selected ? 14 : 8),
+            ],
+          ),
+          child: Icon(
+            Icons.local_hospital_rounded,
+            color: selected ? Colors.white : color,
+            size: selected ? 22 : 18,
+          ),
+        ),
+        if (distanceLabel != null)
+          Container(
+            margin: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              distanceLabel!,
+              style: TextStyle(color: color, fontSize: 8, fontWeight: FontWeight.w800),
+            ),
+          ),
+      ],
+    );
+  }
 }

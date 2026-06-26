@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config/detection_config.dart';
 import '../controllers/drive_session.dart';
 import '../theme/app_colors.dart';
+import '../features/emergency/widgets/emergency_response_sheet.dart';
 import '../widgets/drive_map_view.dart';
 import '../widgets/gps_status_banner.dart';
 import '../widgets/map_hud.dart';
@@ -24,7 +25,9 @@ class MapsAppScreen extends StatelessWidget {
 
         return Scaffold(
           backgroundColor: const Color(0xFFF1F5F9),
-          body: Column(
+          body: Stack(
+            children: [
+              Column(
             children: [
               Expanded(
                 child: Stack(
@@ -40,6 +43,11 @@ class MapsAppScreen extends StatelessWidget {
                       mapZoom: s.mapZoom,
                       mapStyle: s.mapStyle,
                       trail: s.positionTrail,
+                      routePoints: s.hospitalRoute,
+                      hospitals: (s.showEmergencySheet || s.selectedHospital != null)
+                          ? s.nearbyHospitals
+                          : const [],
+                      selectedHospital: s.selectedHospital,
                       speedLimit: limit,
                       speedKmh: speed,
                       nearbyEvents: s.nearbyEvents,
@@ -71,6 +79,16 @@ class MapsAppScreen extends StatelessWidget {
                       left: 14,
                       top: MediaQuery.of(context).padding.top + 72,
                       child: WazeSpeedLimitBadge(limit: limit, overLimit: overLimit),
+                    ),
+                    Positioned(
+                      right: 14,
+                      top: MediaQuery.of(context).padding.top + 120,
+                      child: FloatingActionButton.small(
+                        heroTag: 'emergency_map',
+                        backgroundColor: AppColors.danger,
+                    onPressed: () => s.openEmergencyPanel(fromAccident: false),
+                        child: const Icon(Icons.local_hospital_rounded, color: Colors.white),
+                      ),
                     ),
                     Positioned(
                       right: 12,
@@ -110,6 +128,29 @@ class MapsAppScreen extends StatelessWidget {
                 vibrationLevel: s.vibrationLevel,
                 vibrationAvailable: s.vibrationSensorAvailable,
               ),
+            ],
+          ),
+              if (s.showEmergencySheet)
+                Positioned.fill(
+                  child: GestureDetector(
+                    onTap: s.dismissEmergencyPanel,
+                    child: Container(color: Colors.black45),
+                  ),
+                ),
+              if (s.showEmergencySheet)
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: EmergencyResponseSheet(
+                    hospitals: s.nearbyHospitals,
+                    selectedHospital: s.selectedHospital,
+                    routingInProgress: s.hospitalRouting,
+                    routeSummary: s.hospitalRouteSummary,
+                    accidentDetected: s.accidentEmergencyActive,
+                    onDismiss: s.dismissEmergencyPanel,
+                    onSelectHospital: (h) => s.navigateToHospital(h, context),
+                    onClearRoute: s.clearHospitalRoute,
+                  ),
+                ),
             ],
           ),
         );

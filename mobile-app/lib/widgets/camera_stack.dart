@@ -2,45 +2,54 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../models/detection.dart';
+import '../utils/bbox_transform.dart';
+import '../utils/camera_orientation.dart';
 import '../utils/preview_layout.dart';
 import 'camera_preview_fit.dart';
 import 'detection_overlay.dart';
 
-/// Camera preview + detection overlay with aligned bounding boxes.
+/// معاينة الكاميرا + مربعات الاكتشاف.
 class CameraStack extends StatelessWidget {
   const CameraStack({
     super.key,
     required this.controller,
     required this.detections,
     required this.minConfidence,
-    this.scanning = false,
     this.fit = BoxFit.contain,
-    this.headwayDistanceM,
-    this.leadVehicleClass,
-    this.localInference = false,
   });
 
   final CameraController controller;
   final List<DetectionBox> detections;
   final double minConfidence;
-  final bool scanning;
   final BoxFit fit;
-  final double? headwayDistanceM;
-  final String? leadVehicleClass;
-  final bool localInference;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         PreviewLayout? layout;
+        List<DetectionBox> mapped = detections;
+
         final previewSize = controller.value.previewSize;
+        final portrait = MediaQuery.orientationOf(context) == Orientation.portrait;
+
         if (previewSize != null) {
           layout = computePreviewLayout(
             parentSize: Size(constraints.maxWidth, constraints.maxHeight),
             previewSize: previewSize,
-            portrait: MediaQuery.orientationOf(context) == Orientation.portrait,
+            portrait: portrait,
             fit: fit,
+          );
+
+          final rotation = inferenceRotationDegrees(
+            controller,
+            uiOrientation: portrait ? Orientation.portrait : Orientation.landscape,
+          );
+          final mirror = controller.description.lensDirection == CameraLensDirection.front;
+          mapped = mapDetectionsToPreview(
+            detections,
+            rotationDegrees: rotation,
+            mirrorX: mirror,
           );
         }
 
@@ -49,13 +58,9 @@ class CameraStack extends StatelessWidget {
           children: [
             CameraPreviewFit(controller: controller, fit: fit),
             DetectionOverlay(
-              detections: detections,
+              detections: mapped,
               minConfidence: minConfidence,
-              scanning: scanning,
               layout: layout,
-              headwayDistanceM: headwayDistanceM,
-              leadVehicleClass: leadVehicleClass,
-              localInference: localInference,
             ),
           ],
         );
