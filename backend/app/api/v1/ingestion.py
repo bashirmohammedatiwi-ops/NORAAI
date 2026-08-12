@@ -41,6 +41,23 @@ from app.services.ingestion.batch_upload import FilePayload, ingest_files_parall
 router = APIRouter(tags=["ingestion", "classes", "fleet"])
 
 
+def _fleet_device_response(device: FleetDevice, **extra) -> FleetDeviceResponse:
+    meta = device.extra_metadata or {}
+    return FleetDeviceResponse(
+        id=device.id,
+        device_id=device.device_id,
+        vehicle_id=device.vehicle_id,
+        driver_name=meta.get("driver_name"),
+        gps_status=device.gps_status,
+        camera_status=device.camera_status,
+        is_online=device.is_online,
+        latitude=device.latitude,
+        longitude=device.longitude,
+        last_communication=device.last_communication,
+        **extra,
+    )
+
+
 @router.post("/ingest/upload", response_model=IngestionUploadResponse)
 async def upload_images(
     project_id: UUID = Form(...),
@@ -272,30 +289,42 @@ async def delete_class_endpoint(
 @router.get("/fleet/{project_id}", response_model=list[FleetDeviceResponse])
 async def list_fleet(project_id: UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(FleetDevice).where(FleetDevice.project_id == project_id))
-    return list(result.scalars().all())
+    return [_fleet_device_response(d) for d in result.scalars().all()]
 
 
 @router.post("/fleet/{project_id}", response_model=FleetDeviceRegisterResponse)
 async def register_device(project_id: UUID, data: FleetDeviceCreate, db: AsyncSession = Depends(get_db)):
-    api_key = secrets.token_urlsafe(32)
-    device = FleetDevice(
-        project_id=project_id,
-        device_id=data.device_id,
-        vehicle_id=data.vehicle_id,
-        api_key=api_key,
+    result = await db.execute(
+        select(FleetDevice).where(FleetDevice.device_id == data.device_id)
     )
-    db.add(device)
+    existing = result.scalar_one_or_none()
+    meta: dict = dict(existing.extra_metadata or {}) if existing else {}
+    if data.driver_name:
+        meta["driver_name"] = data.driver_name.strip()
+    meta["vehicle_id"] = data.vehicle_id
+
+    if existing:
+        if existing.project_id != project_id:
+            raise HTTPException(status_code=409, detail="Device already registered to another project")
+        existing.vehicle_id = data.vehicle_id
+        existing.extra_metadata = meta
+        existing.is_online = True
+        device = existing
+        api_key = device.api_key
+    else:
+        api_key = secrets.token_urlsafe(32)
+        device = FleetDevice(
+            project_id=project_id,
+            device_id=data.device_id,
+            vehicle_id=data.vehicle_id,
+            api_key=api_key,
+            extra_metadata=meta,
+            is_online=True,
+        )
+        db.add(device)
     await db.flush()
     return FleetDeviceRegisterResponse(
-        id=device.id,
-        device_id=device.device_id,
-        vehicle_id=device.vehicle_id,
-        gps_status=device.gps_status,
-        camera_status=device.camera_status,
-        is_online=device.is_online,
-        latitude=device.latitude,
-        longitude=device.longitude,
-        last_communication=device.last_communication,
+        **_fleet_device_response(device).model_dump(),
         api_key=api_key,
         project_id=project_id,
     )
@@ -317,6 +346,10 @@ async def device_telemetry(device_id: str, data: TelemetryRequest, db: AsyncSess
     device.camera_status = data.camera_status
     device.is_online = True
     device.last_communication = datetime.now(timezone.utc)
+    if data.driver_name:
+        meta = dict(device.extra_metadata or {})
+        meta["driver_name"] = data.driver_name.strip()
+        device.extra_metadata = meta
 
     db.add(
         DeviceTelemetry(

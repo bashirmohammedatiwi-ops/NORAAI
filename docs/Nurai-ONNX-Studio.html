@@ -57,7 +57,11 @@
     .stat__val{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:600;color:var(--accent2)}
     .stage-wrap{border-radius:14px;overflow:hidden;background:#000;border:1px solid var(--line)}
     .stage{position:relative;width:100%;aspect-ratio:16/9;background:#000}
-    .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+    .stage video,.stage img.still{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+    .stage img.still{display:none}
+    .stage.mode-image video{display:none}
+    .stage.mode-image img.still{display:block}
+    .stage.mode-video img.still{display:none}
     .stage canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
     .stage canvas.emergency-layer{z-index:2}
     .empty-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted);font-size:14px;line-height:1.8;z-index:1}
@@ -115,6 +119,13 @@
     .hospital-chip--trauma{background:rgba(249,115,22,.15);color:#fdba74}
     .emergency-flow{margin-top:calc(5px * var(--vf-scale,1));padding:calc(4px * var(--vf-scale,1)) calc(6px * var(--vf-scale,1));border-radius:calc(6px * var(--vf-scale,1));background:rgba(15,23,42,.85);border:1px solid rgba(51,65,85,.5);font-size:calc(6px * var(--vf-scale,1));color:#94a3b8;text-align:center;line-height:1.45}
     .emergency-flow strong{color:#2dd4bf}
+    .mode-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+    .mode-tab{padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer}
+    .mode-tab.on{border-color:var(--accent);color:var(--accent2);background:rgba(20,184,166,.08)}
+    .toggle-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(15,23,42,.5)}
+    .toggle-row input{accent-color:var(--accent);width:18px;height:18px}
+    .toggle-row span{font-size:12px;color:var(--text);font-weight:600}
+    .toggle-row small{display:block;font-size:10px;color:var(--dim);margin-top:2px;font-weight:400}
   </style>
 </head>
 <body>
@@ -124,7 +135,7 @@
       <div class="brand__icon">N</div>
       <div>
         <h1>NURAI Vision Studio</h1>
-        <p>اختبار YOLO — ONNX / PT — فيديو محلي</p>
+        <p>اختبار YOLO — ONNX / PT — صور وفيديو · <span id="studioBuild">v3</span></p>
       </div>
     </div>
     <div class="status-pill off" id="statusPill">
@@ -157,7 +168,7 @@
       </div>
       <button class="btn" id="loadModelBtn">تحميل الموديل</button>
       <div class="field" id="classFilterField" style="display:none;margin-top:14px">
-        <label>الكلاسات على الفيديو <span style="color:var(--dim);font-weight:400">— اختر ما يظهر</span></label>
+        <label>الكلاسات <span style="color:var(--dim);font-weight:400">— اختر ما يظهر</span></label>
         <div class="class-filter-actions">
           <button type="button" class="chip-action" id="classAllBtn">تحديد الكل</button>
           <button type="button" class="chip-action" id="classNoneBtn">إخفاء الكل</button>
@@ -165,11 +176,31 @@
         <div class="class-filter" id="classFilter"></div>
       </div>
 
-      <h2 style="margin-top:18px">② الفيديو</h2>
-      <div class="field">
+      <h2 style="margin-top:18px">② الوسائط</h2>
+      <div class="mode-tabs">
+        <button type="button" class="mode-tab on" id="modeVideoBtn" data-mode="video">🎬 فيديو</button>
+        <button type="button" class="mode-tab" id="modeImageBtn" data-mode="image">🖼 صورة</button>
+      </div>
+      <div class="field" id="videoField">
         <div class="file-drop" id="videoDrop">
           <input type="file" id="videoFile" accept="video/*"/>
           <strong>🎬 اسحب فيديو</strong>
+        </div>
+      </div>
+      <div class="field" id="imageField" style="display:none">
+        <div class="file-drop" id="imageDrop">
+          <input type="file" id="imageFile" accept="image/*"/>
+          <strong>🖼 اسحب صورة (JPG · PNG · WEBP)</strong>
+          <small>دقة كاملة + اكتشاف متعدد المقاييس</small>
+        </div>
+      </div>
+      <div class="field" id="highAccField" style="display:none">
+        <div class="toggle-row">
+          <div>
+            <span>دقة اكتشاف عالية</span>
+            <small>TTA · مقاييس متعددة · تقسيم للصور الكبيرة</small>
+          </div>
+          <input type="checkbox" id="highAccToggle" checked/>
         </div>
       </div>
       <div class="field">
@@ -179,7 +210,7 @@
           <span class="range-val" id="confVal">0.10</span>
         </div>
       </div>
-      <div class="field">
+      <div class="field" id="fpsField">
         <label>معدل الاكتشاف (إطار/ث)</label>
         <div class="range-row">
           <input type="range" id="fpsSlider" min="4" max="24" step="1" value="16"/>
@@ -193,11 +224,12 @@
           <span class="range-val" id="smoothVal">10</span>
         </div>
       </div>
-      <div class="btn-row">
+      <div class="btn-row" id="videoControlsRow">
         <button class="btn" id="playBtn" disabled>▶ تشغيل + AI</button>
         <button class="btn btn--ghost" id="pauseBtn" disabled>⏸ إيقاف</button>
       </div>
       <button class="btn btn--ghost" id="stepBtn" disabled>⏭ إطار واحد</button>
+      <button class="btn" id="detectImageBtn" style="display:none" disabled>🔍 اكتشاف الصورة</button>
     </aside>
 
     <main>
@@ -210,8 +242,9 @@
       <div class="panel" style="padding:12px">
         <div class="stage-wrap">
           <div class="stage" id="stage">
-            <div class="empty-stage" id="emptyStage">حمّل الموديل ثم ارفع فيديو</div>
+            <div class="empty-stage" id="emptyStage">حمّل الموديل ثم ارفع فيديو أو صورة</div>
             <video id="video" playsinline muted></video>
+            <img id="stillImage" class="still" alt=""/>
             <canvas id="overlay"></canvas>
             <canvas id="emergencyLayer" class="emergency-layer"></canvas>
             <div class="emergency-frame" id="emergencyFrame">
@@ -251,7 +284,7 @@
             </div>
           </div>
         </div>
-        <div class="timeline">
+        <div class="timeline" id="timeline">
           <time id="timeCur">00:00</time>
           <input type="range" id="seekBar" min="0" max="1000" value="0" disabled/>
           <time id="timeDur">00:00</time>
@@ -264,6 +297,7 @@
 </div>
 
 <script>
+const STUDIO_BUILD='v3-sync';
 const API=(location.protocol==='file:'||!location.origin||location.origin==='null')
   ? 'http://127.0.0.1:8765'
   : location.origin;
@@ -320,6 +354,36 @@ function iou(a,b) {
 
 function isAccidentClass(cls){
   return /accident|crash|collision|emergency|حادث/i.test(String(cls));
+}
+function isVehicleClass(cls){
+  return /^(car|truck|bus|motorcycle|motorbike|vehicle|van|auto|bicycle|train|airplane)$/i.test(
+    String(cls||'').toLowerCase().replace(/[\s-]+/g,'_')
+  );
+}
+function isTrackVisible(tr){
+  if(tr.isAccidentFocus||tr.id==='accident-focus') return passesConfidence(tr);
+  return isClassEnabled(tr.class)&&passesConfidence(tr);
+}
+function isSurfaceClass(cls){
+  return /asfalt|parke|zemin|surface|road_tile/i.test(String(cls||'').toLowerCase());
+}
+function shouldShowTrackAtTime(tr, videoTime){
+  if(mediaMode!=='video') return true;
+  if(tr.videoTime==null) return false;
+  return videoTime>=tr.videoTime-0.001;
+}
+function refreshTrackSyncTargets(tracks, videoTime){
+  for(const tr of tracks){
+    tr._hidden=false;
+    if(tr.videoTime==null){tr._hidden=true;continue;}
+    if(videoTime+0.001<tr.videoTime){tr._hidden=true;continue;}
+    tr.stx1=tr.tx1; tr.sty1=tr.ty1; tr.stx2=tr.tx2; tr.sty2=tr.ty2;
+  }
+}
+function trackDrawBox(tr){
+  return {
+    x1:tr.stx1??tr.x1,y1:tr.sty1??tr.y1,x2:tr.stx2??tr.x2,y2:tr.sty2??tr.y2,
+  };
 }
 
 function mergeBboxes(list){
@@ -474,77 +538,233 @@ function drawEmergencyLink(layout,t,accScreen){
   ectx.setLineDash([]);
 }
 
-class AccidentFocusTracker{
+class IoUFollowTracker{
   constructor(){this.track=null;}
   reset(){this.track=null;}
-  update(detections){
-    const acc=detections.filter(d=>isAccidentClass(d.class));
-    if(!acc.length){
-      if(this.track){this.track.missed=(this.track.missed||0)+1;}
-      if((this.track?.missed||0)>8){this.track=null;}
-      return this.track?[this.track]:[];
-    }
-    const merged=mergeBboxes(acc);
-    const [mx1,my1,mx2,my2]=merged.bbox;
-    if(!this.track){
-      this.track={
-        id:'accident-focus', class:merged.class, confidence:merged.confidence,
-        x1:mx1,y1:my1,x2:mx2,y2:my2, tx1:mx1,ty1:my1,tx2:mx2,ty2:my2,
-        missed:0, birthTime:performance.now(), alertSince:performance.now(),
-      };
+  seed(det, videoTime){
+    const [x1,y1,x2,y2]=det.bbox;
+    this.track={
+      x1,y1,x2,y2,tx1:x1,ty1:y1,tx2:x2,ty2:y2,
+      stx1:x1,sty1:y1,stx2:x2,sty2:y2,
+      class:det.class,confidence:det.confidence||0.5,
+      missed:0,birthTime:performance.now(),videoTime,
+    };
+  }
+  update(dets, videoTime){
+    if(!this.track) return [];
+    const cands=dets.map(d=>{
+      const [x1,y1,x2,y2]=d.bbox;
+      return {...d,x1,y1,x2,y2};
+    });
+    if(!cands.length){
+      this.track.missed=(this.track.missed||0)+1;
+      if(this.track.missed>14){this.track=null;return[];}
       return[this.track];
     }
-    const prevIou=iou(
-      {x1:this.track.tx1,y1:this.track.ty1,x2:this.track.tx2,y2:this.track.ty2},
-      {x1:mx1,y1:my1,x2:mx2,y2:my2}
-    );
-    this.track.tx1=mx1; this.track.ty1=my1; this.track.tx2=mx2; this.track.ty2=my2;
-    this.track.confidence=merged.confidence;
-    this.track.missed=0;
-    if(prevIou<0.25){
-      this.track.x1=mx1; this.track.y1=my1; this.track.x2=mx2; this.track.y2=my2;
+    let best=null, bestIou=0;
+    for(const c of cands){
+      const v=iou(this.track,c);
+      if(v>bestIou){bestIou=v;best=c;}
     }
-    return[this.track];
+    if(best&&bestIou>=0.06){
+      this.track.tx1=best.x1; this.track.ty1=best.y1; this.track.tx2=best.x2; this.track.ty2=best.y2;
+      this.track.stx1=best.x1; this.track.sty1=best.y1; this.track.stx2=best.x2; this.track.sty2=best.y2;
+      this.track.x1=best.x1; this.track.y1=best.y1; this.track.x2=best.x2; this.track.y2=best.y2;
+      this.track.confidence=best.confidence; this.track.class=best.class;
+      this.track.missed=0; this.track.videoTime=videoTime;
+    }else{
+      this.track.missed=(this.track.missed||0)+1;
+      if(this.track.missed>14){this.track=null;return[];}
+    }
+    return this.track?[this.track]:[];
+  }
+}
+
+class AccidentFocusTracker{
+  constructor(){
+    this.followTracker=new IoUFollowTracker();
+    this.locked=false;
+    this.alertSince=0;
+  }
+  reset(){
+    this.followTracker=new IoUFollowTracker();
+    this.locked=false;
+    this.alertSince=0;
+  }
+  pickVehicle(accBbox, allDets){
+    const [ax1,ay1,ax2,ay2]=accBbox;
+    const acx=(ax1+ax2)/2, acy=(ay1+ay2)/2;
+    let best=null, bestScore=-1;
+    for(const d of allDets){
+      if(!isVehicleClass(d.class)) continue;
+      const [x1,y1,x2,y2]=d.bbox;
+      const overlap=iou({x1:ax1,y1:ay1,x2:ax2,y2:ay2},{x1,y1,x2,y2});
+      const cx=(x1+x2)/2, cy=(y1+y2)/2;
+      const dist=Math.hypot(cx-acx,cy-acy);
+      const score=overlap*0.78+(1-Math.min(dist/0.4,1))*0.22;
+      if(score>bestScore){bestScore=score;best=d;}
+    }
+    if(best&&bestScore>=0.06) return best;
+    let nearBest=null, nearScore=-1;
+    for(const d of allDets){
+      if(!isVehicleClass(d.class)) continue;
+      const [x1,y1,x2,y2]=d.bbox;
+      const cy=(y1+y2)/2;
+      if(cy<0.25) continue;
+      const cx=(x1+x2)/2;
+      const dist=Math.hypot(cx-acx,cy-acy);
+      const area=(x2-x1)*(y2-y1);
+      const score=(1-Math.min(dist/0.55,1))*0.55+Math.min(area*8,0.45);
+      if(score>nearScore){nearScore=score;nearBest=d;}
+    }
+    return nearScore>=0.2?nearBest:null;
+  }
+  pickFollowTarget(accBbox, allDets){
+    const veh=this.pickVehicle(accBbox,allDets);
+    if(veh) return veh;
+    const [ax1,ay1,ax2,ay2]=accBbox;
+    let best=null, bestScore=-1;
+    for(const d of allDets){
+      if(isAccidentClass(d.class)||isSurfaceClass(d.class)) continue;
+      const [x1,y1,x2,y2]=d.bbox;
+      const cy=(y1+y2)/2;
+      if(cy<0.18) continue;
+      const area=(x2-x1)*(y2-y1);
+      if(area<0.002||area>0.72) continue;
+      const overlap=iou({x1:ax1,y1:ay1,x2:ax2,y2:ay2},{x1,y1,x2,y2});
+      const score=overlap*0.65+Math.min(area*6,0.35);
+      if(score>bestScore){bestScore=score;best=d;}
+    }
+    return bestScore>=0.04?best:null;
+  }
+  followPool(allDets, merged){
+    const pool=allDets.filter(d=>{
+      if(isAccidentClass(d.class)||isSurfaceClass(d.class)) return false;
+      const [x1,y1,x2,y2]=d.bbox;
+      const area=(x2-x1)*(y2-y1);
+      return area>=0.002&&area<=0.72;
+    });
+    if(pool.length) return pool;
+    return merged?[merged]:[];
+  }
+  _asAccidentTrack(t){
+    return {
+      ...t,
+      id:'accident-focus',
+      isAccidentFocus:true,
+      alertSince:this.alertSince||t.birthTime,
+      displayClass:'accident',
+    };
+  }
+  update(accDets, allDets, videoTime){
+    const acc=accDets.filter(d=>isAccidentClass(d.class));
+    const merged=acc.length?mergeBboxes(acc):null;
+    if(!acc.length){
+      if(!this.locked||!this.followTracker.track) return [];
+      const pool=this.followPool(allDets, null);
+      const tracks=this.followTracker.update(pool, videoTime);
+      if(!tracks.length){this.reset();return[];}
+      return tracks.map(t=>this._asAccidentTrack(t));
+    }
+    if(!this.alertSince) this.alertSince=performance.now();
+    if(!this.locked){
+      this.locked=true;
+      const target=this.pickFollowTarget(merged.bbox,allDets)||merged;
+      this.followTracker.seed(target, videoTime);
+      log(`🚨 حادث — تتبع: ${labelAr(target.class)} @ ${videoTime.toFixed(2)}s`);
+    }
+    const pool=this.followPool(allDets, merged);
+    const tracks=this.followTracker.update(pool, videoTime);
+    if(!tracks.length){this.reset();return[];}
+    return tracks.map(t=>this._asAccidentTrack(t));
   }
 }
 
 class BoxTracker {
   constructor(){this.tracks=new Map();this.nextId=0;}
-  update(detections, dt, smooth=10) {
-    const alpha=Math.min(1,dt*smooth), used=new Set();
-    const dets=detections.map(d=>{const [x1,y1,x2,y2]=d.bbox;return {...d,x1,y1,x2,y2,cx:(x1+x2)/2,cy:(y1+y2)/2};});
+  _targetBox(tr){
+    return {x1:tr.tx1,y1:tr.ty1,x2:tr.tx2,y2:tr.ty2};
+  }
+  _predictMatchBox(tr){
+    return this._targetBox(tr);
+  }
+  _classMatch(a,b){
+    if(a===b) return true;
+    const ka=String(a||'').toLowerCase().replace(/[\s-]+/g,'_');
+    const kb=String(b||'').toLowerCase().replace(/[\s-]+/g,'_');
+    if(ka===kb) return true;
+    if(/^(pothole|pothile|speedbreaker|speed_breacker)$/.test(ka)&&/^(pothole|pothile|speedbreaker|speed_breacker)$/.test(kb)) return true;
+    if(isVehicleClass(a)&&isVehicleClass(b)) return true;
+    return false;
+  }
+  _matchScore(tr,det){
+    const box=this._predictMatchBox(tr);
+    const i=iou(box,det);
+    const tcx=(box.x1+box.x2)/2, tcy=(box.y1+box.y2)/2;
+    const tw=Math.max(0.001,box.x2-box.x1), th=Math.max(0.001,box.y2-box.y1);
+    const dist=Math.hypot(tcx-det.cx,tcy-det.cy);
+    const norm=dist/Math.max(tw,th);
+    return i*0.72+Math.max(0,1-Math.min(norm,1.5))*0.28;
+  }
+  _updateVelocity(tr,det,videoTime){
+    const prevVt=tr.videoTime;
+    if(prevVt==null||videoTime==null){tr.lastMatchAt=performance.now();return;}
+    const vdt=Math.max(1/30,videoTime-prevVt);
+    const nx=(det.x1+det.x2)/2, ny=(det.y1+det.y2)/2;
+    const ox=(tr.tx1+tr.tx2)/2, oy=(tr.ty1+tr.ty2)/2;
+    const rawVx=(nx-ox)/vdt, rawVy=(ny-oy)/vdt;
+    const cap=2.2;
+    tr.vx=Math.max(-cap,Math.min(cap,rawVx*0.45+(tr.vx||0)*0.55));
+    tr.vy=Math.max(-cap,Math.min(cap,rawVy*0.45+(tr.vy||0)*0.55));
+    tr.lastMatchAt=performance.now();
+  }
+  update(detections, frameDt=1/16, videoTime=null){
+    const used=new Set();
+    const dets=detections.map(d=>{
+      const [x1,y1,x2,y2]=d.bbox;
+      return {...d,x1,y1,x2,y2,cx:(x1+x2)/2,cy:(y1+y2)/2};
+    });
     const pairs=[];
     for(const [id,tr] of this.tracks){
       for(const det of dets){
-        if(tr.class!==det.class) continue;
-        const score=iou(tr,det)*0.75+(1-Math.hypot(tr.cx-det.cx,tr.cy-det.cy))*0.25;
+        if(!this._classMatch(tr.class,det.class)) continue;
+        const score=this._matchScore(tr,det);
         if(score>0.12) pairs.push({id,det,score});
       }
     }
     pairs.sort((a,b)=>b.score-a.score);
+    const matchedDets=new Set();
     for(const {id,det} of pairs){
-      if(used.has(id)) continue;
-      const idx=dets.indexOf(det);
-      if(idx<0||dets[idx]._used) continue;
+      if(used.has(id)||matchedDets.has(det)) continue;
       const tr=this.tracks.get(id);
+      const wasMissed=(tr.missed||0)>0;
+      const prevIou=iou(this._predictMatchBox(tr),det);
+      this._updateVelocity(tr,det,videoTime);
       tr.tx1=det.x1; tr.ty1=det.y1; tr.tx2=det.x2; tr.ty2=det.y2;
-      tr.confidence=det.confidence; tr.missed=0; used.add(id); dets[idx]._used=true;
+      tr.confidence=det.confidence; tr.class=det.class; tr.missed=0;
+      if(videoTime!=null) tr.videoTime=videoTime;
+      if(prevIou<0.08||wasMissed){
+        tr.x1=det.x1; tr.y1=det.y1; tr.x2=det.x2; tr.y2=det.y2;
+        tr.stx1=det.x1; tr.sty1=det.y1; tr.stx2=det.x2; tr.sty2=det.y2;
+      }
+      used.add(id); matchedDets.add(det);
     }
     for(const det of dets){
-      if(det._used) continue;
+      if(matchedDets.has(det)) continue;
       const id=this.nextId++;
-      this.tracks.set(id, {
-        id, class:det.class, confidence:det.confidence,
-        x1:det.x1,y1:det.y1,x2:det.x2,y2:det.y2, tx1:det.x1,ty1:det.y1,tx2:det.x2,ty2:det.y2, missed:0,
-        birthTime:performance.now(),
+      this.tracks.set(id,{
+        id,class:det.class,confidence:det.confidence,
+        x1:det.x1,y1:det.y1,x2:det.x2,y2:det.y2,
+        tx1:det.x1,ty1:det.y1,tx2:det.x2,ty2:det.y2,
+        stx1:det.x1,sty1:det.y1,stx2:det.x2,sty2:det.y2,
+        vx:0,vy:0,missed:0,birthTime:performance.now(),lastMatchAt:performance.now(),
+        videoTime,
       });
     }
     const out=[];
     for(const [id,tr] of this.tracks){
       if(!used.has(id)) tr.missed=(tr.missed||0)+1;
-      tr.x1+=(tr.tx1-tr.x1)*alpha; tr.y1+=(tr.ty1-tr.y1)*alpha;
-      tr.x2+=(tr.tx2-tr.x2)*alpha; tr.y2+=(tr.ty2-tr.y2)*alpha;
-      if(tr.missed>8){this.tracks.delete(id);continue;}
+      if(tr.missed>10){this.tracks.delete(id);continue;}
       if(!tr.birthTime) tr.birthTime=performance.now();
       out.push(tr);
     }
@@ -554,25 +774,60 @@ class BoxTracker {
 
 const tracker=new BoxTracker();
 const accidentFocus=new AccidentFocusTracker();
-let modelLoaded=false, inferBusy=false, playing=false, rafId=null, lastInferAt=0;
+let modelLoaded=false, inferBusy=false, playing=false, rafId=null, lastInferAt=0, lastInferFrameAt=0;
 let modelImageSize=640;
 let frameCount=0, fpsAccum=0, fpsLast=performance.now(), manifestData=null;
 let lastTracks=[], renderRaf=null;
 let enabledClasses=new Set(), allModelClasses=[];
 let animTime=0;
 let emergencySince=0;
+let mediaMode='video';
+let stillImageLoaded=false;
 
-const video=$('video'), canvas=$('overlay'), ctx=canvas.getContext('2d');
+const video=$('video'), stillImage=$('stillImage'), canvas=$('overlay'), ctx=canvas.getContext('2d');
 const emergencyCanvas=$('emergencyLayer'), ectx=emergencyCanvas.getContext('2d');
 const stageEl=$('stage');
 let dpr=window.devicePixelRatio||1;
 
+function getMediaSize(){
+  if(mediaMode==='image'&&stillImageLoaded){
+    return {w:stillImage.naturalWidth,h:stillImage.naturalHeight};
+  }
+  return {w:video.videoWidth,h:video.videoHeight};
+}
+
 function getVideoLayout(){
   const cw=stageEl.clientWidth, ch=stageEl.clientWidth?stageEl.clientHeight:0;
-  const vw=video.videoWidth, vh=video.videoHeight;
+  const {w:vw,h:vh}=getMediaSize();
   if(!vw||!vh) return {cw,ch,ox:0,oy:0,dw:cw,dh:ch};
   const scale=Math.min(cw/vw,ch/vh), dw=vw*scale, dh=vh*scale;
   return {cw,ch,ox:(cw-dw)/2,oy:(ch-dh)/2,dw,dh};
+}
+
+function setMediaMode(mode){
+  mediaMode=mode;
+  $('modeVideoBtn').classList.toggle('on',mode==='video');
+  $('modeImageBtn').classList.toggle('on',mode==='image');
+  $('videoField').style.display=mode==='video'?'block':'none';
+  $('imageField').style.display=mode==='image'?'block':'none';
+  $('highAccField').style.display=mode==='image'?'block':'none';
+  $('videoControlsRow').style.display=mode==='video'?'grid':'none';
+  $('stepBtn').style.display=mode==='video'?'block':'none';
+  $('detectImageBtn').style.display=mode==='image'?'block':'none';
+  $('fpsField').style.display=mode==='video'?'block':'none';
+  $('timeline').style.display=mode==='video'?'flex':'none';
+  stageEl.classList.toggle('mode-image',mode==='image');
+  stageEl.classList.toggle('mode-video',mode==='video');
+  if(mode==='video') pause();
+  resizeCanvas();
+  updateMediaButtons();
+}
+
+function updateMediaButtons(){
+  const hasMedia=mediaMode==='image'?stillImageLoaded:!!video.src;
+  $('playBtn').disabled=!modelLoaded||!video.src||mediaMode!=='video';
+  $('stepBtn').disabled=!modelLoaded||!video.src||mediaMode!=='video';
+  $('detectImageBtn').disabled=!modelLoaded||!stillImageLoaded||mediaMode!=='image';
 }
 
 function resizeCanvas(){
@@ -617,8 +872,9 @@ function onConfidenceChanged(){
     if((tr.confidence||0)<confidenceFloor(tr.class,minConf)) tracker.tracks.delete(id);
   }
   accidentFocus.reset();
-  lastTracks=lastTracks.filter(t=>passesConfidence(t)&&isClassEnabled(t.class));
+  lastTracks=lastTracks.filter(t=>isTrackVisible(t));
   drawBoxes(lastTracks);
+  if(mediaMode==='image'&&stillImageLoaded&&modelLoaded&&!inferBusy) inferImage();
 }
 
 function applyClassFilter(){
@@ -629,7 +885,7 @@ function applyClassFilter(){
     accidentFocus.reset();
     emergencySince=0;
   }
-  lastTracks=lastTracks.filter(t=>isClassEnabled(t.class));
+  lastTracks=lastTracks.filter(t=>isTrackVisible(t));
   drawBoxes(lastTracks);
 }
 
@@ -734,7 +990,8 @@ function drawAccidentBox(ctx,x,y,w,h,tr,t){
     ctx.fillRect(x,y,w,h);
   }
 
-  const label=`🚨 ${labelAr(tr.class)} ${(tr.confidence*100).toFixed(0)}%`;
+  const labelCls=tr.displayClass||tr.class;
+  const label=`🚨 ${labelAr(labelCls)} ${(tr.confidence*100).toFixed(0)}%`;
   ctx.font='700 13px "IBM Plex Sans Arabic",sans-serif';
   const tw=ctx.measureText(label).width+18, lh=26;
   const lx=x, ly=Math.max(y-lh-8,4);
@@ -873,8 +1130,22 @@ function drawStandardBox(ctx,x,y,w,h,tr,t,col){
 
 function drawBoxes(tracks,t=performance.now()){
   animTime=t;
-  const visible=tracks.filter(tr=>isClassEnabled(tr.class)&&passesConfidence(tr));
+  const videoTime=mediaMode==='video'?video.currentTime:0;
+  refreshTrackSyncTargets(tracks,videoTime);
+  const visible=tracks.filter(tr=>isTrackVisible(tr)&&shouldShowTrackAtTime(tr,videoTime)&&!tr._hidden);
   lastTracks=visible;
+  paintOverlay(t);
+  if(lastTracks.length||emergencySince) startRenderLoop();
+  else{
+    ectx.setTransform(dpr,0,0,dpr,0,0);
+    ectx.clearRect(0,0,getVideoLayout().cw,getVideoLayout().ch);
+  }
+}
+
+function paintOverlay(t=performance.now()){
+  const videoTime=mediaMode==='video'?video.currentTime:0;
+  refreshTrackSyncTargets(lastTracks,videoTime);
+  const visible=lastTracks.filter(tr=>!tr._hidden&&shouldShowTrackAtTime(tr,videoTime));
   const layout=getVideoLayout();
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,layout.cw,layout.ch);
@@ -883,21 +1154,20 @@ function drawBoxes(tracks,t=performance.now()){
     ectx.clearRect(0,0,layout.cw,layout.ch);
     return;
   }
-
   let accScreen=null;
-  const accTrack=visible.find(tr=>isAccidentClass(tr.class));
+  const accTrack=visible.find(tr=>tr.isAccidentFocus||isAccidentClass(tr.class));
   if(accTrack){
     if(!emergencySince) emergencySince=accTrack.alertSince||accTrack.birthTime||t;
-  }else{
+  }else if(!visible.length){
     emergencySince=0;
   }
-
   for(const tr of visible){
-    const x=layout.ox+tr.x1*layout.dw, y=layout.oy+tr.y1*layout.dh;
-    const w=(tr.x2-tr.x1)*layout.dw, h=(tr.y2-tr.y1)*layout.dh;
+    const box=trackDrawBox(tr);
+    const x=layout.ox+box.x1*layout.dw, y=layout.oy+box.y1*layout.dh;
+    const w=(box.x2-box.x1)*layout.dw, h=(box.y2-box.y1)*layout.dh;
     if(w<2||h<2) continue;
-    const col=colorFor(tr.class);
-    if(isAccidentClass(tr.class)){
+    const col=colorFor(tr.displayClass||tr.class);
+    if(tr.isAccidentFocus||isAccidentClass(tr.class)){
       accScreen=drawAccidentBox(ctx,x,y,w,h,tr,t);
     }else if(isSpeedBumpClass(tr.class)){
       drawSpeedBumpBox(ctx,x,y,w,h,tr,t);
@@ -905,19 +1175,16 @@ function drawBoxes(tracks,t=performance.now()){
       drawStandardBox(ctx,x,y,w,h,tr,t,col);
     }
   }
-
   drawEmergencyLink(layout,t,accScreen);
   syncEmergencyUI(t,!!accTrack,layout);
-
   $('statTracks').textContent=visible.length;
-  const classes=[...new Set(visible.map(tr=>tr.class))];
+  const classes=[...new Set(visible.map(tr=>tr.displayClass||tr.class))];
   $('legend').innerHTML=classes.map(c=>{
-    const acc=isAccidentClass(c);
+    const acc=/accident|حادث/i.test(c);
     const bump=isSpeedBumpClass(c);
-    return `<div class="legend-item"${acc?' style="border-color:#ef4444;box-shadow:0 0 12px rgba(239,68,68,.25)"':bump?' style="border-color:#FF8000;box-shadow:0 0 14px rgba(255,128,0,.35)"':''}><span class="legend-dot" style="background:${colorFor(c)}${acc?';animation:pulse 1s ease-in-out infinite':bump?';animation:bumpPulse 1.2s ease-in-out infinite':''}"></span>${acc?'🚨 ':bump?'⛰ ':''}${labelAr(c)}</div>`;
+    return `<div class="legend-item"${acc?' style="border-color:#ef4444;box-shadow:0 0 12px rgba(239,68,68,.25)"':bump?' style="border-color:#FF8000;box-shadow:0 0 14px rgba(255,128,0,.35)"':''}"><span class="legend-dot" style="background:${colorFor(c)}${acc?';animation:pulse 1s ease-in-out infinite':bump?';animation:bumpPulse 1.2s ease-in-out infinite':''}"></span>${acc?'🚨 ':bump?'⛰ ':''}${labelAr(c)}</div>`;
   }).join('');
-  if(visible.length||emergencySince) startRenderLoop();
-  else{
+  if(!visible.length&&!emergencySince){
     ectx.setTransform(dpr,0,0,dpr,0,0);
     ectx.clearRect(0,0,layout.cw,layout.ch);
   }
@@ -929,22 +1196,19 @@ function startRenderLoop(){
   function tick(now){
     animTime=now;
     const dt=Math.min(0.05,(now-last)/1000); last=now;
-    if(lastTracks.length||emergencySince){
+    const videoTime=mediaMode==='video'?video.currentTime:0;
+    if(lastTracks.length||emergencySince||playing){
+      refreshTrackSyncTargets(lastTracks,videoTime);
       const s=+$('smoothSlider').value;
       for(const tr of lastTracks){
-        if(tr.id==='accident-focus') continue;
-        const a=Math.min(1,dt*s);
-        tr.x1+=(tr.tx1-tr.x1)*a; tr.y1+=(tr.ty1-tr.y1)*a;
-        tr.x2+=(tr.tx2-tr.x2)*a; tr.y2+=(tr.ty2-tr.y2)*a;
+        if(tr._hidden) continue;
+        const tx1=tr.stx1??tr.tx1, ty1=tr.sty1??tr.ty1, tx2=tr.stx2??tr.tx2, ty2=tr.sty2??tr.ty2;
+        const a=1-Math.exp(-dt*(tr.isAccidentFocus?ACC_LERP:s));
+        tr.x1+=(tx1-tr.x1)*a; tr.y1+=(ty1-tr.y1)*a;
+        tr.x2+=(tx2-tr.x2)*a; tr.y2+=(ty2-tr.y2)*a;
       }
-      const acc=lastTracks.find(tr=>tr.id==='accident-focus');
-      if(acc){
-        const a=1-Math.exp(-dt*ACC_LERP);
-        acc.x1+=(acc.tx1-acc.x1)*a; acc.y1+=(acc.ty1-acc.y1)*a;
-        acc.x2+=(acc.tx2-acc.x2)*a; acc.y2+=(acc.ty2-acc.y2)*a;
-      }
-      drawBoxes(lastTracks,now);
-    }else if(!playing){
+      paintOverlay(now);
+    }else{
       stopRenderLoop();
       return;
     }
@@ -1034,15 +1298,16 @@ async function loadSelectedModel(){
     accidentFocus.reset();
     emergencySince=0;
     lastTracks=[];
-    $('playBtn').disabled=!video.src; $('stepBtn').disabled=!video.src;
+    updateMediaButtons();
     log('✓ تم تحميل الموديل');
   }catch(e){log('✗ '+e.message);}
 }
 
-function captureFrameBlob(){
+function captureFrameSnapshot(){
   const vw=video.videoWidth, vh=video.videoHeight;
-  if(!vw||!vh) return Promise.resolve(null);
-  const captureW=Math.max(640, modelImageSize||640);
+  if(!vw||!vh) return null;
+  const videoTime=video.currentTime;
+  const captureW=Math.max(modelImageSize||640, 640);
   let cw=vw, ch=vh;
   if(vw>captureW){
     cw=captureW;
@@ -1051,40 +1316,116 @@ function captureFrameBlob(){
   const off=document.createElement('canvas');
   off.width=cw; off.height=ch;
   off.getContext('2d').drawImage(video,0,0,cw,ch);
-  return new Promise(r=>off.toBlob(r,'image/jpeg',0.78));
+  return {off,videoTime};
+}
+
+async function captureFrameBlob(){
+  const snap=captureFrameSnapshot();
+  if(!snap) return null;
+  const blob=await new Promise(r=>snap.off.toBlob(r,'image/jpeg',0.88));
+  return {blob,videoTime:snap.videoTime};
+}
+
+function captureImageBlob(){
+  const w=stillImage.naturalWidth, h=stillImage.naturalHeight;
+  if(!w||!h) return Promise.resolve(null);
+  const off=document.createElement('canvas');
+  off.width=w; off.height=h;
+  off.getContext('2d').drawImage(stillImage,0,0);
+  return new Promise(r=>off.toBlob(r,'image/png'));
+}
+
+async function runDetection(blob, {highAccuracy=false}={}){
+  const conf=$('confSlider').value;
+  const ha=highAccuracy?'&high_accuracy=true':'';
+  const data=await api(`/api/detect?min_confidence=${conf}&iou=0.45${ha}`,{
+    method:'POST',
+    headers:{'Content-Type': highAccuracy?'image/png':'image/jpeg'},
+    body:blob,
+  });
+  return data;
+}
+
+async function inferImage(){
+  if(!modelLoaded||inferBusy||!stillImageLoaded) return;
+  inferBusy=true;
+  const t0=performance.now();
+  const blob=await captureImageBlob();
+  if(!blob){inferBusy=false;return;}
+  try{
+    const highAcc=$('highAccToggle').checked;
+    const data=await runDetection(blob,{highAccuracy:highAcc});
+    const dt=Math.max(0.016,(performance.now()-t0)/1000);
+    tracker.tracks.clear();
+    accidentFocus.reset();
+    emergencySince=0;
+    const filtered=filterDetections(data.detections);
+    const confPassed=data.detections.filter(passesConfidence);
+    const accDets=filtered.filter(d=>isAccidentClass(d.class));
+    const otherDets=filtered.filter(d=>!isAccidentClass(d.class));
+    const accTracks=accidentFocus.update(accDets,confPassed,0);
+    const otherTracks=tracker.update(otherDets);
+    const tracks=[...accTracks,...otherTracks];
+    drawBoxes(tracks); startRenderLoop();
+    $('statLatency').textContent=data.latency_ms+'ms';
+    $('statCount').textContent=tracks.length;
+    $('statFps').textContent=highAcc?'HA':'—';
+    log(`🖼 ${tracks.length} اكتشاف · ${data.latency_ms}ms${highAcc?' · دقة عالية':''}`);
+  }catch(e){log('✗ '+e.message);}
+  finally{inferBusy=false;}
 }
 
 async function inferFrame(){
-  if(!modelLoaded||inferBusy||video.readyState<2) return;
+  if(!modelLoaded||inferBusy||video.readyState<2||mediaMode!=='video') return;
   inferBusy=true;
-  const t0=performance.now();
-  const blob=await captureFrameBlob();
-  if(!blob){inferBusy=false;return;}
+  const resumePlayback=playing&&!video.paused;
+  if(resumePlayback) video.pause();
+  const inferStart=performance.now();
+  const frameDt=lastInferFrameAt
+    ?Math.min(0.35,Math.max(1/30,(inferStart-lastInferFrameAt)/1000))
+    :1/+$('fpsSlider').value;
+  lastInferFrameAt=inferStart;
+  const snap=captureFrameSnapshot();
+  if(!snap){
+    inferBusy=false;
+    if(resumePlayback&&playing) video.play();
+    return;
+  }
+  const videoTime=snap.videoTime;
+  let blob;
   try{
-    const conf=$('confSlider').value;
-    const data=await api(`/api/detect?min_confidence=${conf}&iou=0.45`,{
-      method:'POST', headers:{'Content-Type':'image/jpeg'}, body:blob,
-    });
-    const dt=Math.max(0.016,(performance.now()-t0)/1000);
+    blob=await new Promise(r=>snap.off.toBlob(r,'image/jpeg',0.88));
+  }catch(e){
+    inferBusy=false;
+    if(resumePlayback&&playing) video.play();
+    return;
+  }
+  try{
+    const data=await runDetection(blob,{highAccuracy:false});
+    if(Math.abs(video.currentTime-videoTime)>0.04) video.currentTime=videoTime;
     const filtered=filterDetections(data.detections);
+    const confPassed=data.detections.filter(passesConfidence);
     for(const [id,tr] of tracker.tracks){
       if(isAccidentClass(tr.class)) tracker.tracks.delete(id);
     }
     const accDets=filtered.filter(d=>isAccidentClass(d.class));
     const otherDets=filtered.filter(d=>!isAccidentClass(d.class));
-    const accTracks=accidentFocus.update(accDets);
-    const otherTracks=tracker.update(otherDets,dt,+$('smoothSlider').value);
+    const accTracks=accidentFocus.update(accDets,confPassed,videoTime);
+    const otherTracks=tracker.update(otherDets,frameDt,videoTime);
     const tracks=[...accTracks,...otherTracks];
-    drawBoxes(tracks); startRenderLoop();
+    drawBoxes(tracks);
     $('statLatency').textContent=data.latency_ms+'ms';
     $('statCount').textContent=tracks.length;
-    frameCount++; fpsAccum+=1000/dt;
+    frameCount++; fpsAccum+=1000/frameDt;
     if(performance.now()-fpsLast>1000){
       $('statFps').textContent=Math.round(fpsAccum/frameCount);
       frameCount=0; fpsAccum=0; fpsLast=performance.now();
     }
   }catch(e){log('✗ '+e.message);}
-  finally{inferBusy=false;}
+  finally{
+    inferBusy=false;
+    if(resumePlayback&&playing) video.play();
+  }
 }
 
 function loop(){
@@ -1097,10 +1438,20 @@ function loop(){
   rafId=requestAnimationFrame(loop);
 }
 
+function resetVideoTracks(){
+  tracker.tracks.clear();
+  accidentFocus.reset();
+  emergencySince=0;
+  lastTracks=[];
+  lastInferFrameAt=0;
+  resetEmergencyUI();
+}
+
 function play(){
-  if(!video.src) return;
+  if(!video.src||mediaMode!=='video') return;
   playing=true; video.play(); startRenderLoop();
   $('playBtn').disabled=true; $('pauseBtn').disabled=false;
+  lastInferAt=0; lastInferFrameAt=0;
   loop(); log('▶ تشغيل');
 }
 function pause(){
@@ -1117,10 +1468,18 @@ $('confSlider').oninput=onConfidenceChanged;
 $('loadModelBtn').onclick=loadSelectedModel;
 $('classAllBtn').onclick=()=>setAllClassFilters(true);
 $('classNoneBtn').onclick=()=>setAllClassFilters(false);
+$('modeVideoBtn').onclick=()=>setMediaMode('video');
+$('modeImageBtn').onclick=()=>setMediaMode('image');
+$('detectImageBtn').onclick=inferImage;
 $('playBtn').onclick=play;
 $('pauseBtn').onclick=pause;
 $('stepBtn').onclick=inferFrame;
-$('seekBar').oninput=()=>{if(video.duration) video.currentTime=($('seekBar').value/1000)*video.duration;};
+$('seekBar').oninput=()=>{
+  if(!video.duration) return;
+  video.currentTime=($('seekBar').value/1000)*video.duration;
+  resetVideoTracks();
+  if(modelLoaded&&mediaMode==='video') inferFrame();
+};
 
 function setupDrop(dropId,inputId,onFile){
   const drop=$(dropId), input=$(inputId);
@@ -1136,22 +1495,40 @@ setupDrop('manifestDrop','manifestFile',f=>{
   $('manifestName').textContent=f.name; f.text().then(t=>{manifestData=JSON.parse(t);});
 });
 setupDrop('videoDrop','videoFile',f=>{
+  setMediaMode('video');
   video.src=URL.createObjectURL(f);
   video.onloadedmetadata=()=>{
     $('emptyStage').style.display='none';
     $('timeDur').textContent=fmtTime(video.duration);
     $('seekBar').disabled=false;
-    $('playBtn').disabled=!modelLoaded; $('stepBtn').disabled=!modelLoaded;
+    updateMediaButtons();
     resizeCanvas(); log('🎬 '+f.name);
+    resetVideoTracks();
+  };
+});
+setupDrop('imageDrop','imageFile',f=>{
+  setMediaMode('image');
+  stillImage.onload=()=>{
+    stillImageLoaded=true;
+    $('emptyStage').style.display='none';
+    updateMediaButtons();
+    resizeCanvas();
+    log('🖼 '+f.name+' · '+stillImage.naturalWidth+'×'+stillImage.naturalHeight);
     emergencySince=0; accidentFocus.reset(); lastTracks=[];
     resetEmergencyUI();
+    if(modelLoaded) inferImage();
   };
+  stillImage.src=URL.createObjectURL(f);
 });
 $('emergencyClose').onclick=dismissEmergencyUI;
 $('emergencyBackdrop').onclick=dismissEmergencyUI;
 renderHospitalList();
 syncEmergencyUILayout(getVideoLayout());
 window.onresize=resizeCanvas;
+setMediaMode('video');
+const buildEl=$('studioBuild');
+if(buildEl) buildEl.textContent=STUDIO_BUILD;
+log(`Studio ${STUDIO_BUILD} — حدّث الصفحة: Ctrl+Shift+R`);
 (async()=>{
   await checkStatus();
   await loadModels();

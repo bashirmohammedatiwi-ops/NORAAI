@@ -1,5 +1,18 @@
 from functools import lru_cache
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+
+
+def backend_root() -> Path:
+    return _BACKEND_ROOT
+
+
+def resolve_data_path(relative: str) -> Path:
+    path = Path(relative)
+    return path if path.is_absolute() else _BACKEND_ROOT / path
 
 
 class Settings(BaseSettings):
@@ -95,6 +108,13 @@ class Settings(BaseSettings):
 
     # Google Maps Platform — Roads API (speed limits on map-matched roads)
     google_maps_api_key: str = ""
+
+    # Cloud Run YOLO predict API (Ultralytics dedicated endpoint — exp-3-turin)
+    cloud_predict_url: str = "https://predict-6a7b9e67b578285046a4f04c-dproatj77a-og.a.run.app"
+    cloud_predict_api_key: str = ""
+
+    evidence_upload_dir: str = "uploads/evidence"
+    demo_images_dir: str = "demo_images"
 
 
 @lru_cache

@@ -51,6 +51,7 @@ minio_data/
 # ML artifacts
 *.pt
 *.onnx
+!rasid_auto/assets/models/model.onnx
 runs/
 /tmp/training/
 
@@ -67,3 +68,6 @@ data/pothole_samples/*.png
 # Secrets
 *.pem
 *.key
+
+# Uploaded alert evidence (local demo)
+backend/uploads/

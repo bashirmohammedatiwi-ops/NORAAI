@@ -200,8 +200,10 @@ def looks_like_roboflow(classes: list[str]) -> bool:
 STUDIO_DECODE_FLOOR = 0.01  # match backend / phone cloud ONNX — decode wide, filter after
 
 
-def effective_class_confidence(class_name: str, base: float) -> float:
+def effective_class_confidence(class_name: str, base: float, *, high_accuracy: bool = False) -> float:
     """Per-class floors — bumps/potholes share a lower floor unless user is in strict mode."""
+    if high_accuracy:
+        return base
     key = normalize_class_key(class_name)
     if base >= 0.55:
         return base
@@ -214,9 +216,11 @@ def effective_class_confidence(class_name: str, base: float) -> float:
     return base
 
 
-def mobile_infer_confidence(min_confidence: float) -> float:
+def mobile_infer_confidence(min_confidence: float, *, high_accuracy: bool = False) -> float:
     """Post-decode filter threshold (user slider). Decode itself uses STUDIO_DECODE_FLOOR."""
     user = max(0.01, min(0.99, float(min_confidence)))
+    if high_accuracy:
+        return user
     if user >= 0.45:
         return user
     if user <= 0.15:
@@ -371,26 +375,133 @@ def get_phone_aux_model() -> "ModelSession | None":
     return _AUX_PHONE_MODEL
 
 
-def prepare_input(image_bytes: bytes, imgsz: int, *, stretch: bool) -> tuple[np.ndarray, int, int, dict]:
-    arr = np.frombuffer(image_bytes, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError("Could not decode image")
-    orig_h, orig_w = img.shape[:2]
-    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+def _resize_rgb_smart(rgb: np.ndarray, new_w: int, new_h: int) -> np.ndarray:
+    oh, ow = rgb.shape[:2]
+    interp = cv2.INTER_AREA if (new_w < ow or new_h < oh) else cv2.INTER_CUBIC
+    return cv2.resize(rgb, (new_w, new_h), interpolation=interp)
+
+
+def _prepare_bgr(bgr: np.ndarray, imgsz: int, *, stretch: bool) -> tuple[np.ndarray, int, int, dict]:
+    orig_h, orig_w = bgr.shape[:2]
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     prep: dict = {"stretch": stretch, "imgsz": imgsz, "gain": 1.0, "pad_top": 0, "pad_left": 0}
     if stretch:
-        resized = cv2.resize(rgb, (imgsz, imgsz), interpolation=cv2.INTER_LINEAR)
+        resized = _resize_rgb_smart(rgb, imgsz, imgsz)
     else:
         gain, new_w, new_h, pad_top, pad_left = letterbox_layout(orig_w, orig_h, imgsz)
         prep.update({"gain": gain, "pad_top": pad_top, "pad_left": pad_left})
-        resized = cv2.resize(rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+        resized = _resize_rgb_smart(rgb, new_w, new_h)
         canvas = np.full((imgsz, imgsz, 3), 114, dtype=np.uint8)
         canvas[pad_top : pad_top + new_h, pad_left : pad_left + new_w] = resized
         resized = canvas
     tensor = resized.astype(np.float32) / 255.0
     tensor = np.transpose(tensor, (2, 0, 1))[None, ...]
     return tensor, orig_w, orig_h, prep
+
+
+def prepare_input(image_bytes: bytes, imgsz: int, *, stretch: bool) -> tuple[np.ndarray, int, int, dict]:
+    arr = np.frombuffer(image_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("Could not decode image")
+    return _prepare_bgr(img, imgsz, stretch=stretch)
+
+
+def _merge_detection_boxes(boxes: list[dict], iou_thresh: float) -> list[dict]:
+    if not boxes:
+        return []
+    nms_in: list[dict] = []
+    for det in boxes:
+        bb = det.get("bbox") or [0.0, 0.0, 0.0, 0.0]
+        nms_in.append(
+            {
+                **det,
+                "x1": float(bb[0]),
+                "y1": float(bb[1]),
+                "x2": float(bb[2]),
+                "y2": float(bb[3]),
+            }
+        )
+    kept = nms(nms_in, iou_thresh=iou_thresh)
+    for det in kept:
+        det.pop("x1", None)
+        det.pop("y1", None)
+        det.pop("x2", None)
+        det.pop("y2", None)
+    return kept
+
+
+def _flip_boxes_horizontal(boxes: list[dict]) -> list[dict]:
+    flipped: list[dict] = []
+    for det in boxes:
+        bb = det.get("bbox") or [0.0, 0.0, 0.0, 0.0]
+        x1, y1, x2, y2 = (float(v) for v in bb)
+        flipped.append({**det, "bbox": [1.0 - x2, y1, 1.0 - x1, y2]})
+    return flipped
+
+
+def _map_tile_boxes(
+    boxes: list[dict],
+    tile_x1: int,
+    tile_y1: int,
+    tile_x2: int,
+    tile_y2: int,
+    full_w: int,
+    full_h: int,
+) -> list[dict]:
+    tw = max(1, tile_x2 - tile_x1)
+    th = max(1, tile_y2 - tile_y1)
+    mapped: list[dict] = []
+    for det in boxes:
+        bb = det.get("bbox") or [0.0, 0.0, 0.0, 0.0]
+        x1, y1, x2, y2 = (float(v) for v in bb)
+        mapped.append(
+            {
+                **det,
+                "bbox": [
+                    (x1 * tw + tile_x1) / full_w,
+                    (y1 * th + tile_y1) / full_h,
+                    (x2 * tw + tile_x1) / full_w,
+                    (y2 * th + tile_y1) / full_h,
+                ],
+            }
+        )
+    return mapped
+
+
+def _iter_tiles(w: int, h: int, tile: int, overlap: float = 0.25):
+    stride = max(1, int(tile * (1.0 - overlap)))
+    xs = list(range(0, max(w - tile, 0) + 1, stride))
+    ys = list(range(0, max(h - tile, 0) + 1, stride))
+    if not xs:
+        xs = [0]
+    if not ys:
+        ys = [0]
+    if xs[-1] + tile < w:
+        xs.append(max(0, w - tile))
+    if ys[-1] + tile < h:
+        ys.append(max(0, h - tile))
+    seen: set[tuple[int, int, int, int]] = set()
+    for y in ys:
+        for x in xs:
+            x1, y1 = max(0, x), max(0, y)
+            x2, y2 = min(w, x1 + tile), min(h, y1 + tile)
+            key = (x1, y1, x2, y2)
+            if key in seen:
+                continue
+            seen.add(key)
+            yield x1, y1, x2, y2
+
+
+def _high_accuracy_sizes(base: int) -> list[int]:
+    return sorted(
+        {
+            base,
+            max(320, int(base * 0.85)),
+            min(1280, int(base * 1.12)),
+            min(1280, int(base * 1.25)),
+        }
+    )
 
 
 def _coords_are_normalized(flat: np.ndarray) -> bool:
@@ -412,6 +523,7 @@ def decode_yolo_output(
     stretch: bool,
     iou_thresh: float = 0.55,
     prep: dict | None = None,
+    high_accuracy: bool = False,
 ) -> list[dict]:
     data = np.asarray(output, dtype=np.float32)
     if data.ndim == 3:
@@ -426,7 +538,7 @@ def decode_yolo_output(
         _, _, _, pad_top, pad_left = letterbox_layout(orig_w, orig_h, imgsz)
 
     decode_floor = decode_infer_floor(min_confidence)
-    post_conf = mobile_infer_confidence(min_confidence)
+    post_conf = mobile_infer_confidence(min_confidence, high_accuracy=high_accuracy)
     roboflow = looks_like_roboflow(class_names)
 
     # End-to-end (1, N, 6) baked NMS
@@ -442,7 +554,7 @@ def decode_yolo_output(
             if score < decode_floor:
                 continue
             cname = normalize_bump_class(cname, class_names)
-            if score < effective_class_confidence(cname, post_conf):
+            if score < effective_class_confidence(cname, post_conf, high_accuracy=high_accuracy):
                 continue
             if x2 <= 1.5 and y2 <= 1.5:
                 bx = [float(x1), float(y1), float(x2), float(y2)]
@@ -486,7 +598,7 @@ def decode_yolo_output(
     use_nc = min(nc, tensor_nc)
     norm_coords = _coords_are_normalized(data[:, :4].reshape(-1))
     decode_floor = decode_infer_floor(min_confidence)
-    post_conf = mobile_infer_confidence(min_confidence)
+    post_conf = mobile_infer_confidence(min_confidence, high_accuracy=high_accuracy)
     roboflow = looks_like_roboflow(class_names)
     candidates = []
 
@@ -547,7 +659,7 @@ def decode_yolo_output(
         if area < 0.0002 or area > 0.95:
             continue
         cname = normalize_bump_class(cname, class_names)
-        if best_score < effective_class_confidence(cname, post_conf):
+        if best_score < effective_class_confidence(cname, post_conf, high_accuracy=high_accuracy):
             continue
         candidates.append(
             {
@@ -792,11 +904,17 @@ class ModelSession:
         *,
         iou_thresh: float | None = None,
         phone_aux: bool = True,
+        high_accuracy: bool = False,
     ) -> tuple[list[dict], int]:
         if not self.is_loaded:
             raise RuntimeError("Model not loaded")
         iou = iou_thresh if iou_thresh is not None else self.iou_thresh
-        if self.backend == "pt":
+        if high_accuracy:
+            if self.backend == "pt":
+                boxes, latency_ms = self._detect_pt_high_accuracy(image_bytes, min_confidence, iou_thresh=iou)
+            else:
+                boxes, latency_ms = self._detect_onnx_high_accuracy(image_bytes, min_confidence, iou_thresh=iou)
+        elif self.backend == "pt":
             boxes, latency_ms = self._detect_pt(image_bytes, min_confidence, iou_thresh=iou)
         else:
             boxes, latency_ms = self._detect_onnx(image_bytes, min_confidence, iou_thresh=iou)
@@ -809,10 +927,93 @@ class ModelSession:
                     min_confidence,
                     iou_thresh=iou,
                     phone_aux=False,
+                    high_accuracy=high_accuracy,
                 )
                 boxes = merge_phone_bump_aux(boxes, aux_boxes, self.class_names)
                 latency_ms = max(latency_ms, aux_ms)
         return boxes, latency_ms
+
+    def _run_onnx_on_bgr(
+        self,
+        bgr: np.ndarray,
+        min_confidence: float,
+        *,
+        iou_thresh: float,
+        imgsz: int | None = None,
+        high_accuracy: bool = False,
+    ) -> list[dict]:
+        if self.session is None or not self.input_name or not self.output_name:
+            raise RuntimeError("ONNX session not ready")
+        sz = imgsz or self.imgsz
+        decode_floor = decode_infer_floor(min_confidence)
+        tensor, orig_w, orig_h, prep = _prepare_bgr(bgr, sz, stretch=self.stretch)
+        outputs = self.session.run([self.output_name], {self.input_name: tensor})
+        return decode_yolo_output(
+            outputs[0],
+            self.class_names,
+            min_confidence=decode_floor,
+            orig_w=orig_w,
+            orig_h=orig_h,
+            imgsz=sz,
+            stretch=self.stretch,
+            iou_thresh=iou_thresh,
+            prep=prep,
+            high_accuracy=high_accuracy,
+        )
+
+    def _detect_onnx_high_accuracy(
+        self,
+        image_bytes: bytes,
+        min_confidence: float,
+        *,
+        iou_thresh: float = 0.45,
+    ) -> tuple[list[dict], int]:
+        t0 = time.perf_counter()
+        arr = np.frombuffer(image_bytes, dtype=np.uint8)
+        bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if bgr is None:
+            raise ValueError("Could not decode image")
+        full_h, full_w = bgr.shape[:2]
+        all_boxes: list[dict] = []
+
+        for sz in _high_accuracy_sizes(self.imgsz):
+            all_boxes.extend(
+                self._run_onnx_on_bgr(
+                    bgr,
+                    min_confidence,
+                    iou_thresh=iou_thresh,
+                    imgsz=sz,
+                    high_accuracy=True,
+                )
+            )
+            flipped = cv2.flip(bgr, 1)
+            flip_boxes = self._run_onnx_on_bgr(
+                flipped,
+                min_confidence,
+                iou_thresh=iou_thresh,
+                imgsz=sz,
+                high_accuracy=True,
+            )
+            all_boxes.extend(_flip_boxes_horizontal(flip_boxes))
+
+        if max(full_w, full_h) > 960:
+            tile = min(1280, max(self.imgsz, 640))
+            for x1, y1, x2, y2 in _iter_tiles(full_w, full_h, tile, 0.25):
+                crop = bgr[y1:y2, x1:x2]
+                tile_boxes = self._run_onnx_on_bgr(
+                    crop,
+                    min_confidence,
+                    iou_thresh=iou_thresh,
+                    imgsz=self.imgsz,
+                    high_accuracy=True,
+                )
+                all_boxes.extend(_map_tile_boxes(tile_boxes, x1, y1, x2, y2, full_w, full_h))
+
+        merged = _merge_detection_boxes(all_boxes, iou_thresh)[:80]
+        for b in merged:
+            b["label_ar"] = label_ar(b["class"])
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        return merged, latency_ms
 
     def _detect_onnx(self, image_bytes: bytes, min_confidence: float, *, iou_thresh: float = 0.45) -> tuple[list[dict], int]:
         if self.session is None or not self.input_name or not self.output_name:
@@ -895,6 +1096,205 @@ class ModelSession:
 
         latency_ms = int((time.perf_counter() - t0) * 1000)
         return filtered[:80], latency_ms
+
+    def _predict_pt_boxes(
+        self,
+        img: np.ndarray,
+        min_confidence: float,
+        *,
+        iou_thresh: float,
+        imgsz: int,
+        augment: bool,
+        high_accuracy: bool,
+    ) -> list[dict]:
+        if self.yolo_model is None:
+            return []
+        post_conf = mobile_infer_confidence(min_confidence, high_accuracy=high_accuracy)
+        decode_floor = decode_infer_floor(min_confidence)
+        work = img
+        if self.stretch:
+            work = cv2.resize(work, (imgsz, imgsz), interpolation=cv2.INTER_CUBIC if imgsz > min(work.shape[:2]) else cv2.INTER_AREA)
+        results = self.yolo_model.predict(
+            work,
+            conf=decode_floor,
+            iou=iou_thresh,
+            imgsz=imgsz,
+            max_det=80,
+            verbose=False,
+            device="cpu",
+            augment=augment,
+        )
+        filtered: list[dict] = []
+        for result in results:
+            boxes = result.boxes
+            if boxes is None or len(boxes) == 0:
+                continue
+            names = result.names or {}
+            for box in boxes:
+                xy = box.xyxyn[0].tolist()
+                x1, y1, x2, y2 = (float(v) for v in xy)
+                cls_id = int(box.cls[0])
+                conf = float(box.conf[0])
+                class_name = str(
+                    names.get(cls_id, self.class_names[cls_id] if cls_id < len(self.class_names) else f"class_{cls_id}")
+                )
+                class_name = normalize_bump_class(class_name, self.class_names)
+                if conf < effective_class_confidence(class_name, post_conf, high_accuracy=high_accuracy):
+                    continue
+                filtered.append(
+                    {
+                        "class": class_name,
+                        "confidence": conf,
+                        "bbox": [x1, y1, x2, y2],
+                        "label_ar": label_ar(class_name),
+                    }
+                )
+        return filtered
+
+    def _detect_pt_high_accuracy(
+        self,
+        image_bytes: bytes,
+        min_confidence: float,
+        *,
+        iou_thresh: float = 0.45,
+    ) -> tuple[list[dict], int]:
+        if self.pt_format == "onnx2torch":
+            return self._detect_onnx2torch_high_accuracy(image_bytes, min_confidence, iou_thresh=iou_thresh)
+        if self.yolo_model is None:
+            raise RuntimeError("PT model not ready")
+
+        t0 = time.perf_counter()
+        arr = np.frombuffer(image_bytes, dtype=np.uint8)
+        bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if bgr is None:
+            raise ValueError("Could not decode image")
+        full_h, full_w = bgr.shape[:2]
+        all_boxes: list[dict] = []
+
+        for sz in _high_accuracy_sizes(self.imgsz):
+            all_boxes.extend(
+                self._predict_pt_boxes(
+                    bgr,
+                    min_confidence,
+                    iou_thresh=iou_thresh,
+                    imgsz=sz,
+                    augment=True,
+                    high_accuracy=True,
+                )
+            )
+            flip_boxes = self._predict_pt_boxes(
+                cv2.flip(bgr, 1),
+                min_confidence,
+                iou_thresh=iou_thresh,
+                imgsz=sz,
+                augment=True,
+                high_accuracy=True,
+            )
+            all_boxes.extend(_flip_boxes_horizontal(flip_boxes))
+
+        if max(full_w, full_h) > 960:
+            tile = min(1280, max(self.imgsz, 640))
+            for x1, y1, x2, y2 in _iter_tiles(full_w, full_h, tile, 0.25):
+                crop = bgr[y1:y2, x1:x2]
+                tile_boxes = self._predict_pt_boxes(
+                    crop,
+                    min_confidence,
+                    iou_thresh=iou_thresh,
+                    imgsz=self.imgsz,
+                    augment=False,
+                    high_accuracy=True,
+                )
+                all_boxes.extend(_map_tile_boxes(tile_boxes, x1, y1, x2, y2, full_w, full_h))
+
+        merged = _merge_detection_boxes(all_boxes, iou_thresh)[:80]
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        return merged, latency_ms
+
+    def _run_onnx2torch_on_bgr(
+        self,
+        bgr: np.ndarray,
+        min_confidence: float,
+        *,
+        iou_thresh: float,
+        imgsz: int | None = None,
+        high_accuracy: bool = False,
+    ) -> list[dict]:
+        import torch
+
+        if self.torch_model is None:
+            raise RuntimeError("onnx2torch PT model not ready")
+        sz = imgsz or self.imgsz
+        decode_floor = decode_infer_floor(min_confidence)
+        tensor, orig_w, orig_h, prep = _prepare_bgr(bgr, sz, stretch=self.stretch)
+        with torch.no_grad():
+            output = self.torch_model(torch.from_numpy(tensor))
+        if isinstance(output, (list, tuple)):
+            output = output[0]
+        return decode_yolo_output(
+            output.detach().cpu().numpy(),
+            self.class_names,
+            min_confidence=decode_floor,
+            orig_w=orig_w,
+            orig_h=orig_h,
+            imgsz=sz,
+            stretch=self.stretch,
+            iou_thresh=iou_thresh,
+            prep=prep,
+            high_accuracy=high_accuracy,
+        )
+
+    def _detect_onnx2torch_high_accuracy(
+        self,
+        image_bytes: bytes,
+        min_confidence: float,
+        *,
+        iou_thresh: float = 0.45,
+    ) -> tuple[list[dict], int]:
+        t0 = time.perf_counter()
+        arr = np.frombuffer(image_bytes, dtype=np.uint8)
+        bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if bgr is None:
+            raise ValueError("Could not decode image")
+        full_h, full_w = bgr.shape[:2]
+        all_boxes: list[dict] = []
+
+        for sz in _high_accuracy_sizes(self.imgsz):
+            all_boxes.extend(
+                self._run_onnx2torch_on_bgr(
+                    bgr,
+                    min_confidence,
+                    iou_thresh=iou_thresh,
+                    imgsz=sz,
+                    high_accuracy=True,
+                )
+            )
+            flip_boxes = self._run_onnx2torch_on_bgr(
+                cv2.flip(bgr, 1),
+                min_confidence,
+                iou_thresh=iou_thresh,
+                imgsz=sz,
+                high_accuracy=True,
+            )
+            all_boxes.extend(_flip_boxes_horizontal(flip_boxes))
+
+        if max(full_w, full_h) > 960:
+            tile = min(1280, max(self.imgsz, 640))
+            for x1, y1, x2, y2 in _iter_tiles(full_w, full_h, tile, 0.25):
+                crop = bgr[y1:y2, x1:x2]
+                tile_boxes = self._run_onnx2torch_on_bgr(
+                    crop,
+                    min_confidence,
+                    iou_thresh=iou_thresh,
+                    imgsz=self.imgsz,
+                    high_accuracy=True,
+                )
+                all_boxes.extend(_map_tile_boxes(tile_boxes, x1, y1, x2, y2, full_w, full_h))
+
+        merged = _merge_detection_boxes(all_boxes, iou_thresh)[:80]
+        for b in merged:
+            b["label_ar"] = label_ar(b["class"])
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        return merged, latency_ms
 
     def _detect_onnx2torch_pt(self, image_bytes: bytes, min_confidence: float, *, iou_thresh: float = 0.45) -> tuple[list[dict], int]:
         import torch
@@ -1024,7 +1424,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
-            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             self.end_headers()
             self.wfile.write(data)
             return
@@ -1110,13 +1512,26 @@ class Handler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             min_conf = float((qs.get("min_confidence") or ["0.15"])[0])
             iou = float((qs.get("iou") or ["0.45"])[0])
+            high_accuracy = (qs.get("high_accuracy") or ["false"])[0].lower() in ("1", "true", "yes")
             image_bytes = self._read_body()
             if not image_bytes:
                 self._send_json(400, {"error": "Empty image"})
                 return
             try:
-                detections, latency_ms = MODEL.detect(image_bytes, min_conf, iou_thresh=iou)
-                self._send_json(200, {"detections": detections, "latency_ms": latency_ms})
+                detections, latency_ms = MODEL.detect(
+                    image_bytes,
+                    min_conf,
+                    iou_thresh=iou,
+                    high_accuracy=high_accuracy,
+                )
+                self._send_json(
+                    200,
+                    {
+                        "detections": detections,
+                        "latency_ms": latency_ms,
+                        "high_accuracy": high_accuracy,
+                    },
+                )
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
             return

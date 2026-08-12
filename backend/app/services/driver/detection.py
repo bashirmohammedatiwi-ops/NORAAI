@@ -165,6 +165,48 @@ def _run_detection_sync(
         return [], f"Inference failed: {exc}", {}
 
 
+async def run_lab_cloud_detection(
+    image_bytes: bytes,
+    min_confidence: float | None = None,
+) -> tuple[list[dict], str | None, dict] | None:
+    """Use Ultralytics cloud predict (same pipeline as control-center lab)."""
+    settings = get_settings()
+    from app.services.lab.predict_client import (
+        LabPredictError,
+        call_predict,
+        resolve_api_key,
+        resolve_predict_url,
+    )
+    from app.services.lab.predict_parse import normalize_lab_detections
+
+    url = resolve_predict_url(settings.cloud_predict_url)
+    api_key = resolve_api_key(None)
+    if not url or not api_key:
+        return None
+
+    conf = float(min_confidence) if min_confidence is not None else 0.25
+    try:
+        payload, latency_ms, _ = await call_predict(
+            url=url,
+            api_key=api_key,
+            content=image_bytes,
+            filename="driver.jpg",
+            content_type="image/jpeg",
+            conf=conf,
+            iou=0.7,
+            imgsz=416,
+        )
+    except LabPredictError as exc:
+        return [], f"Cloud predict error: {exc.message}", {"pipeline": "lab_cloud"}
+    except Exception as exc:
+        return [], f"Cloud predict failed: {exc}", {"pipeline": "lab_cloud"}
+
+    detections = normalize_lab_detections(payload)
+    if min_confidence is not None:
+        detections = [d for d in detections if d["confidence"] >= min_confidence]
+    return detections, None, {"latency_ms": latency_ms, "pipeline": "lab_cloud"}
+
+
 async def run_detection(
     db: AsyncSession,
     project_id: uuid.UUID,
@@ -175,9 +217,14 @@ async def run_detection(
     high_accuracy: bool = False,
 ) -> tuple[list[dict], str | None, dict]:
     """
-    Run YOLO using the project's active model and dashboard-defined classes only.
-    Inference runs in a worker thread with a warm model cache.
+    Run detection via cloud lab API when configured, else local YOLO/ONNX.
+    Inference runs in a worker thread with a warm model cache for local path.
     """
+    settings = get_settings()
+    cloud = await run_lab_cloud_detection(image_bytes, min_confidence=min_confidence)
+    if cloud is not None:
+        return cloud
+
     artifact = await get_active_model(db, project_id)
     project_classes = await get_project_classes(db, project_id)
 
@@ -188,7 +235,6 @@ async def run_detection(
         return [], "No trained model deployed. Train and activate a model from the dashboard.", {}
 
     assert artifact is not None
-    settings = get_settings()
     from app.services.inference.resolve_settings import resolve_inference_imgsz
 
     from app.services.driver.project_classes import model_class_names as artifact_class_names
@@ -291,6 +337,8 @@ async def create_events_from_detections(
     longitude: float,
     detections: list[dict],
     min_confidence: float = 0.5,
+    *,
+    event_source: str = "model",
 ) -> list[RoadEvent]:
     from app.services.driver.event_dedup import filter_detections_for_events
 
@@ -304,6 +352,7 @@ async def create_events_from_detections(
     )
 
     created: list[RoadEvent] = []
+    device_meta = dict(device.extra_metadata or {}) if device else {}
     for det in filtered:
         event_type_str = det.get("event_type")
         if not event_type_str:
@@ -312,6 +361,17 @@ async def create_events_from_detections(
             event_type = RoadEventType(event_type_str)
         except ValueError:
             continue
+        meta = {
+            "class": det.get("class"),
+            "source": event_source,
+            "bbox": det.get("bbox"),
+        }
+        if device:
+            meta["vehicle_id"] = device.vehicle_id
+            if device_meta.get("driver_name"):
+                meta["driver_name"] = device_meta["driver_name"]
+        if event_source == "citizen":
+            meta["title"] = "تبليغ مواطن"
         event = RoadEvent(
             project_id=project_id,
             device_id=device.id if device else None,
@@ -319,7 +379,9 @@ async def create_events_from_detections(
             latitude=latitude,
             longitude=longitude,
             confidence=det.get("confidence"),
-            extra_metadata={"class": det.get("class"), "source": "model"},
+            extra_metadata={
+                **meta,
+            },
         )
         db.add(event)
         created.append(event)

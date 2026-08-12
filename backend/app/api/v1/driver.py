@@ -147,13 +147,13 @@ async def driver_config(device: FleetDevice = Depends(get_fleet_device), db: Asy
 
     inference_mode = str(mobile_cfg.get("inference_mode") or "server")
     model_names = model_class_names(artifact) if artifact else []
-    detection_on = (
-        bool(mobile_cfg.get("detection_enabled", True))
-        and model_ready
-        and bool(allowed or model_names)
-    )
-
     settings = get_settings()
+    cloud_ready = bool(settings.cloud_predict_url.strip() and settings.cloud_predict_api_key.strip())
+    model_ready = model_ready or cloud_ready
+    detection_on = bool(mobile_cfg.get("detection_enabled", True)) and model_ready
+    if not cloud_ready:
+        detection_on = detection_on and bool(allowed or model_names)
+
     return DriverConfigResponse(
         project_id=device.project_id,
         device_id=device.device_id,
@@ -236,6 +236,9 @@ async def driver_telemetry(
         meta["model_version"] = data.model_version
     if data.model_sha256:
         meta["model_sha256"] = data.model_sha256
+    if data.driver_name:
+        meta["driver_name"] = data.driver_name.strip()
+    meta["vehicle_id"] = device.vehicle_id
     meta["last_sync_at"] = datetime.now(timezone.utc).isoformat()
     device.extra_metadata = meta
 
@@ -457,6 +460,7 @@ async def driver_detect(
     speed: float | None = Form(None),
     speed_limit: float = Form(80),
     min_confidence: float | None = Form(None),
+    source: str | None = Form(None),
     device: FleetDevice = Depends(get_fleet_device),
     db: AsyncSession = Depends(get_db),
 ):
@@ -486,6 +490,9 @@ async def driver_detect(
         })
 
     event_min_conf = float(min_confidence) if min_confidence is not None else 0.5
+    event_source = (source or "camera").strip() or "camera"
+    if event_source == "citizen":
+        event_source = "citizen"
     events = await create_events_from_detections(
         db,
         device.project_id,
@@ -494,6 +501,7 @@ async def driver_detect(
         longitude,
         detections,
         min_confidence=event_min_conf,
+        event_source=event_source,
     )
 
     if speed is not None and speed > speed_limit:
@@ -565,6 +573,7 @@ async def nearby_events(
                     longitude=event.longitude,
                     confidence=event.confidence,
                     distance_km=round(dist, 2),
+                    metadata=event.extra_metadata or {},
                 )
             )
     nearby.sort(key=lambda e: e.distance_km)

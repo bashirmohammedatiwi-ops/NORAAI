@@ -1,0 +1,12 @@
+# Export lilNewbie U-Net.h5 → ONNX for RASID Auto
+# python3.12 -m venv .venv && source .venv/bin/activate
+# pip install -r requirements.txt
+# python convert_unet_h5.py --h5 U-Net.h5 --out-dir ./out
+
+tensorflow==2.16.2
+ml_dtypes==0.3.2
+onnx==1.16.2
+tf2onnx==1.16.1
+h5py>=3.10
+numpy>=1.23,<2.1
+onnxruntime>=1.17

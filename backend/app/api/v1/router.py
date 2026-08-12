@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import annotation, auth, dashboard, datasets, deployment, driver, inference, ingestion, mobile, projects, reports, road_intelligence, training
+from app.api.v1 import annotation, auth, control_center, dashboard, datasets, deployment, driver, inference, ingestion, mobile, projects, reports, road_intelligence, training
 from app.websockets import training_metrics
 
 api_router = APIRouter(prefix="/api/v1")
@@ -16,5 +16,6 @@ api_router.include_router(training.router)
 api_router.include_router(inference.router)
 api_router.include_router(deployment.router)
 api_router.include_router(road_intelligence.router)
+api_router.include_router(control_center.router)
 api_router.include_router(reports.router)
 api_router.include_router(training_metrics.router)

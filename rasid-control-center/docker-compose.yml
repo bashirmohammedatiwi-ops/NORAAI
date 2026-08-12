@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nurai-postgres
+    environment:
+      POSTGRES_USER: nurai
+      POSTGRES_PASSWORD: nurai_secret
+      POSTGRES_DB: nurai
+    volumes:
+      - nurai_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nurai -d nurai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: nurai-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nurai-api
+    env_file:
+      - ./backend/.env.example
+    environment:
+      DATABASE_URL: postgresql+asyncpg://nurai:nurai_secret@postgres:5432/nurai
+      REDIS_URL: redis://redis:6379/0
+      CLOUD_PREDICT_URL: https://predict-6a7b9e67b578285046a4f04c-dproatj77a-og.a.run.app
+      CLOUD_PREDICT_API_KEY: ul_ee95205eef2428d95e72b5c42acd29dbc84f37a6
+    volumes:
+      - nurai_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/health/ready"]
+      interval: 10s
+      timeout: 8s
+      retries: 18
+      start_period: 120s
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nurai-dashboard
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "9800:9800"
+    restart: unless-stopped
+
+volumes:
+  nurai_pg_data:
+  nurai_uploads:

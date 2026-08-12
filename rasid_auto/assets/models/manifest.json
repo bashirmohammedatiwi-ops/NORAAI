@@ -1,0 +1,48 @@
+{
+  "name": "RASID U-Net Pothole (lilNewbie)",
+  "version": "1.0.0",
+  "task": "segmentation",
+  "format": "onnx",
+  "backend": "onnxruntime",
+  "source": "https://github.com/lilNewbie/SemanticSegmentation",
+  "image_size": 256,
+  "input_size": 256,
+  "resize_mode": "stretch",
+  "normalize": "div255",
+  "layout": "NHWC",
+  "classes": [
+    "background",
+    "pothole"
+  ],
+  "class_ids": {
+    "background": 0,
+    "pothole": 1
+  },
+  "pothole_channel": 1,
+  "input": {
+    "name": "input",
+    "shape": [
+      1,
+      256,
+      256,
+      3
+    ],
+    "dtype": "float32",
+    "layout": "NHWC",
+    "normalize": "div255"
+  },
+  "output": {
+    "shape": [
+      1,
+      256,
+      256,
+      2
+    ],
+    "dtype": "float32",
+    "description": "NHWC; channel 1 = pothole"
+  },
+  "speed_bump_supported": false,
+  "recommended_threshold": 0.30,
+  "nc": 2,
+  "mock_fallback": true
+}

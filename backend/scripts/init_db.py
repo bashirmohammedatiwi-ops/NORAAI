@@ -65,6 +65,15 @@ async def init_db():
         )
         for index_sql in PERFORMANCE_INDEXES:
             await conn.execute(text(index_sql))
+        try:
+            await conn.execute(
+                text("ALTER TYPE roadeventtype ADD VALUE IF NOT EXISTS 'SPEED_BUMP'")
+            )
+        except Exception:
+            try:
+                await conn.execute(text("ALTER TYPE roadeventtype ADD VALUE 'SPEED_BUMP'"))
+            except Exception as exc:
+                print(f"SPEED_BUMP enum note: {exc}")
 
     async with async_session() as db:
         org_result = await db.execute(select(Organization).limit(1))
@@ -109,6 +118,18 @@ async def init_db():
         if not project:
             project = await create_project(db, org.id, ROAD_PROJECT)
             print(f"Created seed project: {ROAD_PROJECT['name']}")
+
+        from app.services.demo.iraq_demo_seed import seed_iraq_demo
+
+        demo_result = await seed_iraq_demo(db, project.id)
+        if demo_result.get("seeded"):
+            print(
+                f"Demo data seeded: {demo_result['vehicles']} vehicles, "
+                f"{demo_result['alerts']} municipality alerts, "
+                f"images attached: {demo_result.get('images_attached', 0)}"
+            )
+        elif demo_result.get("images_attached"):
+            print(f"Demo images attached: {demo_result['images_attached']}")
 
         await db.commit()
         print("Database initialization complete.")

@@ -44,6 +44,10 @@ app.add_middleware(
 
 app.include_router(api_router)
 
+_uploads_dir = Path(__file__).resolve().parent.parent / "uploads"
+_uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
+
 _static_dir = (settings.static_frontend_dir or "").strip()
 if _static_dir and Path(_static_dir).is_dir():
     _assets = Path(_static_dir) / "assets"

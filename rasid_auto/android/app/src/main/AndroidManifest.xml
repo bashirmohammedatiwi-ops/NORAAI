@@ -1,0 +1,79 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES"/>
+    <uses-permission android:name="androidx.car.app.MAP_TEMPLATES"/>
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE"/>
+    <uses-permission android:name="androidx.car.app.hardware.permission.CAR_INFO"/>
+    <uses-permission android:name="androidx.car.app.hardware.permission.CAR_SPEED"/>
+
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.location.gps" android:required="false"/>
+
+    <application
+        android:label="RASID Auto"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:largeHeap="true"
+        android:usesCleartextTraffic="true">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".RasidCarAppService"
+            android:exported="true">
+            <!-- NAVIGATION category is supported by virtually every Android
+                 Auto head unit; POI is not. -->
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService"/>
+                <category android:name="androidx.car.app.category.NAVIGATION"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.car.app.action.NAVIGATE"/>
+                <data android:scheme="geo"/>
+            </intent-filter>
+        </service>
+
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc"/>
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1"/>
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL"/>
+            <data android:scheme="tel"/>
+        </intent>
+    </queries>
+</manifest>

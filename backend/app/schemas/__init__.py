@@ -438,12 +438,14 @@ class DeploymentResponse(BaseModel):
 class FleetDeviceCreate(BaseModel):
     device_id: str
     vehicle_id: str
+    driver_name: str | None = None
 
 
 class FleetDeviceResponse(BaseModel):
     id: UUID
     device_id: str
     vehicle_id: str
+    driver_name: str | None = None
     gps_status: str
     camera_status: str
     is_online: bool
@@ -468,6 +470,7 @@ class TelemetryRequest(BaseModel):
     app_version: str | None = None
     model_version: str | None = None
     model_sha256: str | None = None
+    driver_name: str | None = None
 
 
 class RoadEventCreate(BaseModel):
@@ -475,6 +478,7 @@ class RoadEventCreate(BaseModel):
     latitude: float
     longitude: float
     confidence: float | None = None
+    metadata: dict | None = None
 
 
 class PasswordConfirmRequest(BaseModel):
@@ -664,6 +668,7 @@ class DriverNearbyEvent(BaseModel):
     longitude: float
     confidence: float | None
     distance_km: float
+    metadata: dict | None = None
 
 
 class ReportCreate(BaseModel):
