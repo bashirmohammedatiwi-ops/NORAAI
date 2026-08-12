@@ -8,7 +8,7 @@ import '../models/driver_config.dart';
 import 'api_exception.dart';
 
 const _defaultTimeout = Duration(seconds: 35);
-const _detectTimeout = Duration(seconds: 25);
+const _detectTimeout = Duration(seconds: 90);
 
 class RasidApiService {
   RasidApiService(this.config);
@@ -141,6 +141,7 @@ class RasidApiService {
         int eventsCreated,
         List<dynamic> alerts,
         int? latencyMs,
+        String? message,
       })> detectFrameBytes({
     required List<int> bytes,
     required String filename,
@@ -175,6 +176,7 @@ class RasidApiService {
       eventsCreated: json['events_created'] as int? ?? 0,
       alerts: json['alerts'] as List<dynamic>? ?? [],
       latencyMs: (json['latency_ms'] as num?)?.toInt(),
+      message: json['message'] as String?,
     );
   }
 

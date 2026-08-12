@@ -125,8 +125,8 @@ class ApiClient {
     return this.request<T>(path, { method: 'PATCH', body: JSON.stringify(body ?? {}) });
   }
 
-  postForm<T>(path: string, form: FormData) {
-    return this.request<T>(path, { method: 'POST', body: form });
+  postForm<T>(path: string, form: FormData, timeoutMs = 20000) {
+    return this.request<T>(path, { method: 'POST', body: form }, true, timeoutMs);
   }
 
   wsUrl(path: string) {

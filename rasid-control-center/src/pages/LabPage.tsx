@@ -36,7 +36,7 @@ interface FrameResult {
 
 export default function LabPage() {
   const { projectId } = useControlContext();
-  const { data: labConfig } = useLabConfig();
+  const { data: labConfig, isError: labConfigError, error: labConfigErr } = useLabConfig();
   const predict = useLabPredict(projectId);
   const predictBatch = useLabPredictBatch(projectId);
 
@@ -306,6 +306,22 @@ export default function LabPage() {
       />
 
       <div className="page-body">
+        {(!labReady || labConfigError) && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            {!labConfig?.api_key_configured && (
+              <p className="font-semibold">خدمة Cloud Predict غير مُضبطة على الخادم.</p>
+            )}
+            {labConfigError && (
+              <p>{labConfigErr instanceof Error ? labConfigErr.message : 'تعذّر تحميل إعدادات المختبر'}</p>
+            )}
+            {!labConfigError && labConfig?.api_key_configured && !labReady && (
+              <p>المختبر غير جاهز — تحقق من اتصال الخادم.</p>
+            )}
+            <p className="mt-1 text-xs text-amber-800">
+              أضف CLOUD_PREDICT_URL و CLOUD_PREDICT_API_KEY في .env ثم أعد تشغيل API.
+            </p>
+          </div>
+        )}
         <div className="grid gap-6 xl:grid-cols-12">
           {/* Left — Upload & Params */}
           <div className="space-y-4 xl:col-span-3">

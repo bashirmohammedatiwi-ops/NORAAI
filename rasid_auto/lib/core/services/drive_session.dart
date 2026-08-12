@@ -280,11 +280,11 @@ class DriveSession extends ChangeNotifier {
     );
   }
 
-  Future<({List<DetectionBox> boxes, int eventsCreated})> submitCitizenScan(
+  Future<({List<DetectionBox> boxes, int eventsCreated, String? message})> submitCitizenScan(
     Uint8List bytes,
   ) async {
     final a = api;
-    if (a == null) throw StateError('غير متصل بالسيرفر');
+    if (a == null) throw ApiException('offline', userMessage: 'غير متصل بالسيرفر — انتظر الاتصال');
     final result = await a.detectFrameBytes(
       bytes: bytes,
       filename: 'citizen.jpg',
@@ -310,7 +310,11 @@ class DriveSession extends ChangeNotifier {
     }
     await syncServerEvents();
     notifyListeners();
-    return (boxes: result.detections, eventsCreated: result.eventsCreated);
+    return (
+      boxes: result.detections,
+      eventsCreated: result.eventsCreated,
+      message: result.message,
+    );
   }
 
   Future<void> _reloadLists() async {

@@ -19,6 +19,8 @@ function appendPredictForm(form: FormData, params: LabPredictParams, apiKey?: st
   if (apiKey?.trim()) form.append('api_key', apiKey.trim());
 }
 
+const LAB_PREDICT_TIMEOUT_MS = 180_000;
+
 export function useLabPredict(projectId: string) {
   return useMutation({
     mutationFn: async (input: {
@@ -36,7 +38,11 @@ export function useLabPredict(projectId: string) {
       const form = new FormData();
       form.append('file', file, input.filename.endsWith('.jpg') ? input.filename : input.filename.replace(/\.\w+$/, '.jpg'));
       appendPredictForm(form, input.params, input.apiKey, input.includeRaw ?? false);
-      return api.postForm<LabPredictResult>(`/api/v1/control-center/${projectId}/lab/predict`, form);
+      return api.postForm<LabPredictResult>(
+        `/api/v1/control-center/${projectId}/lab/predict`,
+        form,
+        LAB_PREDICT_TIMEOUT_MS,
+      );
     },
   });
 }
@@ -54,7 +60,11 @@ export function useLabPredictBatch(projectId: string) {
         form.append('files', frame.blob, frame.filename);
       }
       appendPredictForm(form, input.params, input.apiKey, input.includeRaw ?? false);
-      return api.postForm<LabBatchResult>(`/api/v1/control-center/${projectId}/lab/predict-batch`, form);
+      return api.postForm<LabBatchResult>(
+        `/api/v1/control-center/${projectId}/lab/predict-batch`,
+        form,
+        LAB_PREDICT_TIMEOUT_MS,
+      );
     },
   });
 }

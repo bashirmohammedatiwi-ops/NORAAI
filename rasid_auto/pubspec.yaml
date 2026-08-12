@@ -1,7 +1,7 @@
 name: rasid_auto
 description: RASID Auto — تطبيق قيادة ذكي أوفلاين مع Android Auto وكشف الحفر والحوادث
 publish_to: 'none'
-version: 1.5.8+22
+version: 1.5.9+23
 
 environment:
   sdk: ^3.11.3
