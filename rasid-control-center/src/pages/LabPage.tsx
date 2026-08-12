@@ -17,7 +17,7 @@ import {
   type LabPredictParams,
   type LabPredictResult,
 } from '@/lib/predictLab';
-import { cn } from '@/lib/utils';
+import { cn, randomUUID } from '@/lib/utils';
 import {
   Activity, ChevronDown, ChevronUp, ClipboardPaste, Code2, Gauge,
   Download, Film, ImageIcon, Loader2, Play, Sparkles, Target, Timer, Upload, Zap,
@@ -186,7 +186,7 @@ export default function LabPage() {
       setShowAnnotated(!!res.annotated_image);
       const top = res.detections[0]?.class;
       const entry: LabHistoryEntry = {
-        id: crypto.randomUUID(),
+        id: randomUUID(),
         at: new Date().toISOString(),
         filename: file.name,
         mode: 'image',
@@ -232,7 +232,7 @@ export default function LabPage() {
         setResult(results[0].result);
         const totalDetections = results.reduce((s, r) => s + r.result.count, 0);
         const entry: LabHistoryEntry = {
-          id: crypto.randomUUID(),
+          id: randomUUID(),
           at: new Date().toISOString(),
           filename: file.name,
           mode: 'video',

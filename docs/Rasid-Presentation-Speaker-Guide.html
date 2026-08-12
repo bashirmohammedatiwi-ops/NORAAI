@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>دليل شرح عرض راصد RASID — NURAI 2026</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --text: #111; --muted: #444; --light: #777; --line: #ddd;
+      --bg: #ececec; --paper: #fff; --accent: #0d9488;
+      --page-w: 794px; --page-h: 1123px;
+      --pad-x: 44px; --pad-top: 40px; --pad-bottom: 48px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'IBM Plex Sans Arabic', 'Geeza Pro', sans-serif;
+      background: var(--bg); color: var(--text);
+      line-height: 1.78; font-size: 10pt;
+    }
+    #report { margin: 20px auto 40px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .a4-page {
+      width: var(--page-w); height: var(--page-h); background: var(--paper);
+      padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+      position: relative; overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0,0,0,.1);
+      page-break-after: always; flex-shrink: 0;
+    }
+    .a4-page__body { height: calc(var(--page-h) - var(--pad-top) - var(--pad-bottom)); overflow: hidden; }
+    .a4-page__footer {
+      position: absolute; bottom: 14px; left: var(--pad-x); right: var(--pad-x);
+      display: flex; justify-content: space-between; font-size: 8pt; color: var(--light);
+      border-top: 1px solid var(--line); padding-top: 4px;
+    }
+    .cover { text-align: center; display: flex; flex-direction: column; justify-content: center; height: 100%; gap: 6px; }
+    .cover__badge { display: inline-block; font-size: 9pt; color: var(--muted); border: 1px solid var(--line); padding: 4px 14px; margin: 0 auto 16px; }
+    .cover h1 { font-size: 28pt; font-weight: 700; }
+    .cover__en { font-size: 11pt; color: var(--muted); letter-spacing: .25em; }
+    .cover__desc { font-size: 10.5pt; color: var(--muted); max-width: 520px; margin: 8px auto 20px; line-height: 1.85; }
+    .cover__info { text-align: right; max-width: 420px; margin: 0 auto; border: 1px solid var(--line); font-size: 9pt; }
+    .cover__row { display: grid; grid-template-columns: 88px 1fr; border-bottom: 1px solid var(--line); }
+    .cover__row:last-child { border-bottom: 0; }
+    .cover__row label { padding: 7px 10px; background: #fafafa; color: var(--light); font-size: 8pt; border-left: 1px solid var(--line); }
+    .cover__row span { padding: 7px 12px; }
+    .sec-head { padding-bottom: 5px; margin-bottom: 12px; border-bottom: 2px solid var(--text); }
+    .sec-num { font-size: 8pt; color: var(--light); }
+    .sec-head h2 { font-size: 13pt; font-weight: 700; margin-top: 2px; }
+    h3 { font-size: 10pt; font-weight: 600; margin: 12px 0 5px; color: var(--accent); }
+    h4 { font-size: 9.5pt; font-weight: 600; margin: 8px 0 4px; }
+    p { margin-bottom: 7px; text-align: justify; font-size: 9.5pt; }
+    .lead { border-right: 3px solid var(--accent); padding: 10px 14px; margin-bottom: 10px; background: #f0fdfa; font-size: 9.5pt; }
+    .greeting { border: 1px solid var(--line); padding: 14px 16px; margin: 10px 0; background: #fafafa; font-size: 10pt; line-height: 2; }
+    table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 8.5pt; }
+    th { text-align: right; font-weight: 600; padding: 5px 8px; border-bottom: 2px solid var(--text); background: #fafafa; }
+    td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    td:first-child { font-weight: 600; white-space: nowrap; width: 28%; }
+    ul, ol { margin: 4px 16px 8px 0; font-size: 9pt; }
+    li { margin-bottom: 3px; }
+    .term { font-weight: 600; color: #0f766e; }
+    .num-box { display: inline-block; background: #ecfdf5; border: 1px solid #99f6e4; padding: 1px 7px; border-radius: 4px; font-weight: 700; direction: ltr; }
+    .slide-tag { display: inline-block; font-size: 8pt; background: var(--text); color: #fff; padding: 2px 8px; margin-bottom: 4px; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+    .box { border: 1px solid var(--line); padding: 8px 10px; font-size: 8.5pt; }
+    .box h4 { margin-top: 0; font-size: 9pt; }
+    code { font-size: 8pt; direction: ltr; background: #f5f5f5; padding: 1px 4px; }
+    @media print {
+      body { background: #fff; }
+      #report { margin: 0; gap: 0; }
+      .a4-page { box-shadow: none; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+<div id="report">
+
+<!-- صفحة 1: الغلاف -->
+<div class="a4-page">
+  <div class="a4-page__body cover">
+    <div class="cover__badge">NURAI 2026 · البطولة الوطنية الجامعية للروبوتات وتطبيقات الذكاء الاصطناعي</div>
+    <h1>دليل شرح عرض راصد</h1>
+    <div class="cover__en">RASID PRESENTATION SPEAKER GUIDE</div>
+    <p class="cover__desc">مقدمة وتحية للجنة التحكيم + شرح مفصّل لكل شريحة، كل مصطلح، كل رقم، وكل نقطة في عرض PowerPoint/HTML لمشروع <strong>راصد RASID</strong></p>
+    <div class="cover__info">
+      <div class="cover__row"><label>المشروع</label><span>راصد RASID — منصة MLOps + GIS + Fleet</span></div>
+      <div class="cover__row"><label>الطلاب</label><span>بشير محمد · سلمان داود · مهدي أحمد</span></div>
+      <div class="cover__row"><label>الإشراف</label><span>د. مهند عبدالإله</span></div>
+      <div class="cover__row"><label>الجامعة</label><span>جامعة تكنولوجيا المعلومات والاتصالات (UOITC)</span></div>
+      <div class="cover__row"><label>الملف المرجعي</label><span>Rasid-Presentation.html — 18 شريحة</span></div>
+    </div>
+  </div>
+  <div class="a4-page__footer"><span>راصد RASID · NURAI 2026</span><span>صفحة 1</span></div>
+</div>
+
+<!-- صفحة 2: التحية والمقدمة -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <div class="sec-head"><div class="sec-num">المقدمة</div><h2>تحية افتتاحية — ما تقوله للجنة</h2></div>
+    <div class="greeting">
+      <p><strong>السلام عليكم ورحمة الله وبركاته،</strong></p>
+      <p>يسعدنا أن نقدّم أمامكم مشروع <strong>«راصد RASID»</strong> — منصة وطنية تجمع بين الذكاء الاصطناعي الصناعي، والخرائط الجغرافية اللحظية، وأسطول المركبات الذكية، لتحويل كل سيارة على الطريق إلى <strong>مستشعر حي</strong> يرصد المخاطر قبل أن تتحول إلى حادث.</p>
+      <p>اسم المشروع <strong>راصد</strong> اختصار لـ: <em>Road · AI · Surveillance · Intelligence · Detection</em> — أي: مراقبة الطريق بالذكاء الاصطناعي والكشف الذكي. شعارنا: <strong>«نرصد الطريق… قبل أن تصبح المشكلة حادثاً»</strong>.</p>
+      <p>خلال العرض سنريكم <strong>3 سيناريوهات حية</strong> (تجاوز سرعة، حفرة، حادث)، و<strong>4 منتجات</strong> متكاملة، ومنظومة <strong>MLOps</strong> كاملة من البيانات إلى الإنتاج. نرحّب بأسئلتكم في أي وقت.</p>
+      <p><strong>شكراً لكم.</strong></p>
+    </div>
+    <h3>كيف تستخدم هذا الدليل؟</h3>
+    <ul>
+      <li>كل قسم يطابق شريحة في العرض — ابحث عن رقم الشريحة أو عنوانها.</li>
+      <li>الجدول يشرح <strong>المصطلحات</strong> والأرقام التي تظهر على الشاشة.</li>
+      <li>عمود «ماذا تقول» يعطيك جملاً جاهزة للشرح الشفهي.</li>
+    </ul>
+    <div class="lead">العرض مقسّم إلى 5 أقسام: مقدمة · المشكلة · المنصة · سيناريوهات حية · تقنيات وختام.</div>
+  </div>
+  <div class="a4-page__footer"><span>المقدمة والتحية</span><span>صفحة 2</span></div>
+</div>
+
+<!-- صفحة 3: قاموس المصطلحات (1) -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <div class="sec-head"><div class="sec-num">المرجع</div><h2>قاموس المصطلحات — الجزء 1</h2></div>
+    <table>
+      <tr><th>المصطلح</th><th>الشرح</th></tr>
+      <tr><td>MLOps</td><td>Machine Learning Operations — إدارة دورة حياة نماذج الذكاء الاصطناعي: جمع بيانات، وسم، تدريب، نشر، مراقبة، إعادة تدريب.</td></tr>
+      <tr><td>GIS</td><td>Geographic Information System — نظام معلومات جغرافية؛ خرائط ومواقع GPS وتحليل مكاني.</td></tr>
+      <tr><td>Fleet</td><td>أسطول المركبات المتصلة بالمنصة؛ كل مركبة لها معرّف وموقع وtelemetry.</td></tr>
+      <tr><td>Edge AI</td><td>تشغيل الذكاء الاصطناعي على جهاز السائق (هاتف/كمبيوتر) وليس في السحابة فقط — سرعة وخصوصية.</td></tr>
+      <tr><td>YOLO26s</td><td>نموذج كشف أشياء (You Only Look Once) — الإصدار 26 small؛ سريع ومناسب للحافة.</td></tr>
+      <tr><td>ByteTrack</td><td>خوارزمية تتبع متعدد الأهداف — تُبقي نفس الـ ID للمركبة/الحادث عبر الإطارات.</td></tr>
+      <tr><td>PostGIS</td><td>امتداد PostgreSQL للبيانات المكانية — تخزين أحداث الطريق بإحداثيات GPS.</td></tr>
+      <tr><td>WebSocket</td><td>اتصال ثنائي لحظي بين السيرفر والخريطة — تحديث فوري بدون تحديث الصفحة.</td></tr>
+      <tr><td>Active Learning</td><td>تعلّم نشط — الكشوفات منخفضة الثقة (أقل من 0.70) تُرسل لقائمة انتظار لإعادة التدريب.</td></tr>
+      <tr><td>Optuna HPO</td><td>Hyperparameter Optimization — ضبط تلقائي لمعاملات التدريب لأفضل دقة.</td></tr>
+      <tr><td>Sensor Fusion</td><td>دمج الحساسات — الجمع بين كاميرا + IMU (اهتزاز) + GPS لقرار أدق.</td></tr>
+      <tr><td>IMU</td><td>Inertial Measurement Unit — حسّاس يقيس التسارع والاهتزاز (مثل +2.7g عند الحفرة).</td></tr>
+    </table>
+  </div>
+  <div class="a4-page__footer"><span>قاموس المصطلحات</span><span>صفحة 3</span></div>
+</div>
+
+<!-- صفحة 4: قاموس المصطلحات (2) + الأرقام -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <div class="sec-head"><div class="sec-num">المرجع</div><h2>قاموس المصطلحات — الجزء 2 + دليل الأرقام</h2></div>
+    <table>
+      <tr><th>المصطلح</th><th>الشرح</th></tr>
+      <tr><td>FastAPI</td><td>إطار Backend بايثون — REST API وWebSocket.</td></tr>
+      <tr><td>Celery</td><td>نظام مهام غير متزامنة — تدريب GPU، معالجة ثقيلة في الخلفية.</td></tr>
+      <tr><td>Redis</td><td>ذاكرة مؤقتة سريعة — مثلاً cache حد السرعة 180 ثانية.</td></tr>
+      <tr><td>MinIO</td><td>تخزين ملفات S3-compatible — صور الأدلة والكشوفات.</td></tr>
+      <tr><td>JWT</td><td>JSON Web Token — مصادقة لوحة التحكم (Console).</td></tr>
+      <tr><td>X-Device-Key</td><td>مفتاح مصادقة جهاز السائق — يُرسل مع كل طلب API.</td></tr>
+      <tr><td>HUD</td><td>Head-Up Display — واجهة تنبيه على شاشة السائق (سرعة، تحذير).</td></tr>
+      <tr><td>Enterprise</td><td>جاهزية مؤسسية — Docker، مراقبة، أمان، قابلية توسع.</td></tr>
+      <tr><td>ROI</td><td>Return On Investment — عائد الاستثمار: تقليل حوادث وصيانة.</td></tr>
+      <tr><td>IQD</td><td>دينار عراقي — مثال غرامة 200,000 IQD في سيناريو السرعة.</td></tr>
+    </table>
+    <h3>دليل الأرقام الرئيسية في العرض</h3>
+    <table>
+      <tr><th>الرقم</th><th>المعنى في العرض</th></tr>
+      <tr><td><span class="num-box">4</span></td><td>منتجات: Console · Drive · ML Studio · Rasid Auto — أو 4 طبقات منظومة على الغلاف.</td></tr>
+      <tr><td><span class="num-box">6</span></td><td>6 أنواع أحداث طريق · 6 مصادر بيانات MLOps.</td></tr>
+      <tr><td><span class="num-box">12</span></td><td>12 إطار/ث (fps) معالجة AI على Edge.</td></tr>
+      <tr><td><span class="num-box">1280×720</span></td><td>دقة الكاميرا (720p) — JPEG quality 0.85.</td></tr>
+      <tr><td><span class="num-box">15 كم</span></td><td>نطاق التنبيه الجغرافي للسائقين القريبين.</td></tr>
+      <tr><td><span class="num-box">80</span></td><td>حد السرعة القانوني (كم/س) في سيناريo بغداد.</td></tr>
+      <tr><td><span class="num-box">+32</span></td><td>مقدار التجاوز: 112 − 80 = 32 كم/س.</td></tr>
+      <tr><td><span class="num-box">≥60%</span></td><td>عتبة ثقة كشف الحادث — لا نُبلّغ إلا فوقها.</td></tr>
+      <tr><td><span class="num-box">≥35%</span></td><td>عتبة كشف الحفرة/المطب/البالوعة.</td></tr>
+      <tr><td><span class="num-box">≥0.70</span></td><td>عتبة Active Learning — تحتها → قائمة إعادة تدريب.</td></tr>
+      <tr><td><span class="num-box">8080</span></td><td>منفذ API Gateway في الإنتاج.</td></tr>
+    </table>
+  </div>
+  <div class="a4-page__footer"><span>قاموس المصطلحات والأرقام</span><span>صفحة 4</span></div>
+</div>
+
+<!-- شريحة 0: الغلاف -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 0 · الغلاف</span>
+    <div class="sec-head"><h2>الغلاف — راصد RASID</h2></div>
+    <p><strong>ما على الشاشة:</strong> شعارات وزارة التعليم العالي، NURAI، UOITC — العنوان «راصد RASID» — وصف المنصة — الشعار — شارات YOLO26s · PostGIS · Fleet · Active Learning — خط أنابيب: كشف → PostGIS → تنبيه → إجراء → حل — 4 مقاييس متحركة.</p>
+    <h4>شرح العناصر</h4>
+    <ul>
+      <li><span class="term">منصة MLOps + GIS + Fleet:</span> ثلاث ركائز المشروع في جملة واحدة.</li>
+      <li><span class="term">كل مركبة مستشعر ذكي:</span> الفكرة الأساسية — Crowd-sensing للطرق.</li>
+      <li>الشارات: <strong>Edge AI</strong> = AI على الجهاز؛ <strong>15 كم Alerts</strong> = تنبيه جغرافي؛ <strong>Live Map</strong> = خريطة WebSocket.</li>
+      <li>المقاييس الأربعة: <span class="num-box">4</span> طبقات · <span class="num-box">6</span> أحداث · <span class="num-box">6</span> مصادر · <span class="num-box">12</span> إطار/ث.</li>
+    </ul>
+    <div class="lead"><strong>ماذا تقول:</strong> «مشروعنا اسمه راصد — اختصار لخمس كلمات بالإنجليزية. نحوّل كل سيارة إلى عين ذكية: كشف بالذكاء الاصطناعي، تسجيل على خريطة حية، تنبيه السائقين، ثم إجراء رسمي.»</div>
+  </div>
+  <div class="a4-page__footer"><span>الشريحة 0 · الغلاف</span><span>صفحة 5</span></div>
+</div>
+
+<!-- شريحة 1: التحدي -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 1 · التحدي</span>
+    <div class="sec-head"><h2>فجوة خطيرة في مراقبة الطرق</h2></div>
+    <div class="two">
+      <div class="box"><h4>❌ الواقع الحالي (5 نقاط)</h4>
+        <ul>
+          <li>بلاغات يدوية — تأخير ساعات</li>
+          <li>لا خريطة مخاطر حية</li>
+          <li>حوادث بعد وقوعها</li>
+          <li>بيانات مشتتة</li>
+          <li>AI منفصل بدون MLOps</li>
+        </ul></div>
+      <div class="box"><h4>✓ مع راصد (5 نقاط)</h4>
+        <ul>
+          <li><span class="num-box">12</span> إطار/ث YOLO26s</li>
+          <li>GIS + WebSocket لحظي</li>
+          <li>تنبيه استباقي <span class="num-box">15</span> كم</li>
+          <li>MLOps end-to-end</li>
+          <li>Active Learning</li>
+        </ul></div>
+    </div>
+    <h4>خط زمني الحادث (Timeline)</h4>
+    <table>
+      <tr><th>الوقت</th><th>الحدث</th><th>الشرح</th></tr>
+      <tr><td>+0s</td><td>كشف AI</td><td>YOLO26s يكتشف على كاميرا السائق فوراً.</td></tr>
+      <tr><td>+2s</td><td>PostGIS</td><td>حفظ الحدث بإحداثيات GPS في قاعدة مكانية.</td></tr>
+      <tr><td>+5s</td><td>تنبيه 15 كم</td><td>بث WebSocket لكل المركبات في النطاق.</td></tr>
+      <tr><td>+30s</td><td>إجراء رسمي</td><td>بلدية · مرور — بلاغ آلي.</td></tr>
+    </table>
+    <div class="lead"><strong>ماذا تقول:</strong> «المشكلة: البلاغ اليدوي بطيء. الحل: من صفر ثانية كشف إلى 30 ثانية إجراء حكومي — مقارنة VS على الشاشة.»</div>
+  </div>
+  <div class="a4-page__footer"><span>الشريحة 1 · التحدي</span><span>صفحة 6</span></div>
+</div>
+
+<!-- شريحة 2: المحاور -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 2 · قوة المشروع</span>
+    <div class="sec-head"><h2>ثلاثة محاور لا تُجمع في منتج واحد</h2></div>
+    <table>
+      <tr><th>المحور</th><th>المحتوى</th><th>مصطلحات KPI</th></tr>
+      <tr><td>01 · AI صناعي</td><td>YOLO26s · ByteTrack · Active Learning · Optuna · 5+ معماريات · تدريب تزايدي</td><td>YOLO26s, ByteTrack, Optuna</td></tr>
+      <tr><td>02 · GIS + بث</td><td>PostGIS · WebSocket · 6 أحداث · حد سرعة · Redis · 15 كم</td><td>PostGIS, Google Roads, 15 كm</td></tr>
+      <tr><td>03 · Fleet + Edge</td><td>Electron · Flutter Offline · GPS Native · 1280×720 · Telemetry · Docker</td><td>12 fps, 720p, Offline</td></tr>
+    </table>
+    <p>سلسلة التكامل: <code>Edge Device → FastAPI Gateway → PostGIS + WebSocket → Action</code></p>
+    <h4>ثلاث بطاقات معلومات</h4>
+    <ul>
+      <li><strong>تكامل حقيقي:</strong> ليس Demo منفصل — API + WebSocket.</li>
+      <li><strong>قرارات موثّقة:</strong> GPS + صورة + ثقة + timestamp.</li>
+      <li><strong>جاهز للحكومة:</strong> بلدية · مرور · طوارئ.</li>
+    </ul>
+    <div class="lead"><strong>ماذا تقول:</strong> «قوة راصد أنها تجمع AI صناعي + GIS لحظي + Fleet — ثلاثة محاور في منصة واحدة متصلة.»</div>
+  </div>
+  <div class="a4-page__footer"><span>الشريحة 2 · المحاور</span><span>صفحة 7</span></div>
+</div>
+
+<!-- شريحة 3: المنتجات -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 3 · المنتجات</span>
+    <div class="sec-head"><h2>4 منتجات — منصة واحدة</h2></div>
+    <table>
+      <tr><th>المنتج</th><th>الدور</th><th>الميزات المعروضة</th></tr>
+      <tr><td>Rasid Console 🖥️ Ops</td><td>لوحة تشغيل MLOps + GIS + Fleet</td><td>خريطة WebSocket · PDF/Excel · Fleet Management</td></tr>
+      <tr><td>Rasid Drive 🚗 Edge</td><td>تطبيق سطح مكتب Electron للسائق</td><td>12 إطار/ث · Speed Alerts · GPS + Camera</td></tr>
+      <tr><td>ML Studio 🧪 ML</td><td>وسم وتدريب وRegistry</td><td>Konva Canvas · Model Compare · Optuna HPO</td></tr>
+      <tr><td>Rasid Auto 📱 Mobile</td><td>Flutter للهاتف — Offline</td><td>Offline Mode · Segmentation · Car Map Renderer</td></tr>
+    </table>
+    <p>الربط: <strong>Console ←→ Drive ←→ ML Studio ←→ Rasid Auto</strong> — API موحّد · PostGIS مركزي.</p>
+    <div class="lead"><strong>ماذا تقول:</strong> «أربعة منتجات لكن منصة واحدة — من السائق على الطريق إلى مهندس ML في الاستوديو إلى مدير الأسطول في الكونsole.»</div>
+  </div>
+  <div class="a4-page__footer"><span>الشريحة 3 · المنتجات</span><span>صفحة 8</span></div>
+</div>
+
+<!-- شريحة 4: مقدمة السيناريوهات -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 4 · سيناريوهات حية</span>
+    <div class="sec-head"><h2>كيف يعمل راصد في الواقع؟</h2></div>
+    <p>ثلاث قصص — كل واحدة: <strong>مشكلة → كشف → قرار → إجراء → نتيجة</strong> في أقل من <span class="num-box">15</span> ثانية.</p>
+    <table>
+      <tr><th>#</th><th>السيناريo</th><th>التدفق (Flow)</th><th>القيمة</th></tr>
+      <tr><td>1</td><td>تجاوز سرعة</td><td>GPS → حد 80 → +32 → HUD → PostGIS → 200,000 IQD</td><td>⚡ بدون تدخل بشري</td></tr>
+      <tr><td>2</td><td>حفرة</td><td>YOLO 42% → اهتزاز +2.7g → 87% → تحذير 180م → إصلاح</td><td>🔗 دمج حساسات</td></tr>
+      <tr><td>3</td><td>حادث</td><td>كشف ≥60% → 3 مستشفيات → 911/122 → تحذير 15 كm</td><td>🚨 طوارئ متكاملة</td></tr>
+    </table>
+    <p>الشريط السفلي: سرعة · حفرة · فيديو · حادث — تشير للشرائح التالية.</p>
+    <div class="lead"><strong>ماذا تقول:</strong> «الآن ننتقل من النظرية إلى الواقع — ثلاث قصص حقيقية نُ simulatها في العرض.»</div>
+  </div>
+  <div class="a4-page__footer"><span>الشريحة 4 · السيناريوهات</span><span>صفحة 9</span></div>
+</div>
+
+<!-- شريحة 5: السرعة (1) -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 5 · تجاوز السرعة</span>
+    <div class="sec-head"><h2>سيناريo 1 — من القياس إلى الغرامة</h2></div>
+    <h4>الخطوات السبعة (Cinema Panel)</h4>
+    <ol>
+      <li><strong>قياس GPS:</strong> Rasid Drive · 72→112 كم/س · كل <span class="num-box">12</span> ث — لا رادار ثابت.</li>
+      <li><strong>حد قانوني:</strong> Google Roads → OSM → Redis · النتيجة <span class="num-box">80</span> كم/س.</li>
+      <li><strong>كشف تجاوز:</strong> 112 &gt; 80 · <span class="num-box">+32</span> كم/س.</li>
+      <li><strong>تنبيه HUD:</strong> اهتزاز + إشعار على الشاشة.</li>
+      <li><strong>قرار AI + Audit Trail:</strong> GPS 33.315°N · 44.366°E · وقت 14:32:08 · موثّق ✓.</li>
+      <li><strong>PostGIS:</strong> نوع الحدث <code>traffic_violation</code>.</li>
+      <li><strong>إشعار رسمي:</strong> <span class="num-box">200,000 IQD</span> → هاتف السائق + مديرية المرور.</li>
+    </ol>
+    <h4>مصطلحات الشاشة المتحركة</h4>
+    <ul>
+      <li><strong>ACT 1/7:</strong> act مسرحي — 7 مراحل في الرسوم المتحركة.</li>
+      <li><strong>Speed Limit Chain:</strong> GPS → Google Roads → OSM → Redis.</li>
+      <li><strong>SECURE NOTIFICATION DELIVERY:</strong> تسليم مخالفة رقمية للجهتين.</li>
+    </ul>
+  </div>
+  <div class="a4-page__footer"><span>الشريحة 5 · السرعة</span><span>صفحة 10</span></div>
+</div>
+
+<!-- شريحة 5b: فيديو السرعة -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 5ب · فيديو مخالفات السرعة</span>
+    <div class="sec-head"><h2>عروض فيديو حقيقية — 3 مقاطع</h2></div>
+    <p>ثلاث بطاقات فيديو: <code>rasid-speed-demo-1.mp4</code> · <code>-2</code> · <code>-3</code> — زر «تشغيل الكل».</p>
+    <div class="lead"><strong>ماذا تقول:</strong> «هذه لقطات حقيقية من تطبيق Rasid Drive — تجاوز سرعة، تنبيه HUD، وتسجيل المخالفة. ليست محاكاة فقط.»</div>
+    <span class="slide-tag" style="margin-top:14px">الشريحة 6 · كشف حفرة</span>
+    <div class="sec-head"><h2>سيناريo 2 — Sensor Fusion</h2></div>
+    <h4>الأرقام الحاسمة</h4>
+    <table>
+      <tr><th>المرحلة</th><th>القيمة</th><th>المعنى</th></tr>
+      <tr><td>كشف YOLO أولي</td><td>42%</td><td>فوق عتبة 35% لكن غير مؤكد — «لسنا متأكدين»</td></tr>
+      <tr><td>اهتزاز IMU</td><td>+2.7g</td><td>صدمة عند مرور العجلات على الحفرة</td></tr>
+      <tr><td>بعد الدمج</td><td>87%</td><td>قرار موثّق — Sensor Fusion</td></tr>
+      <tr><td>مسافة تحذير</td><td>180م → 80م</td><td>تحذير مبكر ثم اقتراب</td></tr>
+      <tr><td>بلاغ بلدية</td><td>#BLD-2026-0847</td><td>أمانة بغداد · شارع الرشيد · أولوية عالية</td></tr>
+    </table>
+    <p>Pipeline: كشف → تأكيد → PostGIS → البلدية → إصلاح → ✓</p>
+  </div>
+  <div class="a4-page__footer"><span>السرعة · الحفرة</span><span>صفحة 11</span></div>
+</div>
+
+<!-- شريحة 6b + 7 -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 6ب · فيديو Lab</span>
+    <div class="sec-head"><h2>rasid-lab-demo.mp4</h2></div>
+    <p>فيديو ML Studio / مختبر الكشف — أزرار تشغيل وإعادة. يُظهر YOLO على فيديو حقيقي.</p>
+    <span class="slide-tag" style="margin-top:12px">الشريحة 7 · كشف حادث</span>
+    <div class="sec-head"><h2>سيناريo 3 — استجابة طوارئ ذكية</h2></div>
+    <h4>الخطوات الست</h4>
+    <ol>
+      <li><strong>كشف:</strong> YOLO26s ≥60% · ByteTrack · &lt;3 ثوانٍ.</li>
+      <li><strong>PostGIS:</strong> 33.315°N · 44.366°E — تقاطع الرشيد.</li>
+      <li><strong>3 مستشفيات:</strong> ابن سينا 2.3 كm (4 د) · الرشيد 3.8 كm (6 د) · الكاظمية 5.1 كm (8 د).</li>
+      <li><strong>بث طوارئ:</strong> <span class="num-box">911</span> طوارئ · <span class="num-box">122</span> إسعاف · <span class="num-box">115</span> مرور · <span class="num-box">104</span> دفاع مدني.</li>
+      <li><strong>إشعارات:</strong> مرور + إسعاف + شرطة — Push · Email · Radio · Dashboard.</li>
+      <li><strong>تحذير Fleet:</strong> مركبات #247 (8.2 كm) · #103 (11.5) · #089 (14.1) — ضمن <span class="num-box">15</span> كm.</li>
+    </ol>
+    <div class="lead"><strong>ماذا تقول:</strong> «من الحادث إلى الإسعاف في ثوانٍ — ثلاث مستشفيات بمسارات ETA، وأرقام طوارئ، وتحذير كل أسطول راصد في 15 كيلومتر.»</div>
+  </div>
+  <div class="a4-page__footer"><span>Lab · الحادث</span><span>صفحة 12</span></div>
+</div>
+
+<!-- شريحة 8: AI -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 8 · محرك AI</span>
+    <div class="sec-head"><h2>YOLO26s + ByteTrack — دقة وسرعة</h2></div>
+    <table>
+      <tr><th>الفئة</th><th>العتبة</th><th>السبب</th></tr>
+      <tr><td>💥 Accident</td><td>≥60%</td><td>حساسية عالية — لا نفوّت حادثاً</td></tr>
+      <tr><td>🕳️ Pothole</td><td>≥35%</td><td>توازن — كشف مبكر + Sensor Fusion</td></tr>
+      <tr><td>🎯 ByteTrack</td><td>Track ID</td><td>تتبع مستمر عبر الإطارات</td></tr>
+      <tr><td>⚡ Speed</td><td>GPS</td><td>ليس YOLO — GPS + حد سرعة → 200,000 IQD</td></tr>
+    </table>
+    <p>HUD العرض: <span class="num-box">12 FPS</span> · <span class="num-box">1280×720</span> · RASID DRIVE LIVE.</p>
+    <p>صف YOLO26s: أحدث نسخة YOLO — s = small — مناسبة للـ Edge بـ 12 إطار/ث.</p>
+    <div class="lead"><strong>ماذا تقول:</strong> «محركنا YOLO26s مع ByteTrack — عتبات مختلفة: 60% للحوادث لأن الثمن باهظ، 35% للحفر مع تأكيد الاهتزاز.»</div>
+  </div>
+  <div class="a4-page__footer"><span>الشريحة 8 · AI</span><span>صفحة 13</span></div>
+</div>
+
+<!-- شريحة 9: MLOps -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 9 · MLOps</span>
+    <div class="sec-head"><h2>من البيانات إلى الإنتاج — حلقة مغلقة</h2></div>
+    <table>
+      <tr><th>#</th><th>المرحلة</th><th>التفاصيل</th></tr>
+      <tr><td>1</td><td>جمع بيانات — 6 مصادر</td><td>فيديو · صور · Fleet · Active Learning · Import · Annotation</td></tr>
+      <tr><td>2</td><td>Annotation Konva</td><td>Bounding Box · تصدير YOLO format</td></tr>
+      <tr><td>3</td><td>تدريب + Optuna</td><td>YOLO26s · YOLOv10 · RT-DETR · EfficientDet · مقارنة</td></tr>
+      <tr><td>4</td><td>Deploy Production</td><td>Model Registry · A/B · Celery GPU</td></tr>
+      <tr><td>5</td><td>كشف + GIS</td><td><code>POST /driver/detect</code> · PostGIS · WebSocket</td></tr>
+      <tr><td>6</td><td>Active Learning ≥0.70</td><td>كشوفات ضعيفة → Queue → Retrain</td></tr>
+    </table>
+    <p>إحصائيات: <span class="num-box">6</span> مصادر · <span class="num-box">5+</span> معماريات · Optuna · <span class="num-box">≥0.70</span> AL.</p>
+    <div class="lead"><strong>ماذا تقول:</strong> «ليس مجرد نموذج — حلقة MLOps كاملة: كل رحلة سائق قد تُحسّن النموذج عبر Active Learning.»</div>
+  </div>
+  <div class="a4-page__footer"><span>الشريحة 9 · MLOps</span><span>صفحة 14</span></div>
+</div>
+
+<!-- شريحة 10: المعمارية -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 10 · المعمارية</span>
+    <div class="sec-head"><h2>منظومة Enterprise متكاملة — 5 طبقات</h2></div>
+    <table>
+      <tr><th>الطبقة</th><th>المكوّنات</th><th>الدور</th></tr>
+      <tr><td>Client</td><td>Drive · Console · ML Studio</td><td>Electron · React · Konva</td></tr>
+      <tr><td>Gateway</td><td>API Gateway :8080</td><td>JWT · TLS · Device Key</td></tr>
+      <tr><td>Services</td><td>FastAPI · Celery · YOLO26s · ByteTrack · Active Learn</td><td>REST · GPU · Inference</td></tr>
+      <tr><td>Data</td><td>PostGIS · Redis 180s · MinIO · Prometheus</td><td>Spatial · Cache · Evidence · Monitor</td></tr>
+      <tr><td>Live GIS</td><td>WebSocket Map · 15 km Alerts</td><td>تحديث لحظي للخريطة</td></tr>
+    </table>
+    <p>التدفق: <code>Drive → Gateway → FastAPI → PostGIS → Live Map</code></p>
+    <div class="lead"><strong>ماذا تقول:</strong> «معمارية Enterprise من Edge إلى Gateway إلى خدمات إلى بيانات إلى خريطة حية — كل طبقة production-ready.»</div>
+  </div>
+  <div class="a4-page__footer"><span>الشريحة 10 · المعمارية</span><span>صفحة 15</span></div>
+</div>
+
+<!-- شريحة 11: السائق -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 11 · تطبيق السائق</span>
+    <div class="sec-head"><h2>ذكاء على حافة الشبكة (Edge)</h2></div>
+    <table>
+      <tr><th>العملية</th><th>الفترة/القيمة</th><th>الشرح</th></tr>
+      <tr><td>AI Detection</td><td>12 إطار/ث</td><td>كشف YOLO على الجهاز</td></tr>
+      <tr><td>Sync Config</td><td>كل 20 ث</td><td>جلب إعدادات من <code>GET /driver/config</code></td></tr>
+      <tr><td>Nearby Events</td><td>15 كm · كل 15 ث</td><td><code>GET /driver/events/nearby</code></td></tr>
+      <tr><td>Speed Limit</td><td>12 ث أو 25 م</td><td>تحديث حد السرعة عند الحركة</td></tr>
+      <tr><td>Camera</td><td>1280×720</td><td>JPEG 0.85 — إرسال للكشف</td></tr>
+    </table>
+    <p><strong>GPS:</strong> Windows Native API → Browser Fallback · <strong>Speed Chain:</strong> Google Roads → OSM Overpass → osm_inferred → Redis 180s.</p>
+    <p><strong>APIs:</strong> <code>POST /driver/detect</code> · X-Device-Key · Offline Queue (Flutter).</p>
+    <div class="lead"><strong>ماذا تقول:</strong> «كل سيارة عين ذكية — 12 fps كشف، sync كل 20 ثانية، تنبيهات 15 كm كل 15 ثانية.»</div>
+  </div>
+  <div class="a4-page__footer"><span>الشريحة 11 · السائق</span><span>صفحة 16</span></div>
+</div>
+
+<!-- شريحة 12: أحداث الطريق -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 12 · 6 أنواع أحداث</span>
+    <div class="sec-head"><h2>RoadEventType — خريطة حية PostGIS</h2></div>
+    <table>
+      <tr><th>النوع</th><th>الرمز</th><th>العتبة/المصدر</th><th>الإجراء</th></tr>
+      <tr><td>حادث</td><td>accident 💥</td><td>≥60% · ByteTrack</td><td>طوارئ فورية</td></tr>
+      <tr><td>حفرة</td><td>pothole 🕳️</td><td>≥35% + اهتزاز</td><td>بلاغ بلدية</td></tr>
+      <tr><td>مطب</td><td>speed bump ⬆️</td><td>≥35% YOLO</td><td>بلدية · محلة 712</td></tr>
+      <tr><td>بالوعة</td><td>manhole ⭕</td><td>≥35%</td><td>صيانة شوارع GIS</td></tr>
+      <tr><td>مخالفة سرعة</td><td>speed violation 🚦</td><td>GPS + حد</td><td>200,000 IQD</td></tr>
+      <tr><td>تبليغ مواطن</td><td>citizen report 📱</td><td>التطبيق</td><td>صورة + GPS فوراً</td></tr>
+    </table>
+    <p>كل حدث: GPS · ثقة · timestamp · WebSocket broadcast · تنبيه <span class="num-box">15</span> كm.</p>
+    <div class="lead"><strong>ماذا تقول:</strong> «ستة أنواع أحداث على خريطة واحدة — من حادث إلى تبليغ مواطن — كلها PostGIS + WebSocket.»</div>
+  </div>
+  <div class="a4-page__footer"><span>الشريحة 12 · الأحداث</span><span>صفحة 17</span></div>
+</div>
+
+<!-- شريحة 13 + 14 -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 13 · مصادر البيانات</span>
+    <div class="sec-head"><h2>6 مصادر → YOLO26s Model Hub</h2></div>
+    <table>
+      <tr><th>المصدر</th><th>التدفق</th></tr>
+      <tr><td>🎬 فيديو Fleet 1280×720 12fps</td><td>→ Training</td></tr>
+      <tr><td>📷 صور ميدانية Import</td><td>→ Dataset</td></tr>
+      <tr><td>✏️ Konva Annotation</td><td>→ Labels</td></tr>
+      <tr><td>🔄 Active Learning ≥0.70</td><td>→ Retrain</td></tr>
+      <tr><td>📍 PostGIS Events</td><td>→ GIS Map</td></tr>
+      <tr><td>📳 Sensor Fusion</td><td>→ Confirm</td></tr>
+    </table>
+    <p>Model Hub: YOLO26s · YOLOv10 · RT-DETR · EfficientDet · ByteTrack · Optuna · A/B.</p>
+    <span class="slide-tag" style="margin-top:10px">الشريحة 14 · Stack التقني</span>
+    <div class="sec-head"><h2>6 بطاقات Enterprise-Grade</h2></div>
+    <p>Frontend: React TS Electron Flutter · Backend: FastAPI Celery JWT · AI: YOLO26s Optuna PyTorch · Data: PostGIS Redis MinIO · DevOps: Docker Prometheus Grafana VPS · GIS: WebSocket Google Roads OSM.</p>
+    <p>أمان: JWT · TLS · Device Keys · Gateway 8080 · Grafana · MinIO S3.</p>
+  </div>
+  <div class="a4-page__footer"><span>البيانات · التقنيات</span><span>صفحة 18</span></div>
+</div>
+
+<!-- شريحة 15 + 16 -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 15 · الميزة التنافسية</span>
+    <div class="sec-head"><h2>مقارنة — لماذا راصد مختلف؟</h2></div>
+    <table>
+      <tr><th>البديل</th><th>النقص</th><th>الدرجة</th></tr>
+      <tr><td>YOLO فقط</td><td>بدون GIS · Fleet · MLOps</td><td>25%</td></tr>
+      <tr><td>Dashcam App</td><td>يدوي · لا AL · لا حكومة</td><td>35%</td></tr>
+      <tr><td>GIS Platform</td><td>لا Edge AI · بيانات قديمة</td><td>40%</td></tr>
+      <tr><td><strong>راصد RASID</strong></td><td>YOLO26s · PostGIS · MLOps · 3 سenarios · حكومة</td><td><strong>100%</strong></td></tr>
+    </table>
+    <span class="slide-tag" style="margin-top:10px">الشريحة 16 · الأثر</span>
+    <div class="sec-head"><h2>6 بطاقات أثر</h2></div>
+    <table>
+      <tr><th>البطاقة</th><th>الرقم</th><th>المعنى</th></tr>
+      <tr><td>سرعة استجابة</td><td>12 fps</td><td>+0s كشف · +2s PostGIS</td></tr>
+      <tr><td>تعلّم مستمر</td><td>∞</td><td>AL ≥0.70 · Queue → Retrain</td></tr>
+      <tr><td>جاهزية إنتاج</td><td>100%</td><td>Docker · Prometheus · Grafana</td></tr>
+      <tr><td>جهات حكومية</td><td>3</td><td>بلدية · مرور · طوارئ</td></tr>
+      <tr><td>تنبيه جغرافي</td><td>15 كm</td><td>WebSocket Radius</td></tr>
+      <tr><td>أنواع أحداث</td><td>6</td><td>GIS Layer · Reports</td></tr>
+    </table>
+    <p>ROI: تقليل حوادث · صيانة · مخالفات موثّقة · طوارئ منسّقة.</p>
+  </div>
+  <div class="a4-page__footer"><span>التنافسية · الأثر</span><span>صفحة 19</span></div>
+</div>
+
+<!-- شريحة 17: الختام -->
+<div class="a4-page">
+  <div class="a4-page__body">
+    <span class="slide-tag">الشريحة 17 · الختام</span>
+    <div class="sec-head"><h2>شكراً — NURAI 2026</h2></div>
+    <div class="greeting">
+      <p><strong>تحية الختام:</strong></p>
+      <p>«شكراً لحسن استماعكم. راصد ليس مجرد نموذج YOLO — بل منصة كاملة: <strong>4 منتجات</strong>، <strong>3 سيناريوهات حية</strong>، <strong>YOLO26s بـ 12 إطار/ث</strong>، دقة <strong>≥60%</strong> للحوادث و<strong>≥35%</strong> للحفر، و<strong>تنبيه 15 كيلومتر</strong> لكل أسطولنا.»</p>
+      <p>«شعارنا: <em>نرصد الطريق… قبل أن تصبح المشكلة حادثاً</em>. نرحّب بأسئلتكم.»</p>
+    </div>
+    <h4>شارات الختام</h4>
+    <p>YOLO26s · PostGIS · 12 إطار/ث · 15 كm Alerts · Active Learning · أسئلة؟</p>
+    <h4>خط الأنابيب الأخير</h4>
+    <p>كشف → خريطة → تنبيه → إجراء → حل</p>
+    <div class="lead" style="margin-top:16px">ملاحظة: افتح <code>Rasid-Presentation.html</code> مع هذا الدليل جنباً إلى جنب أثناء المقابلة أو العرض.</div>
+  </div>
+  <div class="a4-page__footer"><span>الختام · NURAI 2026</span><span>صفحة 20</span></div>
+</div>
+
+</div>
+</body>
+</html>
