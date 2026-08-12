@@ -25,28 +25,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _nameCtrl = TextEditingController(text: session.driverConfig?.driverName ?? '');
-    _phoneCtrl = TextEditingController(text: session.driverConfig?.phoneNumber ?? '');
-    session.addListener(_syncProfileFields);
+    final cfg = session.driverConfig;
+    _nameCtrl = TextEditingController(text: cfg?.driverName ?? '');
+    _phoneCtrl = TextEditingController(text: cfg?.phoneNumber ?? '');
   }
 
   @override
   void dispose() {
-    session.removeListener(_syncProfileFields);
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     super.dispose();
-  }
-
-  void _syncProfileFields() {
-    final cfg = session.driverConfig;
-    if (cfg == null) return;
-    if (_nameCtrl.text != cfg.driverName) {
-      _nameCtrl.text = cfg.driverName;
-    }
-    if (_phoneCtrl.text != cfg.phoneNumber) {
-      _phoneCtrl.text = cfg.phoneNumber;
-    }
   }
 
   Future<void> _saveProfile() async {
@@ -75,6 +63,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('الإعدادات')),
       body: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom + 16),
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -90,6 +80,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: TextField(
               controller: _nameCtrl,
+              textInputAction: TextInputAction.next,
+              autocorrect: false,
               decoration: InputDecoration(
                 labelText: 'اسم السائق',
                 prefixIcon: const Icon(Icons.person_outline, color: RasidColors.safety),
@@ -105,6 +97,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: TextField(
               controller: _phoneCtrl,
               keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.done,
+              autocorrect: false,
               decoration: InputDecoration(
                 labelText: 'رقم هاتف المركبة',
                 hintText: '07XXXXXXXXX',
