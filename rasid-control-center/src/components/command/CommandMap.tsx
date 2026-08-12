@@ -217,7 +217,10 @@ export function CommandMap({
           .filter((v) => v.is_online && v.latitude != null && v.longitude != null)
           .map((v) => (
             <Marker key={v.id} position={[v.latitude!, v.longitude!]} icon={vehicleIcon}>
-              <Popup>{v.driver_name?.trim() || v.vehicle_id} · متصل</Popup>
+              <Popup>
+                {v.driver_name?.trim() || v.vehicle_id}
+                {v.phone_number?.trim() ? ` · ${v.phone_number.trim()}` : ''} · متصل
+              </Popup>
             </Marker>
           ))}
       </MapContainer>

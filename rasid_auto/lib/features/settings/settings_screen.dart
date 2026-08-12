@@ -4,10 +4,71 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/services/drive_session.dart';
 import '../../theme/rasid_theme.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.session});
 
   final DriveSession session;
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _phoneCtrl;
+  bool _savingProfile = false;
+  String? _profileError;
+  String? _profileSuccess;
+
+  DriveSession get session => widget.session;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: session.driverConfig?.driverName ?? '');
+    _phoneCtrl = TextEditingController(text: session.driverConfig?.phoneNumber ?? '');
+    session.addListener(_syncProfileFields);
+  }
+
+  @override
+  void dispose() {
+    session.removeListener(_syncProfileFields);
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    super.dispose();
+  }
+
+  void _syncProfileFields() {
+    final cfg = session.driverConfig;
+    if (cfg == null) return;
+    if (_nameCtrl.text != cfg.driverName) {
+      _nameCtrl.text = cfg.driverName;
+    }
+    if (_phoneCtrl.text != cfg.phoneNumber) {
+      _phoneCtrl.text = cfg.phoneNumber;
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    setState(() {
+      _savingProfile = true;
+      _profileError = null;
+      _profileSuccess = null;
+    });
+    final err = await session.updateDriverProfile(
+      driverName: _nameCtrl.text,
+      phoneNumber: _phoneCtrl.text,
+    );
+    if (!mounted) return;
+    setState(() {
+      _savingProfile = false;
+      if (err != null) {
+        _profileError = err;
+      } else {
+        _profileSuccess = 'تم الحفظ — يظهر في لوحة التحكم';
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -15,6 +76,98 @@ class SettingsScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('الإعدادات')),
       body: ListView(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Text(
+              'بيانات المركبة',
+              style: GoogleFonts.cairo(
+                fontWeight: FontWeight.w700,
+                color: RasidColors.safety,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: TextField(
+              controller: _nameCtrl,
+              decoration: InputDecoration(
+                labelText: 'اسم السائق',
+                prefixIcon: const Icon(Icons.person_outline, color: RasidColors.safety),
+                filled: true,
+                fillColor: RasidColors.asphaltCard,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              style: GoogleFonts.cairo(color: Colors.white),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: TextField(
+              controller: _phoneCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                labelText: 'رقم هاتف المركبة',
+                hintText: '07XXXXXXXXX',
+                prefixIcon: const Icon(Icons.phone_outlined, color: RasidColors.safety),
+                filled: true,
+                fillColor: RasidColors.asphaltCard,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              style: GoogleFonts.cairo(color: Colors.white),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: FilledButton.icon(
+              onPressed: _savingProfile ? null : _saveProfile,
+              icon: _savingProfile
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.save_outlined),
+              label: Text(
+                _savingProfile ? 'جاري الحفظ…' : 'حفظ وإرسال للوحة التحكم',
+                style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: RasidColors.safety,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+          if (_profileError != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Text(
+                _profileError!,
+                style: GoogleFonts.cairo(color: RasidColors.danger, fontSize: 13),
+              ),
+            ),
+          if (_profileSuccess != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Text(
+                _profileSuccess!,
+                style: GoogleFonts.cairo(color: RasidColors.info, fontSize: 13),
+              ),
+            ),
+          ListTile(
+            dense: true,
+            leading: Icon(
+              session.online ? Icons.wifi : Icons.wifi_off,
+              color: session.online ? RasidColors.info : RasidColors.mistDim,
+            ),
+            title: Text(session.online ? 'متصل بلوحة التحكم' : 'غير متصل'),
+            subtitle: Text(
+              session.driverConfig != null
+                  ? '${session.driverConfig!.vehicleId} · ${session.driverConfig!.deviceId}'
+                  : 'تحقق من اتصال السيرفر',
+              style: GoogleFonts.cairo(fontSize: 12, color: RasidColors.mistDim),
+            ),
+          ),
+          const Divider(height: 32),
           SwitchListTile(
             title: const Text('وضع Debug'),
             subtitle: const Text('FPS · latency · sensors · track IDs'),
@@ -74,8 +227,7 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('كشف Rasid Cloud'),
             subtitle: Text(
               session.driverConfig != null
-                  ? '${session.driverConfig!.driverName} · ${session.driverConfig!.vehicleId} · '
-                      '${session.online ? "متصل" : "غير متصل"}'
+                  ? '${session.driverConfig!.driverName} · ${session.driverConfig!.vehicleId}'
                   : 'غير متصل — تحقق من السيرفر',
               style: GoogleFonts.cairo(fontSize: 12, color: RasidColors.mistDim),
             ),
@@ -83,7 +235,7 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 24),
           Center(
             child: Text(
-              'RASID Auto v1.5.7 · Cloud YOLO',
+              'RASID Auto v1.5.8 · Cloud YOLO',
               style: GoogleFonts.cairo(color: RasidColors.mistDim, fontSize: 12),
             ),
           ),

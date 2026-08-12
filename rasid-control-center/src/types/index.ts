@@ -40,6 +40,7 @@ export interface FleetDevice {
   device_id: string;
   vehicle_id: string;
   driver_name?: string | null;
+  phone_number?: string | null;
   is_online: boolean;
   gps_status: string;
   camera_status: string;

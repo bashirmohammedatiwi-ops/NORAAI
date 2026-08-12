@@ -38,10 +38,13 @@ async def control_center_overview(project_id: UUID, db: AsyncSession = Depends(g
     )
     events = list(active_events.scalars().all())
 
+    from app.services.fleet.status import fleet_online_cutoff
+
+    cutoff = fleet_online_cutoff()
     online = await db.execute(
         select(func.count(FleetDevice.id)).where(
             FleetDevice.project_id == project_id,
-            FleetDevice.is_online == True,
+            FleetDevice.last_communication >= cutoff,
         )
     )
     total_devices = await db.execute(
@@ -441,10 +444,13 @@ async def control_center_system(project_id: UUID, db: AsyncSession = Depends(get
         pass
 
     artifact = await get_active_model(db, project_id)
+    from app.services.fleet.status import fleet_online_cutoff
+
+    cutoff = fleet_online_cutoff()
     online = await db.execute(
         select(func.count(FleetDevice.id)).where(
             FleetDevice.project_id == project_id,
-            FleetDevice.is_online == True,
+            FleetDevice.last_communication >= cutoff,
         )
     )
     total_devices = await db.execute(

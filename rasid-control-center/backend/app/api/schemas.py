@@ -47,6 +47,7 @@ class FleetDeviceResponse(BaseModel):
     device_id: str
     vehicle_id: str
     driver_name: str | None = None
+    phone_number: str | None = None
     is_online: bool
     gps_status: str
     camera_status: str

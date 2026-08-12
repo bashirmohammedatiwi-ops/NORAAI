@@ -21,9 +21,13 @@ async def road_stats(project_id: UUID, db: AsyncSession = Depends(get_db)):
     from app.services.models.active_model import get_active_model
 
     artifact = await get_active_model(db, project_id)
+    from app.services.fleet.status import fleet_online_cutoff
+
+    cutoff = fleet_online_cutoff()
     vehicles = await db.execute(
         select(func.count(FleetDevice.id)).where(
-            FleetDevice.project_id == project_id, FleetDevice.is_online == True
+            FleetDevice.project_id == project_id,
+            FleetDevice.last_communication >= cutoff,
         )
     )
     accidents = await db.execute(

@@ -10,7 +10,7 @@ import { useFleet } from '@/hooks/useControlCenter';
 import { useControlContext } from '@/context/ControlContext';
 import { governorateName, vehicleGovernorate } from '@/lib/constants';
 import { formatRelativeTime } from '@/lib/utils';
-import { Camera, MapPin, Wifi, WifiOff, Truck, Signal, List, Map as MapIcon } from 'lucide-react';
+import { Camera, MapPin, Wifi, WifiOff, Truck, Signal, List, Map as MapIcon, Phone } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -114,6 +114,12 @@ export default function FleetPage() {
                       <p className="text-lg font-bold">{d.driver_name?.trim() || d.vehicle_id}</p>
                       {d.driver_name?.trim() ? (
                         <p className="text-xs text-muted-foreground">🚗 {d.vehicle_id}</p>
+                      ) : null}
+                      {d.phone_number?.trim() ? (
+                        <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Phone className="h-3 w-3" />
+                          {d.phone_number.trim()}
+                        </p>
                       ) : null}
                       {isSource && <Badge className="mt-1 border-primary/30 bg-primary/10 text-primary">مصدر العرض</Badge>}
                       <p className="text-xs text-muted-foreground">{d.device_id}</p>

@@ -57,6 +57,7 @@ class RasidApiService {
     required String projectId,
     required String driverName,
     required String vehicleId,
+    String phoneNumber = '',
   }) async {
     final deviceId = 'rasid-${const Uuid().v4().substring(0, 8)}';
     final res = await _client
@@ -67,6 +68,7 @@ class RasidApiService {
             'device_id': deviceId,
             'vehicle_id': vehicleId,
             'driver_name': driverName,
+            if (phoneNumber.trim().isNotEmpty) 'phone_number': phoneNumber.trim(),
           }),
         )
         .timeout(_defaultTimeout);
@@ -81,8 +83,28 @@ class RasidApiService {
       vehicleId: json['vehicle_id'] as String,
       apiKey: json['api_key'] as String,
       driverName: driverName,
+      phoneNumber: phoneNumber.trim(),
       speedLimit: config.speedLimit,
     );
+  }
+
+  Future<void> updateProfile({
+    required String driverName,
+    required String phoneNumber,
+  }) async {
+    final res = await _client
+        .patch(
+          Uri.parse('$baseUrl/api/v1/driver/profile'),
+          headers: {..._headers, 'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'driver_name': driverName.trim(),
+            'phone_number': phoneNumber.trim(),
+          }),
+        )
+        .timeout(_defaultTimeout);
+    if (res.statusCode != 200) {
+      throw ApiException.fromResponse(res.statusCode, res.body);
+    }
   }
 
   Future<void> sendTelemetry({
@@ -104,6 +126,8 @@ class RasidApiService {
               'gps_status': gpsStatus,
               'camera_status': cameraStatus,
               'driver_name': config.driverName,
+              if (config.phoneNumber.trim().isNotEmpty)
+                'phone_number': config.phoneNumber.trim(),
               'app_version': 'rasid_auto',
             }),
           )

@@ -196,6 +196,31 @@ class DriveSession extends ChangeNotifier {
 
   Future<void> reloadApiConfig() => _initApi();
 
+  Future<String?> updateDriverProfile({
+    required String driverName,
+    required String phoneNumber,
+  }) async {
+    final name = driverName.trim();
+    if (name.isEmpty) return 'أدخل اسمك';
+    final cfg = driverConfig;
+    final a = api;
+    if (cfg == null || a == null) return 'غير متصل بالسيرفر';
+    try {
+      await a.updateProfile(driverName: name, phoneNumber: phoneNumber.trim());
+      driverConfig = cfg.copyWith(driverName: name, phoneNumber: phoneNumber.trim());
+      await ConfigStorage.save(driverConfig!);
+      statusMessage =
+          'متصل — ${driverConfig!.driverName} · ${driverConfig!.vehicleId}';
+      notifyListeners();
+      unawaited(_sendTelemetry());
+      return null;
+    } on ApiException catch (e) {
+      return e.displayMessage;
+    } catch (e) {
+      return ApiException.fromError(e).displayMessage;
+    }
+  }
+
   Future<void> _sendTelemetry() async {
     final a = api;
     if (a == null) return;

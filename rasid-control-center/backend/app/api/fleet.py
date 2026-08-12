@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.schemas import FleetDeviceResponse
 from app.core.database import get_db
 from app.models import FleetDevice
+from app.services.fleet.status import fleet_device_is_online
 
 router = APIRouter(tags=["fleet"])
 
@@ -21,7 +22,8 @@ async def list_fleet(project_id: UUID, db: AsyncSession = Depends(get_db)):
             device_id=d.device_id,
             vehicle_id=d.vehicle_id,
             driver_name=(d.extra_metadata or {}).get("driver_name"),
-            is_online=d.is_online,
+            phone_number=(d.extra_metadata or {}).get("phone_number"),
+            is_online=fleet_device_is_online(d),
             gps_status=d.gps_status,
             camera_status=d.camera_status,
             latitude=d.latitude,

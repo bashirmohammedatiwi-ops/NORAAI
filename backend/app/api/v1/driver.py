@@ -20,6 +20,7 @@ from app.schemas import (
     DriverModelManifest,
     DriverNearbyEvent,
     DriverProjectClass,
+    DriverProfileUpdate,
     DriverReportDetectionsRequest,
     DriverSpeedLimitResponse,
     DriverSpeedViolationRequest,
@@ -256,6 +257,8 @@ async def driver_telemetry(
         meta["model_sha256"] = data.model_sha256
     if data.driver_name:
         meta["driver_name"] = data.driver_name.strip()
+    if data.phone_number:
+        meta["phone_number"] = data.phone_number.strip()
     meta["vehicle_id"] = device.vehicle_id
     meta["last_sync_at"] = datetime.now(timezone.utc).isoformat()
     device.extra_metadata = meta
@@ -275,6 +278,34 @@ async def driver_telemetry(
     redis = await get_redis()
     await redis.setex(f"fleet:online:{device.device_id}", 60, "1")
     return {"status": "ok", "device_id": device.device_id}
+
+
+@router.patch("/profile")
+async def update_driver_profile(
+    data: DriverProfileUpdate,
+    device: FleetDevice = Depends(get_fleet_device),
+    db: AsyncSession = Depends(get_db),
+):
+    from datetime import datetime, timezone
+
+    meta = dict(device.extra_metadata or {})
+    if data.driver_name is not None:
+        name = data.driver_name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Driver name cannot be empty")
+        meta["driver_name"] = name
+    if data.phone_number is not None:
+        meta["phone_number"] = data.phone_number.strip()
+    meta["vehicle_id"] = device.vehicle_id
+    device.extra_metadata = meta
+    device.is_online = True
+    device.last_communication = datetime.now(timezone.utc)
+    await db.flush()
+    return {
+        "status": "ok",
+        "driver_name": meta.get("driver_name"),
+        "phone_number": meta.get("phone_number"),
+    }
 
 
 @router.get("/model/manifest", response_model=DriverModelManifest)

@@ -42,15 +42,18 @@ router = APIRouter(tags=["ingestion", "classes", "fleet"])
 
 
 def _fleet_device_response(device: FleetDevice, **extra) -> FleetDeviceResponse:
+    from app.services.fleet.status import fleet_device_is_online
+
     meta = device.extra_metadata or {}
     return FleetDeviceResponse(
         id=device.id,
         device_id=device.device_id,
         vehicle_id=device.vehicle_id,
         driver_name=meta.get("driver_name"),
+        phone_number=meta.get("phone_number"),
         gps_status=device.gps_status,
         camera_status=device.camera_status,
-        is_online=device.is_online,
+        is_online=fleet_device_is_online(device),
         latitude=device.latitude,
         longitude=device.longitude,
         last_communication=device.last_communication,
@@ -294,6 +297,8 @@ async def list_fleet(project_id: UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/fleet/{project_id}", response_model=FleetDeviceRegisterResponse)
 async def register_device(project_id: UUID, data: FleetDeviceCreate, db: AsyncSession = Depends(get_db)):
+    from datetime import datetime, timezone
+
     result = await db.execute(
         select(FleetDevice).where(FleetDevice.device_id == data.device_id)
     )
@@ -301,6 +306,8 @@ async def register_device(project_id: UUID, data: FleetDeviceCreate, db: AsyncSe
     meta: dict = dict(existing.extra_metadata or {}) if existing else {}
     if data.driver_name:
         meta["driver_name"] = data.driver_name.strip()
+    if data.phone_number:
+        meta["phone_number"] = data.phone_number.strip()
     meta["vehicle_id"] = data.vehicle_id
 
     if existing:
@@ -309,6 +316,7 @@ async def register_device(project_id: UUID, data: FleetDeviceCreate, db: AsyncSe
         existing.vehicle_id = data.vehicle_id
         existing.extra_metadata = meta
         existing.is_online = True
+        existing.last_communication = datetime.now(timezone.utc)
         device = existing
         api_key = device.api_key
     else:
@@ -320,6 +328,7 @@ async def register_device(project_id: UUID, data: FleetDeviceCreate, db: AsyncSe
             api_key=api_key,
             extra_metadata=meta,
             is_online=True,
+            last_communication=datetime.now(timezone.utc),
         )
         db.add(device)
     await db.flush()
@@ -349,6 +358,8 @@ async def device_telemetry(device_id: str, data: TelemetryRequest, db: AsyncSess
     if data.driver_name:
         meta = dict(device.extra_metadata or {})
         meta["driver_name"] = data.driver_name.strip()
+        if data.phone_number:
+            meta["phone_number"] = data.phone_number.strip()
         device.extra_metadata = meta
 
     db.add(

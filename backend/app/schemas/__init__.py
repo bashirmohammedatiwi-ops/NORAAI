@@ -439,6 +439,7 @@ class FleetDeviceCreate(BaseModel):
     device_id: str
     vehicle_id: str
     driver_name: str | None = None
+    phone_number: str | None = None
 
 
 class FleetDeviceResponse(BaseModel):
@@ -446,6 +447,7 @@ class FleetDeviceResponse(BaseModel):
     device_id: str
     vehicle_id: str
     driver_name: str | None = None
+    phone_number: str | None = None
     gps_status: str
     camera_status: str
     is_online: bool
@@ -471,6 +473,12 @@ class TelemetryRequest(BaseModel):
     model_version: str | None = None
     model_sha256: str | None = None
     driver_name: str | None = None
+    phone_number: str | None = None
+
+
+class DriverProfileUpdate(BaseModel):
+    driver_name: str | None = None
+    phone_number: str | None = None
 
 
 class RoadEventCreate(BaseModel):

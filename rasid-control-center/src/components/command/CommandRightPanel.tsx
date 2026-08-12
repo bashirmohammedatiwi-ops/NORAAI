@@ -108,6 +108,9 @@ export function CommandRightPanel({
                   {v.driver_name?.trim() ? (
                     <span className="text-[10px] text-muted-foreground">{v.vehicle_id}</span>
                   ) : null}
+                  {v.phone_number?.trim() ? (
+                    <span className="block truncate text-[10px] text-muted-foreground">{v.phone_number.trim()}</span>
+                  ) : null}
                 </div>
                 <span className="shrink-0 text-muted-foreground">
                   {v.last_communication ? formatRelativeTime(v.last_communication) : '—'}
