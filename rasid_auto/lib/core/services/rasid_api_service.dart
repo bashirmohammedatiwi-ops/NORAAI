@@ -92,19 +92,57 @@ class RasidApiService {
     required String driverName,
     required String phoneNumber,
   }) async {
-    final res = await _client
+    final name = driverName.trim();
+    final phone = phoneNumber.trim();
+    final patchRes = await _client
         .patch(
           Uri.parse('$baseUrl/api/v1/driver/profile'),
           headers: {..._headers, 'Content-Type': 'application/json'},
           body: jsonEncode({
-            'driver_name': driverName.trim(),
-            'phone_number': phoneNumber.trim(),
+            'driver_name': name,
+            'phone_number': phone,
+          }),
+        )
+        .timeout(_defaultTimeout);
+
+    if (patchRes.statusCode == 200) return;
+
+    // Older VPS without PATCH /driver/profile — upsert fleet + telemetry.
+    if (patchRes.statusCode == 404) {
+      await _syncProfileLegacy(name: name, phone: phone);
+      return;
+    }
+    throw ApiException.fromResponse(patchRes.statusCode, patchRes.body);
+  }
+
+  Future<void> _syncProfileLegacy({
+    required String name,
+    required String phone,
+  }) async {
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl/api/v1/fleet/${config.projectId}'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'device_id': config.deviceId,
+            'vehicle_id': config.vehicleId,
+            'driver_name': name,
+            if (phone.isNotEmpty) 'phone_number': phone,
           }),
         )
         .timeout(_defaultTimeout);
     if (res.statusCode != 200) {
       throw ApiException.fromResponse(res.statusCode, res.body);
     }
+    await sendTelemetry(
+      latitude: 0,
+      longitude: 0,
+      speed: null,
+      gpsStatus: 'ok',
+      cameraStatus: 'idle',
+      driverName: name,
+      phoneNumber: phone,
+    );
   }
 
   Future<void> sendTelemetry({
@@ -113,7 +151,11 @@ class RasidApiService {
     required double? speed,
     required String gpsStatus,
     required String cameraStatus,
+    String? driverName,
+    String? phoneNumber,
   }) async {
+    final name = (driverName ?? config.driverName).trim();
+    final phone = (phoneNumber ?? config.phoneNumber).trim();
     try {
       await _client
           .post(
@@ -125,9 +167,8 @@ class RasidApiService {
               'speed': speed,
               'gps_status': gpsStatus,
               'camera_status': cameraStatus,
-              'driver_name': config.driverName,
-              if (config.phoneNumber.trim().isNotEmpty)
-                'phone_number': config.phoneNumber.trim(),
+              'driver_name': name,
+              if (phone.isNotEmpty) 'phone_number': phone,
               'app_version': 'rasid_auto',
             }),
           )

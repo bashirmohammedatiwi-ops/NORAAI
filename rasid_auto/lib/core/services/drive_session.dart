@@ -209,6 +209,8 @@ class DriveSession extends ChangeNotifier {
       await a.updateProfile(driverName: name, phoneNumber: phoneNumber.trim());
       driverConfig = cfg.copyWith(driverName: name, phoneNumber: phoneNumber.trim());
       await ConfigStorage.save(driverConfig!);
+      a.dispose();
+      api = RasidApiService(driverConfig!);
       statusMessage =
           'متصل — ${driverConfig!.driverName} · ${driverConfig!.vehicleId}';
       notifyListeners();
