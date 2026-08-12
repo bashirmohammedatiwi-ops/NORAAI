@@ -33,6 +33,16 @@ class RasidApiService {
     }
   }
 
+  Future<Map<String, dynamic>> fetchBootstrap() async {
+    final res = await _client
+        .get(Uri.parse('$baseUrl/api/v1/driver/bootstrap'))
+        .timeout(_defaultTimeout);
+    if (res.statusCode != 200) {
+      throw ApiException.fromResponse(res.statusCode, res.body);
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> fetchConfig() async {
     final res = await _client
         .get(Uri.parse('$baseUrl/api/v1/driver/config'), headers: _headers)

@@ -11,6 +11,7 @@ import 'package:vibration/vibration.dart';
 import '../models/detection.dart';
 import '../models/detection_box.dart';
 import '../models/driver_config.dart';
+import 'config_bootstrap.dart';
 import 'config_storage.dart';
 import 'rasid_api_service.dart';
 import 'api_exception.dart';
@@ -169,12 +170,13 @@ class DriveSession extends ChangeNotifier {
     ready = true;
     statusMessage = api != null
         ? 'متصل — ${driverConfig?.driverName ?? ""} · ${driverConfig?.vehicleId ?? ""}'
-        : 'أكمل الإعداد من الشاشة الأولى';
+        : 'جاري الاتصال بالسيرفر…';
     notifyListeners();
   }
 
   Future<void> _initApi() async {
     driverConfig = await ConfigStorage.load();
+    driverConfig ??= await ConfigBootstrap.ensureRegistered();
     if (driverConfig == null) return;
     api?.dispose();
     api = RasidApiService(driverConfig!);

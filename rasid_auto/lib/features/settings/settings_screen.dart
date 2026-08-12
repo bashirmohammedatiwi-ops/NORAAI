@@ -76,14 +76,14 @@ class SettingsScreen extends StatelessWidget {
               session.driverConfig != null
                   ? '${session.driverConfig!.driverName} · ${session.driverConfig!.vehicleId} · '
                       '${session.online ? "متصل" : "غير متصل"}'
-                  : 'أكمل الإعداد من الشاشة الأولى',
+                  : 'غير متصل — تحقق من السيرفر',
               style: GoogleFonts.cairo(fontSize: 12, color: RasidColors.mistDim),
             ),
           ),
           const SizedBox(height: 24),
           Center(
             child: Text(
-              'RASID Auto v1.5 · Cloud YOLO',
+              'RASID Auto v1.5.7 · Cloud YOLO',
               style: GoogleFonts.cairo(color: RasidColors.mistDim, fontSize: 12),
             ),
           ),

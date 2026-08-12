@@ -1,0 +1,4 @@
+storePassword=RasidRelease2026
+keyPassword=RasidRelease2026
+keyAlias=rasid
+storeFile=keystore/rasid-release.jks

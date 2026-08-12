@@ -184,7 +184,7 @@ async def run_lab_cloud_detection(
     if not url or not api_key:
         return None
 
-    conf = float(min_confidence) if min_confidence is not None else 0.25
+    conf = float(min_confidence) if min_confidence is not None else settings.cloud_predict_conf
     try:
         payload, latency_ms, _ = await call_predict(
             url=url,
@@ -193,8 +193,8 @@ async def run_lab_cloud_detection(
             filename="driver.jpg",
             content_type="image/jpeg",
             conf=conf,
-            iou=0.7,
-            imgsz=416,
+            iou=settings.cloud_predict_iou,
+            imgsz=settings.cloud_predict_imgsz,
         )
     except LabPredictError as exc:
         return [], f"Cloud predict error: {exc.message}", {"pipeline": "lab_cloud"}

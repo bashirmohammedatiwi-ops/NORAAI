@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_fleet_device
 from app.core.database import get_db
 from app.core.redis_client import get_redis
-from app.models import FleetDevice, RoadEvent
+from app.models import FleetDevice, Project, RoadEvent
 from app.models.fleet_models import RoadEventType
 from app.schemas import (
     DriverConfigResponse,
@@ -103,6 +103,24 @@ def _config_message(project_classes, artifact, model_ready: bool) -> str | None:
             return "Add detection classes in the dashboard first."
         return "Model classes do not match dashboard classes. Retrain the model."
     return None
+
+
+@router.get("/bootstrap")
+async def driver_bootstrap(db: AsyncSession = Depends(get_db)):
+    """Default project for mobile auto-registration (no login screen)."""
+    result = await db.execute(
+        select(Project).where(Project.name == "Road Infrastructure Monitoring").limit(1)
+    )
+    project = result.scalar_one_or_none()
+    if not project:
+        result = await db.execute(select(Project).order_by(Project.created_at).limit(1))
+        project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=503, detail="No project configured on server")
+    return {
+        "project_id": str(project.id),
+        "project_name": project.name,
+    }
 
 
 @router.get("/config", response_model=DriverConfigResponse)

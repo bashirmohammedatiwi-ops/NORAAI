@@ -25,7 +25,7 @@ from app.services.road.event_helpers import default_recipient, serialize_road_ev
 
 router = APIRouter(prefix="/control-center", tags=["control-center"])
 
-LAB_DEFAULTS = {"conf": 0.25, "iou": 0.7, "imgsz": 416}
+LAB_DEFAULTS = {"conf": 0.25, "iou": 0.7, "imgsz": 640}
 LAB_FAST_DEFAULTS = {"conf": 0.25, "iou": 0.45, "imgsz": 320}
 LAB_ENDPOINT_LABEL = "exp-3-turin · Ultralytics"
 LAB_BATCH_CONCURRENCY = 4

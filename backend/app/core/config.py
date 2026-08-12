@@ -109,9 +109,12 @@ class Settings(BaseSettings):
     # Google Maps Platform — Roads API (speed limits on map-matched roads)
     google_maps_api_key: str = ""
 
-    # Cloud Run YOLO predict API (Ultralytics dedicated endpoint — exp-3-turin)
+    # Cloud Run YOLO predict API (Ultralytics dedicated endpoint)
     cloud_predict_url: str = "https://predict-6a7b9e67b578285046a4f04c-dproatj77a-og.a.run.app"
-    cloud_predict_api_key: str = ""
+    cloud_predict_api_key: str = "ul_ee95205eef2428d95e72b5c42acd29dbc84f37a6"
+    cloud_predict_conf: float = 0.25
+    cloud_predict_iou: float = 0.7
+    cloud_predict_imgsz: int = 640
 
     evidence_upload_dir: str = "uploads/evidence"
     demo_images_dir: str = "demo_images"

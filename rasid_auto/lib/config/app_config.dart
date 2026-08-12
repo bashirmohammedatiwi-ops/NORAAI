@@ -2,6 +2,8 @@ import 'package:latlong2/latlong.dart';
 
 const String kDefaultServerUrl = 'http://187.127.88.146:8080';
 
+const String kDefaultDriverName = 'سائق راصد';
+
 const LatLng kDefaultMapCenter = LatLng(33.3152, 44.3661);
 
 String normalizeServerUrl(String raw) {
